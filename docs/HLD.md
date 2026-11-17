@@ -1,6 +1,6 @@
 # High-Level Design (HLD)
 
-**Project:** smoke-detector (working title)
+**Project:** Smoke Detector
 **Status:** Draft v0.1 — 2026-11-17 — for review
 **Implements:** [SRS.md](SRS.md)
 
@@ -10,14 +10,14 @@
 
 | # | Decision | Options considered | **Chosen** | Why |
 |---|---|---|---|---|
-| AD-1 | Backend runtime | PHP/Slim · PHP/Laravel · Node on VPS · BaaS (Firebase/Supabase) | **PHP 8.3 + Slim 4** | Runs natively on IONOS Webhosting Plus, which most likely can't keep a Node process alive. Small, explicit and easy to unit test. |
-| AD-2 | Database | MariaDB/MySQL (IONOS) · SQLite | **MariaDB/MySQL from the IONOS package** | Included, managed and backed up. Concurrent writes from many users. |
+| AD-1 | Backend runtime | PHP/Slim · PHP/Laravel · Node on VPS · BaaS (Firebase/Supabase) | **PHP 8.4 + Slim 4** | Runs natively on IONOS Webhosting Plus, which most likely can't keep a Node process alive. Small, explicit and easy to unit test. |
+| AD-2 | Database | MariaDB/MySQL (IONOS) · SQLite | **MariaDB 11.8 from the IONOS package** (verified) | Included, managed and backed up. Concurrent writes from many users. Reachable only from the webspace. |
 | AD-3 | Client strategy | 3 native thin clients · KMP · PWA-first · Flutter/RN | **TS web + SwiftUI + Jetpack Compose, all thin** | **All game rules run on the server**, so business logic is written and tested once, in PHP. Clients only render and queue logs. |
 | AD-4 | API contract | Code-first · **Contract-first OpenAPI 3.1** | **Contract-first** | One `openapi.yaml` generates typed clients for TS, Swift and Kotlin. The backend validates against it in tests (contract tests). |
 | AD-5 | Auth | Email+pw · +Apple/Google · Magic link | **Email + password, JWT access (15 min) + rotating opaque refresh token** | Self-hosted, no third parties. Refresh tokens are stored hashed, so they can be revoked. |
 | AD-6 | Offline | Offline-first · online-only | **Offline-first logging via client outbox + idempotent batch sync** | NFR-03 zero log loss. Users log outdoors. |
 | AD-7 | Realtime | WebSockets · SSE · **polling + push** | **Push notifications + refresh on app foreground / pull-to-refresh** | Shared hosting allows no long-lived connections (C-1). |
-| AD-8 | Background work | Queue worker · **cron** | **IONOS cron → `php bin/console cron:run` every 5 min** (URL+secret fallback) | The only background mechanism available. Jobs are idempotent. |
+| AD-8 | Background work | Queue worker · **cron** | **IONOS UnixCron → executable wrapper `bin/cron` every 5 min** (URL+secret fallback) | The only background mechanism available. Jobs are idempotent. |
 | AD-9 | Hosting topology | API subdomain · **same origin** | **Same origin: `/` = web SPA, `/api/v1` = PHP** | No CORS, and the web refresh token can live in an httpOnly SameSite=Strict cookie. |
 | AD-10 | Web framework | React · Vue · Svelte | **React 18 + Vite + TypeScript** (overridable) | Largest ecosystem for testing (Vitest, Testing Library, Playwright, MSW). |
 | AD-11 | Repo & CI | **GitHub monorepo + Actions** · GitLab · manual | **GitHub monorepo** | One PR can change contract + backend + clients. macOS runners for iOS. |
@@ -36,8 +36,8 @@ flowchart LR
   end
   subgraph IONOS["IONOS Webhosting Plus (DE)"]
     AP[Apache + .htaccess]
-    API[PHP 8.3 Slim API<br/>/api/v1]
-    CR[Cron<br/>bin/console cron:run]
+    API[PHP 8.4 Slim API<br/>/api/v1]
+    CR[UnixCron */5<br/>bin/cron]
     DB[(MariaDB)]
     ST[Static files<br/>web build]
     MAIL[IONOS SMTP]
@@ -67,7 +67,7 @@ flowchart LR
 ```
 smoke-detector/
 ├── api/openapi.yaml            # single source of truth for the HTTP contract
-├── backend/                    # PHP 8.3, Slim 4
+├── backend/                    # PHP 8.4, Slim 4
 │   ├── public/index.php        # front controller (document root on IONOS)
 │   ├── public/.htaccess
 │   ├── src/Domain/             # pure PHP: scoring, streaks, XP, plan, duels — NO I/O
@@ -92,7 +92,7 @@ smoke-detector/
 ## 4. Backend design
 
 ### 4.1 Layers
-- **Domain** (pure, deterministic and fully unit-tested): `ReductionPlan`, `DayScore`,
+- **Domain** (pure, deterministic and fully unit-tested): `BaselineCalculator`, `ReductionPlan`, `DayScore`,
   `StreakCalculator`, `XpCalculator`, `DuelJudge`, `LeagueRanker`, `BadgeEvaluator`,
   `HealthMilestones`. Inputs are value objects plus a `RuleSet` version. Time comes in as a `LocalDate`
   or through an injected `Clock`, never `new DateTime()` inside the domain.
@@ -129,10 +129,11 @@ erDiagram
 
 | Table | Key columns / notes |
 |---|---|
-| `users` | id, email (unique), password_hash, display_name, avatar_key, locale, timezone, email_verified_at, journey_id, deleted_at |
+| `users` | id, email (unique), password_hash, display_name, avatar_key, locale, timezone, email_verified_at, deleted_at |
 | `consents` | user_id, type (age18, art9, privacy), version, granted_at |
-| `plans` | user_id, journey_id, baseline, goal_mode, target, taper_speed, start_date, rules_version |
-| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at_utc, local_date, count, deleted (tombstone), created_at |
+| `plans` | user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version |
+| `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days, rules_version. Append-only, never recalculated |
+| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at_utc, local_date, product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count, deleted (tombstone), created_at |
 | `day_summaries` | user_id, local_date, count, limit, checked_in, freeze_used, status (provisional/final), xp, rules_version |
 | `streaks` | user_id, type (checkin/under_limit), current, longest, freezes_held |
 | `xp_events` | user_id, source, ref_id, amount, created_at — append-only ledger; XP total = sum |
@@ -150,7 +151,7 @@ erDiagram
 | Area | Endpoints |
 |---|---|
 | Auth | `POST /auth/register`, `/auth/verify-email`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password-reset/{request,confirm}` |
-| Me | `GET/PATCH /me`, `PUT /me/plan`, `POST /me/journey` (new baseline), `GET /me/export`, `DELETE /me` |
+| Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/baseline-history`, `GET /me/export`, `DELETE /me` |
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
 | Friends | `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{id}/{accept,decline}`, `DELETE /friends/{id}`, `POST /friends/{id}/block` |
@@ -186,10 +187,11 @@ sequenceDiagram
 2. For each such day: build the `DayScore` (count, limit from `ReductionPlan`, check-in), apply a freeze
    if needed, update `streaks`, append `xp_events`, evaluate badges, mark the day `final`. **One
    transaction per user-day. Idempotent**: re-running is a no-op.
-3. Finalize any duels and league periods whose days are now all final → `DuelJudge` / `LeagueRanker`.
-4. Write feed events + `notifications_outbox` rows.
-5. Dispatch the outbox (batch ≤ 200, retries with backoff, invalid tokens pruned).
-6. Housekeeping: expire duel invites (72 h), purge accounts deleted > 30 days ago, delete expired tokens.
+3. **Weekly baseline** (first run after Monday 00:00 local per user): `BaselineCalculator` → append to `baseline_history` (FR-PLAN-04…06). It uses the data known at that moment (Sat/Sun may still be provisional), and the stored value is final.
+4. Finalize any duels and league periods whose days are now all final → `DuelJudge` / `LeagueRanker`.
+5. Write feed events + `notifications_outbox` rows.
+6. Dispatch the outbox (batch ≤ 200, retries with backoff, invalid tokens pruned).
+7. Housekeeping: expire duel invites (72 h), purge accounts deleted > 30 days ago, delete expired tokens.
 
 The job runner holds a DB advisory lock (`GET_LOCK`) so overlapping cron runs never double-process.
 The time budget per run is < 50 s. Leftover work is picked up in the next run.
@@ -202,7 +204,7 @@ stateDiagram-v2
   proposed --> expired : 72h
   proposed --> accepted
   accepted --> active : next local day
-  active --> forfeited : account deleted / new journey
+  active --> forfeited : account deleted
   active --> finalizing : last day ended
   finalizing --> completed : both users' days final (+48h)
   completed --> [*]
@@ -210,8 +212,9 @@ stateDiagram-v2
 
 ### 5.4 Reduction formula (FR-COMP-03/06)
 ```
-counted_days   = days in window since max(window_start, journey_start)
-expected       = baseline × counted_days
+B0             = max(1.0, baseline_history value valid at window start (or join date))   # frozen
+counted_days   = days in window since max(window_start, signup_date)
+expected       = B0 × counted_days
 actual         = Σ count(day)          where day checked in
                + Σ baseline            where day NOT checked in (and no freeze)
 reduction      = 1 − actual / expected
@@ -267,24 +270,47 @@ Sounds and animations live in `shared/assets/`. They must be original or license
 
 ## 8. Deployment (IONOS Webhosting Plus)
 
+Verified on the server on 2026-11-17. Details are in the git-ignored `server.info`.
+
 ```
-/ (SFTP home)
-├── app/                       # backend (src, vendor, config, migrations, bin)
-│   └── config/local.php       # secrets, uploaded manually once
-├── htdocs/                    # domain document root → web build + api front controller
-│   ├── index.html, assets/…   # web SPA
-│   └── api/index.php          # requires ../../app/bootstrap.php
-└── logs/
+/home/www/                                  (SSH view; SFTP is chrooted, so it sees "/" here)
+├── smoke-detector/
+│   ├── releases/<sha>/                     # one full build per deploy (backend + web)
+│   │   ├── app/                            # src, vendor, migrations, bin/cron (executable)
+│   │   └── public/                         # index.html, assets/, api/index.php, .htaccess
+│   ├── shared/config/local.php             # secrets (DB, JWT, APNs/FCM/VAPID, SMTP), uploaded once
+│   └── shared/logs/
+└── public/smoke-detector  ──symlink──▶  smoke-detector/releases/<sha>/public
+                                            # = document root of smoke-detector.witch13.org
 ```
 
-- IONOS lets you point a domain or subdomain at any folder: `app.<domain>` → `htdocs`,
-  `staging.<domain>` → `staging/htdocs` (with a separate DB).
-- `.htaccess`: route `/api/*` → `api/index.php`, send all other unknown paths → `index.html` (SPA),
-  force HTTPS, add security headers.
-- **Release:** CI builds the artifact (`composer install --no-dev -o`, `vite build`) → uploads it over SFTP
-  (`lftp mirror -R` with an SSH key) to `releases/<sha>` → switches the active folder (symlink via SSH if
-  allowed, otherwise a rename) → runs `php bin/console migrate` over SSH → smoke-tests `/api/v1/health`.
-- Cron (IONOS cron manager): `*/5 * * * * php ~/app/bin/console cron:run`.
+- **Domain:** `smoke-detector.witch13.org` → `/home/www/public/smoke-detector` (HTTPS works, Apache +
+  PHP-FPM/CGI **8.4.27**). For staging, add a subdomain with its own folder and DB.
+- **`.htaccess` (verified):** mod_rewrite works (`/api/*` → `api/index.php`, everything else → `index.html`)
+  and mod_headers works (security headers). The `Authorization: Bearer` header reaches PHP without
+  workarounds. Code outside the document root is readable (no `open_basedir`).
+- **Atomic deploy (verified):** CI builds the artifact (`composer install --no-dev -o`, `vite build`), because
+  Composer is not installed on the server. Then: `rsync -az` over SSH into `releases/<sha>` → `php8.4
+  releases/<sha>/app/bin/console migrate` → swap the **document root symlink**
+  (`ln -sfn … smoke-detector.tmp && mv -T smoke-detector.tmp smoke-detector`) → smoke-test `/api/v1/health` →
+  keep the last 3 releases for rollback.
+  - The swap causes a **brief HTTP 500 for about 1–5 s** while the web server re-resolves the path. That is
+    acceptable, because clients retry and logs are queued offline. Swapping a symlink *inside* a real
+    document root kept serving the **old** files, so that variant must not be used.
+  - Migrations must be backward compatible with the previous release (expand → migrate → contract),
+    because they run before the swap.
+- **Cron (IONOS "UnixCron"):** the command field only allows `a-z A-Z 0-9 - _ . /`, which means one path
+  with no arguments, spaces or redirects. We therefore ship an executable wrapper
+  `app/bin/cron` (`#!/usr/bin/php8.4`, which writes its own log) and register
+  `/home/www/smoke-detector/current-cron` as the command. That is a stable symlink to the wrapper of the
+  active release, updated during the swap. Schedule: advanced mode, `*/5 * * * *`.
+  **Verified:** runs reliably every minute (start jitter < 10 s) under the same UID as SSH, with `/bin/sh`,
+  cwd `/home/www` and `PATH=/usr/local/bin:/usr/bin:/bin`, so the wrapper uses absolute paths only.
+- **Server facts:** Debian 12 ARM64. PHP 8.1–8.4 CLI (`php` = 8.3, so always call `php8.4` explicitly) with
+  Argon2id, sodium, gmp, bcmath, intl, pdo_mysql, OPcache, APCu and curl with HTTP/2. Web PHP:
+  memory_limit 512M, max_execution_time 360 s. rsync, git and the MariaDB 10.11 client are present. Node 18 (EOL)
+  is present, but a public, persistent Node server is not viable. The IONOS edge sends
+  `x-ws-ratelimit-limit: 1000` (window unknown).
 - Mobile apps: TestFlight / Play Internal Testing via Fastlane in CI (requires the developer accounts, OQ-4).
 
 ---
@@ -334,12 +360,15 @@ FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script pr
 
 | Risk | Impact | Mitigation / spike check |
 |---|---|---|
-| IONOS cron minimum interval or job count too restrictive | Slow finalization / notifications | Spike step 0. Fallback: external pinger (e.g. GitHub Actions schedule) calling `/cron?key=…` |
-| PHP CLI over SSH limited (no `php` binary, no symlinks) | Migrations / atomic deploy | Fallback: token-protected migration endpoint. Folder-rename deploy |
-| PHP curl without HTTP/2 → APNs unusable | No iOS push | Spike step 0. Fallback: relay APNs through FCM (FCM can deliver to iOS) |
-| `minishlink/web-push` needs `gmp`/`openssl` extension | No web push | Check `phpinfo()` in spike. Web push is a "nice to have" for web |
-| Max execution time / memory on shared hosting | Cron jobs cut off | Batched, resumable, idempotent jobs with a time budget |
-| Baseline inflation to win competitions | Unfair duels | Locked baseline (FR-PLAN-02). Pilot data to decide on a calibration week (OQ-3) |
+| IONOS cron: single-path command, interval limits | Slow finalization / notifications | **Resolved 2026-11-17**: UnixCron runs every minute (start jitter < 10 s). The command must be one path (→ `bin/cron` wrapper). Fallback: WebCron calling `/api/v1/cron?key=…` |
+| IONOS blocks our IP after many SSH connections in a short time (seen 2026-11-17: SSH + web unreachable for ~10–15 min) | Failed deploys | CI deploy uses **one** SSH connection (rsync + migrate + swap in a single session, or SSH ControlMaster), with no polling loops over SSH |
+| Brief 500 during the document root swap | Failed requests for about 5 s per deploy | Clients retry with backoff. Offline outbox. Deploy outside peak hours |
+| ~~PHP CLI over SSH limited (no `php` binary, no symlinks)~~ | Migrations / atomic deploy | **Resolved 2026-11-17**: `php8.4` CLI + atomic symlink swap work |
+| ~~PHP curl without HTTP/2 → APNs unusable~~ | No iOS push | **Resolved**: PHP curl negotiates HTTP/2 with APNs (403 MissingProviderToken as expected) |
+| ~~`minishlink/web-push` needs `gmp`/`openssl` extension~~ | No web push | **Resolved**: gmp, bcmath, openssl 3 present |
+| Max execution time / memory for **web** PHP (FPM) | Requests / cron-via-URL cut off | **Open**: CLI has 512M / no limit, but web values need a `phpinfo()` check. Jobs stay batched, resumable and idempotent |
+| DB limits & unsafe defaults | Scale ceiling / silent data corruption | **Resolved 2026-11-17**: MariaDB 11.8, `MAX_USER_CONNECTIONS 20` (enough with short-lived PHP requests, no persistent connections). Server defaults are **non-strict, utf8mb3, CET**, so every connection sets `time_zone='+00:00'`, a strict `sql_mode` and `utf8mb4` (verified). Tables are declared `utf8mb4_unicode_ci` explicitly. CI integration tests use a `mariadb:11.8` container with the same session init. Size quota: **2 GB**. Worst case at v1 scale is 1,000 users × 20 logs/day × 1 year ≈ 7.3 M rows, about 0.7 GB of data or 1–1.5 GB with indexes. Mitigation: once days are finalized and older than 12 months, compact raw `smoke_logs` into the existing `day_summaries` (competitions only need ≤ 6 months), and alert in `/health` at 70 % usage |
+| Baseline inflation to win competitions | Unfair duels | Baseline is frozen per competition (FR-PLAN-07), weekly increases are capped at +10 % (FR-PLAN-06), and faking extra logs costs under-limit XP and streaks. Re-tune after the pilot |
 | Three native clients = 3× UI effort | Schedule | Thin clients, generated API clients, server-driven events. Web first validates the API |
 | GDPR Art. 9 health data | Legal exposure | Consent records, minimisation, EU hosting, AV-Vertrag, export/delete from day one |
 | Store review (tobacco-related content) | Rejection | Frame as a reduction/quit aid, 18+ rating, no promotion of smoking |

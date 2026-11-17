@@ -1,0 +1,6 @@
+# Local server details (hostnames, users) — never commit
+server.info
+# Secrets
+.env
+.env.*
+!.env.example

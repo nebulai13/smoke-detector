@@ -1,6 +1,6 @@
 # Software Requirements Specification (SRS)
 
-**Project:** smoke-detector (working title) — a gamified "who smokes the least" competition app
+**Project:** Smoke Detector — a gamified "who smokes the least" competition app
 **Platforms:** Web, iOS, Android
 **Status:** Draft v0.1 — 2026-11-17 — for review
 **Companion document:** [HLD.md](HLD.md) (High-Level Design)
@@ -22,7 +22,7 @@ privately, which gets boring and lacks social pressure. Friends who smoke often 
 down together but have no shared, fair, fun way to hold each other accountable.
 
 ### 1.3 Product summary
-The app is a Duolingo-style habit app. Each user logs every cigarette, follows a personal daily
+The app is a Duolingo-style habit app. Each user logs every smoking session (cigarette, vape, shisha, …), follows a personal daily
 limit that drops over time (optionally to zero), and earns XP, streaks, levels and badges. Users
 compete fairly against **one specific friend (duel)** or **all their friends (league)**. The winner is
 whoever reduced the most compared to their own baseline over a week, a month, 3 months or 6 months.
@@ -32,11 +32,11 @@ logging honestly.
 ### 1.4 Definitions
 | Term | Meaning |
 |---|---|
-| **Log** | One recorded smoking event (timestamp, count ≥ 1). |
+| **Log** | One smoking **session** of any tobacco/nicotine product that is smoked or inhaled (cigarette, rolled cigarette, cigar/cigarillo, pipe, shisha round, vape/e-cig break, heated tobacco). Fields: timestamp, product type, count ≥ 1. All products count equally, 1 session = 1. |
 | **Check-in** | The user confirms a local calendar day as complete. A day with 0 logs counts as smoke-free **only** after a check-in. |
-| **Baseline** | The user's self-declared average cigarettes/day at onboarding. All fairness comparisons are based on it. |
-| **Daily limit** | Today's allowed maximum, derived from the baseline and the reduction plan. |
-| **Reduction %** | `1 − actual / (baseline × counted_days)` over a period. Higher is better. Can be negative. |
+| **Baseline (B)** | The user's current reference sessions/day, with one decimal place. Starts as the self-declared value at onboarding, then is recalculated weekly from the user's own logs (FR-PLAN-04). |
+| **Daily limit** | Today's allowed maximum: `floor(B × f)`, where f depends on the taper speed (FR-PLAN-01). |
+| **Reduction %** | `1 − actual / (B₀ × counted_days)` over a competition window. **B₀** is the baseline frozen at the window start, with a minimum of 1.0. Higher is better. Can be negative. |
 | **Day finalization** | A local day becomes immutable 48 h after its local midnight (the *grace period*). |
 | **Duel** | A 1v1 challenge between two friends over a fixed period. |
 | **League** | A leaderboard of the user and all of their friends for a calendar-aligned period. |
@@ -57,10 +57,10 @@ logging honestly.
 - **Strangers / public communities.** There are no public leagues, no discovery of unknown users and no public profiles.
 - **Clinical or medical use.** The app gives no medical advice, diagnosis or therapy. Health milestones are general information from published sources and carry a disclaimer.
 - **Organisations / workplaces** that track their employees.
-- **Other nicotine products** (vapes, pouches) in v1. See Open Questions.
+- **Cannabis** and **non-inhaled nicotine** (snus, nicotine pouches, gum/patches) are not tracked.
 
 ### 2.3 Operating environment
-- Backend: IONOS Webhosting Plus (shared hosting, Germany): PHP 8.3, MariaDB/MySQL, Apache, SFTP, limited SSH, cron.
+- Backend: IONOS Webhosting Plus (shared hosting, Germany): PHP 8.4, MariaDB/MySQL, Apache, SFTP, limited SSH, cron.
 - Web: current Chrome, Firefox, Safari and Edge (last 2 versions), desktop and mobile.
 - iOS: 17+ (iPhone). Android: 8.0+ (API 26).
 
@@ -89,7 +89,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-ACC-03 | M | The email must be verified via a link before the user can join competitions. |
 | FR-ACC-04 | M | Login with email + password. Sessions persist across app restarts. Logout works per device. |
 | FR-ACC-05 | M | Password reset via an emailed one-time link (valid 1 h). |
-| FR-ACC-06 | M | Onboarding collects the baseline (cigarettes/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0) and the taper speed (gentle / normal / fast). |
+| FR-ACC-06 | M | Onboarding collects the starting baseline (sessions/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0), the taper speed (gentle / normal / fast) and the usual product type. |
 | FR-ACC-07 | M | The user can export all of their data as JSON (GDPR Art. 15/20). |
 | FR-ACC-08 | M | The user can delete their account. Personal data is removed within 30 days. Active duels end as forfeits. |
 | FR-ACC-09 | S | The user can change display name, avatar, language, time zone, reminder time and notification preferences. |
@@ -97,7 +97,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.2 Logging & check-in (LOG)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-LOG-01 | M | Log a cigarette in **≤ 2 taps** from app open (the home screen has a prominent "+1" button). |
+| FR-LOG-01 | M | Log a session in **≤ 2 taps** from app open. The home screen has a prominent "+1" button that uses the last product type. A long-press or secondary button picks another product type. |
 | FR-LOG-02 | M | Logging works **offline**. Logs are stored locally with a client-generated ID and synced automatically when online. Syncing is idempotent, so no duplicates are created. |
 | FR-LOG-03 | M | A log can be back-dated or deleted, but only for days still inside the grace period (48 h after local midnight). |
 | FR-LOG-04 | M | The user checks in a day ("Done for today"), which confirms the count. Yesterday can be checked in until it is finalized. |
@@ -108,9 +108,15 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.3 Reduction plan (PLAN)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-PLAN-01 | M | Daily limit on day 1 = baseline. The limit then drops by a step every week according to taper speed (default: gentle −1/week, normal −2/week, fast −3/week) until it reaches the target. |
-| FR-PLAN-02 | M | The baseline is locked once set. A user can start a "new journey" (new baseline), which ends their active duels as forfeits and starts fresh league participation. This prevents gaming the score by inflating the baseline. |
+| FR-PLAN-01 | M | Daily limit = `floor(B × f)` with f = 0.9 (gentle) / 0.8 (normal) / 0.7 (fast). In *reduce* mode the limit never goes below the target. In *quit* mode it reaches 0 naturally once B < 1/f. This replaces a fixed weekly taper, so the limit follows actual behaviour. |
+| FR-PLAN-02 | M | Every baseline value is stored permanently with its validity date and inputs (baseline history). Past values are never recalculated (NFR-04). |
 | FR-PLAN-03 | S | The user can switch from *reduce* to *quit* at any time without resetting anything. |
+| FR-PLAN-04 | M | **Weekly baseline update** (Mondays 00:00 local, by cron): `W` = mean sessions/day over the **checked-in** days of the previous 7 days. `M` = the same over the previous **28** days. `B_new = round1(0.7·W + 0.3·M)`. Days without a check-in are excluded. |
+| FR-PLAN-05 | M | Not enough data: if fewer than 4 of the previous 7 days are checked in, B stays unchanged that week. |
+| FR-PLAN-06 | M | Increase cap: `B_new ≤ 1.10 × B_old`, so the baseline can't be inflated by a heavy (or faked) week. There is no cap on decreases. |
+| FR-PLAN-07 | M | Competitions **freeze** each participant's baseline: a duel uses B₀ = the participant's B on the duel start date, and a league period uses B₀ on the period start (or join) date. For scoring, B₀ has a minimum of 1.0. |
+| FR-PLAN-08 | S | The user sees the baseline history as a chart, and on Monday gets a celebration when B went down ("Your new normal: 7.4 → 6.8 🎉"). |
+| FR-PLAN-09 | S | Personal stats show sessions per product type. Scoring ignores the product type. |
 
 ### 3.4 Gamification core (GAME)
 | ID | Pri | Requirement |
@@ -123,7 +129,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-GAME-06 | M | Celebration feedback (animation + positive sound + haptics on mobile) for: log saved (subtle), check-in, under-limit day, smoke-free day, streak extended, level up, badge earned, duel/league won. |
 | FR-GAME-07 | M | Sounds can be muted in settings. Mobile respects the system silent mode. Sound is never the only feedback (accessibility). |
 | FR-GAME-08 | M | Badges are awarded for defined achievements (Appendix B), e.g. first check-in, 7/30/100/365-day streaks, first smoke-free day, first duel won, limit halved. |
-| FR-GAME-09 | M | Health milestones are based on time since the last logged cigarette (Appendix C). Each shows its source and a disclaimer. |
+| FR-GAME-09 | M | Health milestones are based on time since the last logged session (Appendix C). The texts are written for smoking. For vape-only users the milestones are shown with a note that the evidence base differs. Each shows its source and a disclaimer. |
 
 ### 3.5 Friends (FRND)
 | ID | Pri | Requirement |
@@ -203,7 +209,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 - Public leagues, matchmaking with strangers, public profiles (*maybe later*)
 - Free-text chat / DMs
 - Sign in with Apple / Google (*later; Apple requires SiwA once any social login exists*)
-- Vapes, e-cigarettes, nicotine pouches (*Open Question*)
+- Weighting products against each other ("cigarette equivalents"), or separate limits per product
 - Payments, premium tier, in-app currency
 - Wearables, Apple Watch / Wear OS apps, home-screen widgets (*widget "+1" is a strong later candidate*)
 - Coaching content, lessons, medical advice
@@ -214,7 +220,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ---
 
 ## 7. What success looks like (proposed — confirm)
-1. A new user can sign up, finish onboarding and log their first cigarette in **< 2 minutes**.
+1. A new user can sign up, finish onboarding and log their first session in **< 2 minutes**.
 2. Logging takes **≤ 2 taps** from app open, online or offline.
 3. Two test users can run a 1-week duel end to end on staging, and the result matches a hand calculation.
 4. 100 % of the scoring/streak/XP rules in this SRS have passing tests that reference their FR IDs.
@@ -226,9 +232,9 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ## 8. Open questions
 | # | Question | Default if unanswered |
 |---|---|---|
-| OQ-1 | App name, branding, mascot, sound design (original assets needed) | Working title "smoke-detector"; commission or source royalty-free sounds |
-| OQ-2 | Count vapes / other nicotine products? | No, cigarettes only in v1 |
-| OQ-3 | Baseline: self-declared (current) vs. measured in a calibration week? | Self-declared + locked (FR-PLAN-02) |
+| OQ-1 | Branding & sound design (draft in [BRAND.md](BRAND.md)). Original assets are needed | Name decided: **Smoke Detector**. Trademark check pending |
+| OQ-2 | ~~Count vapes / other nicotine products?~~ | **Decided:** every smoked/inhaled tobacco or nicotine product counts, 1 log = 1 session. No cannabis |
+| OQ-3 | ~~How is the baseline set?~~ | **Decided:** onboarding value, then weekly `0.7·W + 0.3·M` with safeguards (FR-PLAN-04…07). Tune weights/cap after the pilot |
 | OQ-4 | Who owns the Apple Developer (99 $/yr) and Google Play (25 $) accounts? | — must be decided before the iOS phase |
 | OQ-5 | Domain name and whether a staging subdomain is available | `app.<domain>` + `staging.<domain>` |
 | OQ-6 | Timeline / team size | Unknown — the build plan in the HLD is sequenced, not dated |
@@ -255,7 +261,7 @@ Limit halved · Reached quit target · First duel won · 5 duels won · League c
 Cheerleader (50 reactions sent).
 
 ## Appendix C — Health milestones (to be text-reviewed against sources: WHO, CDC)
-| Time since last cigarette | Milestone (summary) |
+| Time since last session | Milestone (summary) |
 |---|---|
 | 20 minutes | Heart rate and blood pressure drop |
 | 12 hours | Carbon monoxide level in the blood drops to normal |
