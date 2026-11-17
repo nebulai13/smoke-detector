@@ -1,0 +1,9 @@
+# Local development only. Production runs on IONOS shared hosting (see docs/HLD.md §8).
+services:
+  php:
+    build:
+      context: backend
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+    working_dir: /app/backend
