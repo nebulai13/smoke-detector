@@ -1,0 +1,59 @@
+openapi: 3.1.0
+info:
+  title: Smoke Detector API
+  version: 0.1.0
+  description: >
+    Single source of truth for the HTTP contract (HLD AD-4). Endpoints are added here first,
+    in the build step that implements them, and the backend is tested against this file.
+servers:
+  - url: https://smoke-detector.witch13.org/api/v1
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness check (database + cron heartbeat)
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Health"
+        "503":
+          description: Service is degraded
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+          description: Deployed release (git SHA)
+        cronLastRunAt:
+          type: [string, "null"]
+          format: date-time
+    Problem:
+      description: RFC 9457 problem details
+      type: object
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+          format: uri-reference
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
