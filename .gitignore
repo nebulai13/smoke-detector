@@ -4,3 +4,8 @@ server.info
 .env
 .env.*
 !.env.example
+# Backend
+backend/vendor/
+backend/.phpunit.cache/
+backend/coverage/
+backend/var/

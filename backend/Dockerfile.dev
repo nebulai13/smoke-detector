@@ -1,0 +1,6 @@
+# Local development + test image. Mirrors the IONOS server: PHP 8.4 with the same extensions.
+FROM php:8.4-cli-alpine
+COPY --from=mlocati/php-extension-installer:2 /usr/bin/install-php-extensions /usr/local/bin/
+RUN install-php-extensions pdo_mysql intl bcmath gmp pcov zip
+COPY --from=composer:2 /usr/bin/composer /usr/local/bin/composer
+WORKDIR /app/backend
