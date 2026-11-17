@@ -75,7 +75,7 @@ smoke-detector/
 │   ├── src/Infrastructure/     # PDO repositories, mailer, push senders, clock
 │   ├── src/Http/               # Slim actions, middleware, request/response mapping
 │   ├── src/Cron/               # job runner + jobs
-│   ├── config/rules/v1.php     # XP / badge / taper rule table (versioned, SRS App. A)
+│   ├── config/rules/v1.php     # rule table: every tunable number (SRS App. A). One file per version, never edited once released
 │   ├── migrations/             # Phinx migrations
 │   ├── bin/console             # CLI: migrate, cron:run, …
 │   └── tests/{Unit,Integration,Contract}/
@@ -92,10 +92,25 @@ smoke-detector/
 ## 4. Backend design
 
 ### 4.1 Layers
-- **Domain** (pure, deterministic and fully unit-tested): `BaselineCalculator`, `ReductionPlan`, `DayScore`,
-  `StreakCalculator`, `XpCalculator`, `DuelJudge`, `LeagueRanker`, `BadgeEvaluator`,
-  `HealthMilestones`. Inputs are value objects plus a `RuleSet` version. Time comes in as a `LocalDate`
-  or through an injected `Clock`, never `new DateTime()` inside the domain.
+- **Domain** (pure, deterministic and fully unit-tested, no I/O and no clock). Built in step 2:
+  - `Rules\RuleSet`: one immutable object with a version and every tunable number, built from
+    `config/rules/<version>.php` by `RuleSet::fromArray()`. Every key is required and unknown keys are
+    rejected, so nothing falls back to a hidden default.
+  - `Plan`: `Baseline` (tenths of a session, integer), `BaselineCalculator` (weekly update),
+    `ReductionPlan::dailyLimit`, `Goal`, `TaperSpeed`.
+  - `Day`: `DayOutcome` (count, limit, checked in), `DayFinalizer` (one user-day → new streak state, XP
+    awards, level change and celebration events).
+  - `Streak`: `StreakCalculator` (both streaks + freezes as a state machine that emits events; a freeze
+    covers the check-in streak only).
+  - `Xp` / `Level`: `XpCalculator` (the whole Appendix A table), `LevelCalculator`.
+  - `Competition`: `FrozenBaseline`, `Reduction` (an exact fraction), `CompetitionScoreCalculator`,
+    `CompetitionScoreComparator` (the FR-COMP-03 order).
+  - Still to come: `DuelJudge`, `LeagueRanker` (step 5), `BadgeEvaluator`, `HealthMilestones` (step 6).
+  - Every rule number and every input has a documented upper bound (constants next to the code, far
+    above any realistic value), so extreme input ends in a clear `InvalidArgumentException`, never in an
+    integer overflow or an out-of-memory crash.
+  - Rounding-sensitive maths uses integers only. Time comes in as a `LocalDate` or through an injected
+    `Clock`, never `new DateTime()` inside the domain.
 - **Application**: one class per use case. It orchestrates repositories and domain objects and owns the
   transaction boundaries.
 - **Infrastructure**: PDO repositories, `SmtpMailer`, `ApnsSender`, `FcmSender`, `WebPushSender` and
@@ -104,7 +119,7 @@ smoke-detector/
 
 ### 4.2 Key libraries (all pure PHP, installed via Composer in CI, `vendor/` uploaded)
 `slim/slim` 4, `php-di/php-di`, `robmorgan/phinx`, `firebase/php-jwt`, `symfony/mailer`,
-`minishlink/web-push`, `league/openapi-psr7-validator` (tests), `phpunit/phpunit` 11,
+`minishlink/web-push`, `league/openapi-psr7-validator` (tests), `phpunit/phpunit` 12,
 `phpstan/phpstan` (max level), `friendsofphp/php-cs-fixer`, optional `infection/infection` (mutation testing).
 
 ### 4.3 Data model (core tables)
@@ -138,8 +153,8 @@ erDiagram
 | `streaks` | user_id, type (checkin/under_limit), current, longest, freezes_held |
 | `xp_events` | user_id, source, ref_id, amount, created_at — append-only ledger; XP total = sum |
 | `friendships` | user_a < user_b, status (pending/accepted/blocked), requested_by |
-| `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json |
-| `league_results` | period_type, period_key (e.g. 2026-W47), user_id, reduction, rank, final |
+| `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json (per user: frozen B₀, exact actual/expected totals in tenths, smoke-free days, check-ins, rules_version) |
+| `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
 | `user_badges` | user_id, badge_key, awarded_at |
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
@@ -184,8 +199,9 @@ sequenceDiagram
 
 ### 5.2 Day finalization & scoring (cron, every 5 min)
 1. Select users whose local `date − 2 days` has passed midnight and still has provisional days.
-2. For each such day: build the `DayScore` (count, limit from `ReductionPlan`, check-in), apply a freeze
-   if needed, update `streaks`, append `xp_events`, evaluate badges, mark the day `final`. **One
+2. For each such day: build the `DayOutcome` (count, limit from `ReductionPlan`, check-in) and run
+   `DayFinalizer`. Store its result: update `streaks`, append `xp_events`, evaluate badges, mark the day
+   `final`. Days are processed once each, in calendar order per user. **One
    transaction per user-day. Idempotent**: re-running is a no-op.
 3. **Weekly baseline** (first run after Monday 00:00 local per user): `BaselineCalculator` → append to `baseline_history` (FR-PLAN-04…06). It uses the data known at that moment (Sat/Sun may still be provisional), and the stored value is final.
 4. Finalize any duels and league periods whose days are now all final → `DuelJudge` / `LeagueRanker`.
@@ -212,13 +228,18 @@ stateDiagram-v2
 
 ### 5.4 Reduction formula (FR-COMP-03/06)
 ```
-B0             = max(1.0, baseline_history value valid at window start (or join date))   # frozen
+B0             = max(1.0, baseline_history value valid at window start (or join date))   # frozen, used everywhere below
 counted_days   = days in window since max(window_start, signup_date)
 expected       = B0 × counted_days
-actual         = Σ count(day)          where day checked in
-               + Σ baseline            where day NOT checked in (and no freeze)
+actual         = Σ count(day)             where day checked in
+               + Σ max(B0, count(day))    where day NOT checked in (a streak freeze does not change this)
 reduction      = 1 − actual / expected
 ```
+
+The reduction is kept as the exact pair (actual, expected) in tenths of a session and compared by
+cross-multiplication, so ties are detected exactly. Percentages are rounded for display only. A window
+without any counted day has no reduction: that participant is unrated.
+
 
 ---
 
@@ -243,7 +264,7 @@ SoundManager / Haptics / Celebration overlay ← driven by server "events" in re
 | Tests | Vitest, Testing Library, MSW, Playwright | Swift Testing / XCTest, XCUITest | JUnit 5, Turbine, Compose UI tests, Robolectric |
 
 **Celebrations are server-driven.** Responses to sync and check-in include an `events[]` array (e.g.
-`streak_extended`, `level_up`, `badge_earned`). Clients map each event to an animation and sound. Clients
+`streak_extended`, `level_up`, `badge_earned`). The event names are fixed by the domain (`DayEventType`): `checked_in`, `under_limit_day`, `smoke_free_day`, `streak_extended`, `streak_milestone`, `freeze_earned`, `freeze_used`, `streak_broken`, `level_up`, always in that order. Negative moments are deliberately never sent as events: the end of the under-limit streak (on an over-limit day or on a day covered by a freeze) and a freeze dropped at the cap. The user sees the changed counter on the dashboard instead. Clients map each event to an animation and sound. Clients
 never compute XP themselves, so the three platforms can't drift apart. The one exception is an
 optimistic "+1 saved" sound/animation that plays locally.
 
@@ -323,7 +344,8 @@ FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script pr
 
 | Level | What | Tools | Where it runs |
 |---|---|---|---|
-| Domain unit | Scoring, streaks, XP, plan, duel judge, league ranker, badges — table-driven cases straight from the SRS | PHPUnit (+ Infection) | every push |
+| Domain unit | Scoring, streaks, XP, plan, duel judge, league ranker, badges — table-driven cases straight from the SRS | PHPUnit | every push |
+| Mutation | Do the tests notice when the domain code is deliberately broken? Target: no surviving mutant that isn't provably harmless | Infection (`make mutation`) | before each step is closed |
 | Integration | Repositories, use cases, cron jobs against real MariaDB | PHPUnit + MariaDB service container | every push |
 | Contract | Every API response validated against `openapi.yaml`. Generated clients compile. | openapi-psr7-validator, codegen in CI | every push |
 | Client unit | ViewModels, outbox/sync logic, event → celebration mapping | Vitest / Swift Testing / JUnit 5 + Turbine | every push |
@@ -350,8 +372,8 @@ FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script pr
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Cron dispatch every 5 min |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot | React + Vite |
-| 9 | **iOS client** → TestFlight | SwiftUI + SwiftData |
-| 10 | **Android client** → Play internal testing | Compose + Room |
+| 9 | **iOS client**: built and tested in the simulator and on your own iPhone (free Apple ID). **Pay the Apple Developer Program** before the push test + TestFlight | SwiftUI + SwiftData. APNs code tested against a fake until then |
+| 10 | **Android client**: emulator + sideloaded APK on real devices (push via FCM works without a Play account). **Pay Google Play** before store/internal testing | Compose + Room. Free Firebase project for FCM |
 | 11 | Legal pages, store listings, pilot with 5–10 friends (SRS §7) | — |
 
 ---
@@ -362,6 +384,7 @@ FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script pr
 |---|---|---|
 | IONOS cron: single-path command, interval limits | Slow finalization / notifications | **Resolved 2026-11-17**: UnixCron runs every minute (start jitter < 10 s). The command must be one path (→ `bin/cron` wrapper). Fallback: WebCron calling `/api/v1/cron?key=…` |
 | IONOS blocks our IP after many SSH connections in a short time (seen 2026-11-17: SSH + web unreachable for ~10–15 min) | Failed deploys | CI deploy uses **one** SSH connection (rsync + migrate + swap in a single session, or SSH ControlMaster), with no polling loops over SSH |
+| Developer fees paid only after development (OQ-4) | iOS push, TestFlight and store review can only be verified late | iOS: a free Apple ID allows simulator + own device (7-day signing), but **no APNs push and no TestFlight**. APNs sender is tested with a fake and contract tests, then verified on a device right after paying. Android: FCM + sideloaded APKs work for free, so only the Play listing waits. Plan about 1–2 weeks for the first store reviews |
 | Brief 500 during the document root swap | Failed requests for about 5 s per deploy | Clients retry with backoff. Offline outbox. Deploy outside peak hours |
 | ~~PHP CLI over SSH limited (no `php` binary, no symlinks)~~ | Migrations / atomic deploy | **Resolved 2026-11-17**: `php8.4` CLI + atomic symlink swap work |
 | ~~PHP curl without HTTP/2 → APNs unusable~~ | No iOS push | **Resolved**: PHP curl negotiates HTTP/2 with APNs (403 MissingProviderToken as expected) |

@@ -89,7 +89,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-ACC-03 | M | The email must be verified via a link before the user can join competitions. |
 | FR-ACC-04 | M | Login with email + password. Sessions persist across app restarts. Logout works per device. |
 | FR-ACC-05 | M | Password reset via an emailed one-time link (valid 1 h). |
-| FR-ACC-06 | M | Onboarding collects the starting baseline (sessions/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0), the taper speed (gentle / normal / fast) and the usual product type. |
+| FR-ACC-06 | M | Onboarding collects the starting baseline (sessions/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0), the taper speed (gentle / normal / fast) and the usual product type. A reduce target must be **below the current baseline**, at onboarding and when the goal is changed later. |
 | FR-ACC-07 | M | The user can export all of their data as JSON (GDPR Art. 15/20). |
 | FR-ACC-08 | M | The user can delete their account. Personal data is removed within 30 days. Active duels end as forfeits. |
 | FR-ACC-09 | S | The user can change display name, avatar, language, time zone, reminder time and notification preferences. |
@@ -108,12 +108,12 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.3 Reduction plan (PLAN)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-PLAN-01 | M | Daily limit = `floor(B × f)` with f = 0.9 (gentle) / 0.8 (normal) / 0.7 (fast). In *reduce* mode the limit never goes below the target. In *quit* mode it reaches 0 naturally once B < 1/f. This replaces a fixed weekly taper, so the limit follows actual behaviour. |
+| FR-PLAN-01 | M | Daily limit = `floor(B × f)` with f = 0.9 (gentle) / 0.8 (normal) / 0.7 (fast). The three factors are part of the versioned rule table (Appendix A). In *reduce* mode the limit never goes below the target. In *quit* mode it reaches 0 naturally once B < 1/f. This replaces a fixed weekly taper, so the limit follows actual behaviour. |
 | FR-PLAN-02 | M | Every baseline value is stored permanently with its validity date and inputs (baseline history). Past values are never recalculated (NFR-04). |
 | FR-PLAN-03 | S | The user can switch from *reduce* to *quit* at any time without resetting anything. |
 | FR-PLAN-04 | M | **Weekly baseline update** (Mondays 00:00 local, by cron): `W` = mean sessions/day over the **checked-in** days of the previous 7 days. `M` = the same over the previous **28** days. `B_new = round1(0.7·W + 0.3·M)`. Days without a check-in are excluded. |
 | FR-PLAN-05 | M | Not enough data: if fewer than 4 of the previous 7 days are checked in, B stays unchanged that week. |
-| FR-PLAN-06 | M | Increase cap: `B_new ≤ 1.10 × B_old`, so the baseline can't be inflated by a heavy (or faked) week. There is no cap on decreases. |
+| FR-PLAN-06 | M | Increase cap: the baseline may rise per week by at most 10 % (rounded down to one decimal) **or 0.5 sessions/day, whichever is larger**, so it can't be inflated by a heavy (or faked) week. The 0.5 minimum keeps low baselines from getting stuck: 10 % of a baseline below 5 rounds to less than that, and a relapsing quitter at 0.0 could otherwise never rise. There is no cap on decreases. |
 | FR-PLAN-07 | M | Competitions **freeze** each participant's baseline: a duel uses B₀ = the participant's B on the duel start date, and a league period uses B₀ on the period start (or join) date. For scoring, B₀ has a minimum of 1.0. |
 | FR-PLAN-08 | S | The user sees the baseline history as a chart, and on Monday gets a celebration when B went down ("Your new normal: 7.4 → 6.8 🎉"). |
 | FR-PLAN-09 | S | Personal stats show sessions per product type. Scoring ignores the product type. |
@@ -123,8 +123,8 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 |---|---|---|
 | FR-GAME-01 | M | XP is awarded according to a server-side, versioned rule table (default values in Appendix A). |
 | FR-GAME-02 | M | **Check-in streak** (primary 🔥): consecutive finalized days with a check-in. It does **not** break when the user goes over the limit, because honest logging is rewarded. |
-| FR-GAME-03 | M | **Under-limit streak**: consecutive finalized days with count ≤ limit. |
-| FR-GAME-04 | M | Streak freeze: earn 1 for every 7 consecutive check-in days (hold at most 2). A freeze is applied automatically when a day finalizes without a check-in. |
+| FR-GAME-03 | M | **Under-limit streak**: consecutive finalized days that were **checked in** with count ≤ limit. A checked-in day over the limit resets it to 0, and so does **every day without a check-in, even when a streak freeze is used** (an unconfirmed day is never an under-limit day, so skipping the check-in on a heavy day cannot save this streak). |
+| FR-GAME-04 | M | Streak freeze: earn 1 each time the check-in streak reaches a multiple of 7 on a checked-in day (hold at most 2; a freeze earned while holding 2 is dropped without telling the user). When a day finalizes without a check-in, there is a check-in streak to protect and a freeze is held, one freeze is used automatically: the **check-in streak** stays unchanged (the day neither extends nor breaks it, and does not earn a freeze). The under-limit streak is not protected (FR-GAME-03). Without a freeze, both streaks reset to 0. In competitions a frozen day still counts as a missed day (FR-COMP-03). A later rule version must not lower the maximum number of freezes held without migrating the stored freezes. |
 | FR-GAME-05 | M | Levels come from cumulative XP via a threshold table (Appendix A). |
 | FR-GAME-06 | M | Celebration feedback (animation + positive sound + haptics on mobile) for: log saved (subtle), check-in, under-limit day, smoke-free day, streak extended, level up, badge earned, duel/league won. |
 | FR-GAME-07 | M | Sounds can be muted in settings. Mobile respects the system silent mode. Sound is never the only feedback (accessibility). |
@@ -144,10 +144,10 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 |---|---|---|
 | FR-COMP-01 | M | **Duel:** a user challenges one friend for a period of **1 week, 1 month, 3 months or 6 months**. The friend accepts or declines. Unanswered invitations expire after 72 h. |
 | FR-COMP-02 | M | An accepted duel starts on the next local day and runs for exactly the period length (7 / 30 / 90 / 180 days). |
-| FR-COMP-03 | M | **Duel winner** = higher reduction % over the duel days. Days without a check-in count as *baseline* (0 % reduction). Tie-breakers in order: more smoke-free days, more check-ins, otherwise a draw. |
+| FR-COMP-03 | M | **Duel winner** = higher reduction % over the duel days. A day without a check-in counts as the frozen baseline B₀ (0 % reduction), **or as the sessions logged that day if that is higher**, so skipping the check-in never scores better than checking in. Reductions are compared exactly (as fractions, never as rounded percentages). Tie-breakers in order: more smoke-free days, more check-ins, otherwise a draw. |
 | FR-COMP-04 | M | The duel result is decided after the last day of **both** users is finalized. Both users are notified. |
 | FR-COMP-05 | M | A user may have at most 1 active duel per friend and 5 active duels in total. |
-| FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. |
+| FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. A participant with no rated day yet is listed without a rank. |
 | FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). |
 | FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. |
 | FR-COMP-09 | S | Duel detail screen: day-by-day comparison chart (reduction per day, not timestamps). |
@@ -235,9 +235,11 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | OQ-1 | Branding & sound design (draft in [BRAND.md](BRAND.md)). Original assets are needed | Name decided: **Smoke Detector**. Trademark check pending |
 | OQ-2 | ~~Count vapes / other nicotine products?~~ | **Decided:** every smoked/inhaled tobacco or nicotine product counts, 1 log = 1 session. No cannabis |
 | OQ-3 | ~~How is the baseline set?~~ | **Decided:** onboarding value, then weekly `0.7·W + 0.3·M` with safeguards (FR-PLAN-04…07). Tune weights/cap after the pilot |
-| OQ-4 | Who owns the Apple Developer (99 $/yr) and Google Play (25 $) accounts? | — must be decided before the iOS phase |
+| OQ-4 | ~~Developer accounts~~ | **Decided:** owner owns both and pays the fees **after development**. Consequences: see HLD §11 (iOS push + TestFlight only after paying) |
 | OQ-5 | Domain name and whether a staging subdomain is available | `app.<domain>` + `staging.<domain>` |
-| OQ-6 | Timeline / team size | Unknown — the build plan in the HLD is sequenced, not dated |
+| OQ-6 | ~~Timeline / team size~~ | **Decided:** two-person team (owner + Claude Code), no fixed deadline. The HLD build plan is ordered by steps, not dates |
+| OQ-8 | League ranking: how are ties ranked, and do the duel tie-breakers apply? | Decide in build step 5. Default: same tie-breakers as duels (FR-COMP-03), then a shared rank |
+| OQ-9 | Upper bound for sessions logged per day (the scoring code needs one) | Decide in build step 4. Default: at most 50 per log entry and 300 per day |
 | OQ-7 | Are XP values and taper steps (Appendix A) right? | Use the defaults and tune after the pilot (they are config, not code) |
 
 ---
@@ -248,12 +250,16 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | Check-in of a day | +10 |
 | Day ≤ daily limit | +20 |
 | Smoke-free day (checked in, 0 logs) | +40 (on top) |
-| Check-in streak reaches 7 / 30 / 100 / 365 | +50 / +150 / +500 / +1500 |
-| Duel won / draw / completed | +100 / +50 / +20 |
+| Check-in streak reaches 7 / 30 / 100 / 365 **for the first time** (new personal best only, so breaking and rebuilding a streak does not pay twice) | +50 / +150 / +500 / +1500 |
+| Duel won / draw / lost but completed (forfeit: 0) | +100 / +50 / +20 |
 | League period rank 1 / 2 / 3 (≥ 3 participants) | +150 / +100 / +50 (×1 week, ×2 month, ×3 quarter, ×4 half-year) |
 | Reaction sent | +2 (max 10 XP/day) |
 
-Level *n* requires a cumulative `50 × n × (n + 1)` XP (L1 = 100, L2 = 300, L3 = 600, …).
+Level *n* requires a cumulative `50 × n × (n + 1)` XP (L1 = 100, L2 = 300, L3 = 600, …). New users start at level 0.
+
+Day XP (check-in, under limit, smoke-free) is awarded once, when the day is finalized, and only for checked-in days. A smoke-free day therefore earns 10 + 20 + 40 = 70 XP. Reaction XP never exceeds the daily cap: a reaction that would cross it earns only the part that still fits.
+
+All numbers in this appendix, the taper factors (FR-PLAN-01), the baseline rule numbers (FR-PLAN-04 to 07) and the freeze numbers (FR-GAME-04) live in one versioned rule table (`backend/config/rules/v1.php`). A version that has been used in production is never edited; new numbers go into a new version.
 
 ## Appendix B — Initial badge set
 First check-in · First smoke-free day · 7/30/100/365-day check-in streak · 7/30-day under-limit streak ·
