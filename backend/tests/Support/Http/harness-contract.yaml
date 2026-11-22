@@ -1,0 +1,130 @@
+# NOT the API. A small contract for the tests of the HTTP test harness itself (ContractHarnessTest):
+# it has an operation with a required request body, one with an optional body and one that needs a
+# token, independent of what the real contract has.
+openapi: 3.0.3
+info:
+  title: Harness fixture
+  version: 1.0.0
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /things:
+    post:
+      operationId: createThing
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+        "422":
+          description: Invalid
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/ValidationProblem"
+  /notes:
+    post:
+      operationId: addNote
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+  /secrets:
+    get:
+      operationId: getSecret
+      responses:
+        "200":
+          description: The secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Thing"
+        "401":
+          description: No token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Thing:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+    Problem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+    ValidationProblem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, errors]
+      properties:
+        type:
+          type: string
+          enum: [validation_failed]
+        title:
+          type: string
+        status:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
