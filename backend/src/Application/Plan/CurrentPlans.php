@@ -4,19 +4,19 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Application\Plan;
 
-use LogicException;
+use Psr\Clock\ClockInterface;
 use SmokeDetector\Application\Account\UserId;
-use SmokeDetector\Domain\Plan\ReductionPlan;
+use SmokeDetector\Application\Day\Calendars;
 
 /**
- * Reads a user's plan and derives today's limit from it with the rules of the domain (FR-PLAN-01).
+ * Reads a user's plan and derives today's limit from it with the rules of the domain (FR-PLAN-01),
+ * on the user's own today (HLD §4.6 "Plan and limit").
  */
 final readonly class CurrentPlans
 {
     public function __construct(
-        private PlanRepository $plans,
-        private BaselineHistory $baselines,
-        private RuleSets $rules,
+        private Calendars $calendars,
+        private ClockInterface $clock,
     ) {
     }
 
@@ -25,22 +25,17 @@ final readonly class CurrentPlans
      */
     public function of(UserId $userId): ?CurrentPlan
     {
-        $plan = $this->plans->find($userId);
-        if ($plan === null) {
+        $calendar = $this->calendars->of($userId);
+        if ($calendar === null) {
             return null;
         }
-
-        // The onboarding writes both in one transaction. One without the other is damaged data, and
-        // must not be answered as "no limit" or "limit 0".
-        $latest = $this->baselines->latest($userId);
-        if ($latest === null) {
-            throw new LogicException('A plan exists without a baseline history.');
-        }
+        $today = $calendar->today($this->clock->now());
 
         return new CurrentPlan(
-            $plan,
-            $latest->value,
-            ReductionPlan::dailyLimit($latest->value, $plan->taperSpeed, $plan->goal, $this->rules->current()->plan),
+            $calendar->plan,
+            $calendar->baselineOn($today)->value,
+            $calendar->limitOn($today),
+            $calendar->pendingFrom($today),
         );
     }
 }

@@ -5,32 +5,43 @@ declare(strict_types=1);
 namespace SmokeDetector\Application\Plan;
 
 use DateTimeImmutable;
-use LogicException;
 use Psr\Clock\ClockInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Day\Calendars;
+use SmokeDetector\Application\Day\ProgressRecord;
+use SmokeDetector\Application\Day\ProgressRecords;
+use SmokeDetector\Application\Day\Schedule;
 use SmokeDetector\Application\Time\LocalDate;
+use SmokeDetector\Application\Time\LocalDays;
+use SmokeDetector\Application\Time\ZoneChange;
+use SmokeDetector\Application\Time\ZoneHistory;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Application\Validation\ErrorCode;
 use SmokeDetector\Application\Validation\InvalidValue;
 use SmokeDetector\Application\Validation\ValidationFailed;
+use SmokeDetector\Domain\Day\UserProgress;
 use SmokeDetector\Domain\Plan\Baseline;
 use SmokeDetector\Domain\Plan\Goal;
 
 /**
- * PUT /me/plan (HLD §4.5 "Account", FR-ACC-06): the onboarding, and the changes a user may make
- * to the plan afterwards.
+ * PUT /me/plan (HLD §4.5 "Account", §4.6 "Plan and limit", FR-ACC-06): the onboarding, and the
+ * changes a user may make to the plan afterwards.
  *
- * The first call creates the plan and the first entry of the baseline history, valid from today
- * in the user's time zone. Later calls change goal, taper speed and default product (FR-PLAN-03).
- * They never touch the baseline: after the onboarding it changes through the weekly update only,
- * and its history is append-only (FR-PLAN-02). A later call may repeat the starting baseline of
- * the onboarding, so that an onboarding request that is sent twice is harmless, but no other value.
+ * The first call creates the plan, the first entries of the histories of baseline, plan terms and
+ * time zone, all valid from today in the user's time zone, and the user's progress. Later calls
+ * change goal, taper speed and default product (FR-PLAN-03). Goal and taper speed count from the
+ * user's next day, so that nobody raises today's limit after going over it; the product at once.
+ * Later calls never touch the baseline: after the onboarding it changes through the weekly update
+ * only, and its history is append-only (FR-PLAN-02). A later call may repeat the starting baseline
+ * of the onboarding, so that an onboarding request that is sent twice is harmless, but no other value.
  */
 final readonly class SavePlan
 {
+    private Calendars $calendars;
+
     public function __construct(
         private TransactionRunner $transactions,
         private ClockInterface $clock,
@@ -38,7 +49,11 @@ final readonly class SavePlan
         private PlanRepository $plans,
         private BaselineHistory $baselines,
         private RuleSets $rules,
+        private PlanHistory $planHistory,
+        private ZoneHistory $zones,
+        private ProgressRecords $progress,
     ) {
+        $this->calendars = new Calendars($plans, $planHistory, $baselines, $zones, $rules);
     }
 
     /**
@@ -60,7 +75,7 @@ final readonly class SavePlan
             if ($plan === null) {
                 $this->onboard($user, $choice, $stated, $now);
             } else {
-                $this->change($plan, $choice, $stated);
+                $this->change($plan, $choice, $stated, $now);
             }
         });
     }
@@ -74,13 +89,27 @@ final readonly class SavePlan
 
         $rules = $this->rules->current();
         // The user's day, not the server's: all day logic runs in the user's time zone (HLD §7).
+        // Before the onboarding there is no zone history: the zone of the account simply counts.
         $today = LocalDate::of($now, $user->timeZone);
+        $zone = new ZoneChange($today, $user->timeZone);
+        $days = new LocalDays([$zone]);
 
         $this->plans->save(new Plan($user->id, $choice->goal, $choice->taperSpeed, $choice->defaultProduct, $today, $rules->version));
         $this->baselines->append(BaselineEntry::onboarding($user->id, $today, $stated, $rules->version));
+        $this->planHistory->record(new PlanTerms($user->id, $today, $choice->goal, $choice->taperSpeed, $rules->version));
+        $this->zones->record($user->id, $zone);
+        // Nothing earned yet. The first day to become final is the first day of the plan.
+        $this->progress->save(new ProgressRecord(
+            $user->id,
+            UserProgress::initial(),
+            0,
+            $today,
+            Schedule::finalizeDueAt($days, $today),
+            $days->startOf(Schedule::firstBaselineDay($today)),
+        ));
     }
 
-    private function change(Plan $plan, PlanChoice $choice, ?Baseline $stated): void
+    private function change(Plan $plan, PlanChoice $choice, ?Baseline $stated, DateTimeImmutable $now): void
     {
         if ($stated !== null && $this->baselines->starting($plan->userId)?->value->tenths !== $stated->tenths) {
             throw ValidationFailed::forField(
@@ -90,15 +119,20 @@ final readonly class SavePlan
             );
         }
 
-        // Judged when the goal is set or changed (FR-ACC-06). A goal that stays is not judged again:
-        // the baseline may have fallen below a target chosen earlier, and the user must still be
-        // able to change the taper speed.
+        $calendar = $this->calendars->ofPlan($plan);
+        $today = $calendar->today($now);
+
+        // Judged when the goal is set or changed (FR-ACC-06), against the baseline valid today. A
+        // goal that stays is not judged again: the baseline may have fallen below a target chosen
+        // earlier, and the user must still be able to change the taper speed.
         if ($choice->goal->target !== $plan->goal->target) {
-            $current = $this->baselines->latest($plan->userId);
-            if ($current === null) {
-                throw new LogicException('A plan exists without a baseline history.');
-            }
-            self::assertBelow($choice->goal, $current->value);
+            self::assertBelow($choice->goal, $calendar->baselineOn($today)->value);
+        }
+
+        // Only goal and taper speed are rules of the plan. A second change on the same day
+        // replaces the entry for tomorrow, which has not counted yet.
+        if ($choice->goal->target !== $plan->goal->target || $choice->taperSpeed !== $plan->taperSpeed) {
+            $this->planHistory->record(new PlanTerms($plan->userId, $today->plusDays(1), $choice->goal, $choice->taperSpeed, $this->rules->current()->version));
         }
 
         $this->plans->save($plan->changedTo($choice->goal, $choice->taperSpeed, $choice->defaultProduct));

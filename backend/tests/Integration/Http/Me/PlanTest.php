@@ -117,11 +117,17 @@ final class PlanTest extends HttpTestCase
         $anna = $this->onboarded();
         $this->givenWeeklyBaseline($anna, '2026-11-23', 74);
 
+        // Not before the day it is valid from.
+        $plan = self::plan($this->call('GET', '/me', headers: $this->authorization($anna))->json());
+        self::assertSame([12.0, 9], [$plan['baseline'] ?? null, $plan['dailyLimit'] ?? null]);
+
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-23 12:00:00 UTC'));
         $plan = self::plan($this->call('GET', '/me', headers: $this->authorization($anna))->json());
         // 80 % of 7.4 is 5.92.
         self::assertSame([7.4, 5], [$plan['baseline'] ?? null, $plan['dailyLimit'] ?? null]);
 
         $this->givenWeeklyBaseline($anna, '2026-11-30', 51);
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-30 12:00:00 UTC'));
         $plan = self::plan($this->call('GET', '/me', headers: $this->authorization($anna))->json());
         // 80 % of 5.1 is 4.08, but the target is 5.
         self::assertSame([5.1, 5], [$plan['baseline'] ?? null, $plan['dailyLimit'] ?? null]);
@@ -136,9 +142,18 @@ final class PlanTest extends HttpTestCase
         $response = $this->call('PUT', '/me/plan', ['goalMode' => 'reduce', 'target' => 3, 'taperSpeed' => 'fast', 'defaultProduct' => 'heated_tobacco'], $this->authorization($anna));
 
         self::assertSame(200, $response->status());
+        // Goal and taper speed count from the next local day (FR-I18N-02): today's limit stays.
+        self::assertSame(
+            [
+                'goalMode' => 'reduce', 'target' => 3, 'taperSpeed' => 'fast', 'defaultProduct' => 'heated_tobacco', 'startDate' => '2026-11-17',
+                'baseline' => 12.0, 'dailyLimit' => 9, 'pendingFrom' => '2026-11-23',
+            ],
+            self::plan($response->json()),
+        );
+        $this->clock()->advanceSeconds(86_400);
         self::assertSame(
             ['goalMode' => 'reduce', 'target' => 3, 'taperSpeed' => 'fast', 'defaultProduct' => 'heated_tobacco', 'startDate' => '2026-11-17', 'baseline' => 12.0, 'dailyLimit' => 8],
-            self::plan($response->json()),
+            self::plan($this->call('GET', '/me', headers: $this->authorization($anna))->json()),
         );
         // The baseline history is as it was, and there is still one plan.
         self::assertSame($history, $this->sql()->rows('SELECT * FROM baseline_history'));
@@ -149,12 +164,16 @@ final class PlanTest extends HttpTestCase
     {
         $anna = $this->onboarded();
         $this->givenWeeklyBaseline($anna, '2026-11-23', 74);
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-23 12:00:00 UTC'));
         $history = $this->sql()->rows('SELECT * FROM baseline_history ORDER BY valid_from');
 
         $response = $this->call('PUT', '/me/plan', ['goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled'], $this->authorization($anna));
 
         self::assertSame(
-            ['goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled', 'startDate' => '2026-11-17', 'baseline' => 7.4, 'dailyLimit' => 5],
+            [
+                'goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled', 'startDate' => '2026-11-17',
+                'baseline' => 7.4, 'dailyLimit' => 5, 'pendingFrom' => '2026-11-24',
+            ],
             self::plan($response->json()),
         );
         self::assertSame($history, $this->sql()->rows('SELECT * FROM baseline_history ORDER BY valid_from'));
@@ -210,6 +229,7 @@ final class PlanTest extends HttpTestCase
     {
         $anna = $this->onboarded();
         $this->givenWeeklyBaseline($anna, '2026-11-23', 74);
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-23 12:00:00 UTC'));
 
         $tooHigh = $this->call('PUT', '/me/plan', ['goalMode' => 'reduce', 'target' => 8, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled'], $this->authorization($anna));
         $below = $this->call('PUT', '/me/plan', ['goalMode' => 'reduce', 'target' => 7, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled'], $this->authorization($anna));

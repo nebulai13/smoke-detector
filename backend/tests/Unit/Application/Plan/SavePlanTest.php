@@ -244,7 +244,7 @@ final class SavePlanTest extends AccountUseCaseTestCase
     {
         // Damaged data: a plan whose history lacks the onboarding value. Nothing can be "the same" then.
         $user = $this->givenUser();
-        $this->plans->save(new Plan($user->id, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-02'), 'v1'));
+        $this->givenPlanWithoutBaseline($user, new Plan($user->id, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-02'), 'v1'));
         $this->givenWeeklyBaseline($user, '2026-11-09', 120);
 
         $this->assertRejected(
@@ -258,7 +258,7 @@ final class SavePlanTest extends AccountUseCaseTestCase
     public function test_a_plan_without_any_baseline_cannot_get_a_new_goal(): void
     {
         $user = $this->givenUser();
-        $this->plans->save(new Plan($user->id, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-02'), 'v1'));
+        $this->givenPlanWithoutBaseline($user, new Plan($user->id, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-02'), 'v1'));
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('A plan exists without a baseline history.');
