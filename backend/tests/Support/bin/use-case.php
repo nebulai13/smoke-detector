@@ -9,6 +9,10 @@ declare(strict_types=1);
 //     php use-case.php <now, UTC> <verify-email|reset-password|refresh|logout|token-first> <token>
 //     php use-case.php <now, UTC> <register|resend-verification|request-password-reset|login> <email>
 //     php use-case.php <now, UTC> delete-account <user id>
+//     php use-case.php <now, UTC> finalize-days -
+//     php use-case.php <now, UTC> sync-log <user id>,<log id>,<smoked at, UTC>,<count>
+//
+// "sync-log" prints "accepted", or the reason the log was refused with.
 //
 // "token-first" is not a use case. It takes the locks in the order that is forbidden (the token,
 // then the account), so that the test can show it would notice.
@@ -33,6 +37,10 @@ use SmokeDetector\Application\Auth\ResendVerification;
 use SmokeDetector\Application\Auth\ResetPassword;
 use SmokeDetector\Application\Auth\TokenPurpose;
 use SmokeDetector\Application\Auth\VerifyEmail;
+use SmokeDetector\Application\Day\FinalizeDays;
+use SmokeDetector\Application\Logging\LogItem;
+use SmokeDetector\Application\Logging\SyncLogs;
+use SmokeDetector\Application\Plan\ProductType;
 use SmokeDetector\Application\Privacy\DeleteAccount;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Bootstrap\ContainerFactory;
@@ -70,6 +78,25 @@ $users = $container->get(UserRepository::class);
 \assert($resendVerification instanceof ResendVerification && $requestPasswordReset instanceof RequestPasswordReset && $registerUser instanceof RegisterUser);
 
 try {
+    if ($action === 'finalize-days') {
+        $finalizeDays = $container->get(FinalizeDays::class);
+        \assert($finalizeDays instanceof FinalizeDays);
+        $report = $finalizeDays->execute();
+        echo $report->failedUsers === 0 ? 'ok' : 'failed';
+
+        return;
+    }
+    if ($action === 'sync-log') {
+        $syncLogs = $container->get(SyncLogs::class);
+        \assert($syncLogs instanceof SyncLogs);
+        [$userId, $logId, $smokedAt, $count] = explode(',', (string) $token) + [1 => '', 2 => '', 3 => ''];
+        $result = $syncLogs->execute(UserId::fromString($userId), [
+            LogItem::entry($logId, new DateTimeImmutable($smokedAt, new DateTimeZone('UTC')), ProductType::Cigarette, (int) $count),
+        ]);
+        echo $result->items[0]->rejection === null ? 'accepted' : $result->items[0]->rejection->value;
+
+        return;
+    }
     match ($action) {
         'verify-email' => $verifyEmail->execute((string) $token, TestAccounts::PASSWORD, null, '203.0.113.99'),
         'reset-password' => $resetPassword->execute((string) $token, 'a brand new password'),
