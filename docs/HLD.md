@@ -286,6 +286,9 @@ starts at :00, :15, :30 and :45).
 
 **Account (FR-ACC-06 to 09):**
 - `GET/PATCH /me`: profile (display name 2–30 chars, avatar from the preset list, locale de/en, IANA time zone).
+  An older zone name that browsers still report (`Asia/Calcutta`) is stored under the current name
+  (`Asia/Kolkata`): whether PHP knows the older names depends on the time zone data of the machine, and day
+  logic must never meet a name the server cannot resolve.
 - `PUT /me/plan`: onboarding and later changes. Baseline 1–80 can be set only once (later it changes through
   the weekly update only). Goal, target (below the current baseline) and taper speed can be changed.
 - `GET /me/export`: all data of the user as JSON. Every table with user data is registered with an exporter
