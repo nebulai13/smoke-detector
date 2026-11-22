@@ -401,12 +401,28 @@ final class LevelCalculatorTest extends TestCase
 
     public function test_NFR_04_same_xp_and_same_rules_always_give_the_identical_level_and_progress(): void
     {
-        $totals = [0, 1, 99, 100, 299, 300, 12_345, 987_654_321, 9_007_199_254_740_993, PHP_INT_MAX];
+        // Total XP => [level, XP into the level, XP from this level to the next], worked out by hand
+        // from level n = 50 × n × (n + 1), so that a calculator that is wrong in the same way every
+        // time fails too.
+        $expected = [
+            0 => [0, 0, 100],
+            1 => [0, 1, 100],
+            99 => [0, 99, 100],
+            100 => [1, 0, 200],
+            299 => [1, 199, 200],
+            300 => [2, 0, 300],
+            12_345 => [15, 345, 1_600],
+            987_654_321 => [4_443, 419_721, 444_400],
+            9_007_199_254_740_993 => [13_421_772, 402_653_193, 1_342_177_300],
+            PHP_INT_MAX => [429_496_729, 4_294_967_307, 42_949_673_000],
+        ];
         $other = new LevelCalculator(new LevelRules());
 
-        foreach ($totals as $totalXp) {
+        foreach ($expected as $totalXp => [$expectedLevel, $expectedInto, $expectedNext]) {
             $level = $this->calculator->levelFor($totalXp);
             $progress = $this->calculator->progressFor($totalXp);
+            self::assertSame($expectedLevel, $level, (string) $totalXp);
+            self::assertEquals(new LevelProgress($expectedLevel, $expectedInto, $expectedNext), $progress, (string) $totalXp);
 
             for ($run = 0; $run < 5; $run++) {
                 self::assertSame($level, $this->calculator->levelFor($totalXp));
@@ -415,6 +431,8 @@ final class LevelCalculatorTest extends TestCase
             }
         }
 
+        // 100 000 XP is level 44 (50 × 44 × 45 = 99 000; level 45 needs 103 500).
+        self::assertSame(range(1, 44), $this->calculator->levelsGained(0, 100_000));
         self::assertSame(
             $this->calculator->levelsGained(0, 100_000),
             $other->levelsGained(0, 100_000),
