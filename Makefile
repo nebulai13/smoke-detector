@@ -28,7 +28,9 @@ trace:            ## requirement → test traceability report (and the tests of 
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools/test_traceability.py
 	python3 tools/traceability.py
 
+# With more memory than PHP's default 128 MB: past 2,000 mutants Infection itself runs out of it while
+# it cleans up after the reports are written, and the run fails although the score is fine.
 mutation:         ## mutation testing: how many deliberately broken versions of the code do the unit tests catch?
-	$(PHP_NO_DB) vendor/bin/infection --threads=8 --no-progress --show-mutations=0
+	$(PHP_NO_DB) php -d memory_limit=512M vendor/bin/infection --threads=8 --no-progress --show-mutations=0
 
 check: test stan trace mutation   ## everything: all tests, static analysis, traceability, mutation testing
