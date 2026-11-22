@@ -53,7 +53,7 @@ final class RuleTableV1Test extends TestCase
         self::assertSame(4, RuleTables::v1()->baseline->minCheckedInWeekDays);
     }
 
-    public function test_FR_PLAN_06_v1_baseline_may_rise_by_10_percent_or_0_5_sessions_per_week(): void
+    public function test_FR_PLAN_06_v1_baseline_may_rise_by_10_percent_or_0_5_sessions_per_day(): void
     {
         $baseline = RuleTables::v1()->baseline;
 
@@ -236,6 +236,45 @@ final class RuleTableV1Test extends TestCase
 
     public function test_NFR_04_loading_rule_table_v1_twice_gives_equal_rule_sets(): void
     {
+        // Every number written out, not taken from the constructor defaults: a loader that is wrong
+        // in the same way on every call must fail here too.
+        $expected = new RuleSet(
+            'v1',
+            new PlanRules(gentleLimitPercent: 90, normalLimitPercent: 80, fastLimitPercent: 70),
+            new BaselineRules(
+                weekWeight: 7,
+                monthWeight: 3,
+                weekDays: 7,
+                monthDays: 28,
+                minCheckedInWeekDays: 4,
+                maxIncreasePercent: 10,
+                minIncreaseStepTenths: 5,
+            ),
+            new StreakRules(freezeInterval: 7, maxFreezesHeld: 2, milestoneThresholds: [7, 30, 100, 365]),
+            new XpRules(
+                checkIn: 10,
+                underLimit: 20,
+                smokeFree: 40,
+                streakMilestones: [7 => 50, 30 => 150, 100 => 500, 365 => 1500],
+                duelWon: 100,
+                duelDraw: 50,
+                duelLost: 20,
+                duelForfeited: 0,
+                leagueRankXp: [1 => 150, 2 => 100, 3 => 50],
+                leagueMinParticipants: 3,
+                leagueWeekMultiplier: 1,
+                leagueMonthMultiplier: 2,
+                leagueQuarterMultiplier: 3,
+                leagueHalfYearMultiplier: 4,
+                reaction: 2,
+                reactionDailyCap: 10,
+            ),
+            new LevelRules(factor: 50),
+            new CompetitionRules(minScoringBaselineTenths: 10),
+        );
+
+        self::assertEquals($expected, RuleTables::v1());
+        self::assertEquals($expected, RuleTables::v1());
         self::assertEquals(RuleTables::v1(), RuleTables::v1());
     }
 }

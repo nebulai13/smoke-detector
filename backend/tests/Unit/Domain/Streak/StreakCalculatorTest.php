@@ -175,6 +175,25 @@ final class StreakCalculatorTest extends TestCase
         );
     }
 
+    public function test_FR_GAME_03_checked_in_day_over_the_limit_ends_an_under_limit_streak_of_a_single_day(): void
+    {
+        // The shortest streak there is still ends, and is reported as ended.
+        $advance = $this->calculator->advance(
+            self::state(checkIn: 8, underLimit: 1),
+            DayOutcome::checkedIn(count: 6, limit: 5),
+        );
+
+        self::assertSame(9, $advance->state->checkInCurrent);
+        self::assertSame(0, $advance->state->underLimitCurrent);
+        self::assertEquals(
+            [
+                new StreakEvent(StreakEventType::CheckInStreakExtended, 9),
+                new StreakEvent(StreakEventType::UnderLimitStreakBroken, 1),
+            ],
+            $advance->events,
+        );
+    }
+
     public function test_FR_GAME_03_over_the_limit_without_an_under_limit_streak_reports_nothing_broken(): void
     {
         $advance = $this->calculator->advance(self::state(checkIn: 8, underLimit: 0), self::over());
@@ -813,11 +832,33 @@ final class StreakCalculatorTest extends TestCase
     public function test_NFR_04_same_state_and_day_give_the_same_result_every_time(): void
     {
         $state = self::state(checkIn: 6, checkInLongest: 6, underLimit: 3, underLimitLongest: 5, freezes: 1);
+        // Worked out by hand, so that a calculator that is wrong in the same way every time fails too.
+        // Day 7 is a milestone and earns the second freeze; a missed day spends the one held.
+        $expected = [
+            'under' => new StreakAdvance(new StreakState(7, 7, 4, 5, 2), [
+                new StreakEvent(StreakEventType::CheckInStreakExtended, 7),
+                new StreakEvent(StreakEventType::CheckInStreakMilestoneReached, 7),
+                new StreakEvent(StreakEventType::FreezeEarned, 2),
+                new StreakEvent(StreakEventType::UnderLimitStreakExtended, 4),
+            ]),
+            'over' => new StreakAdvance(new StreakState(7, 7, 0, 5, 2), [
+                new StreakEvent(StreakEventType::CheckInStreakExtended, 7),
+                new StreakEvent(StreakEventType::CheckInStreakMilestoneReached, 7),
+                new StreakEvent(StreakEventType::FreezeEarned, 2),
+                new StreakEvent(StreakEventType::UnderLimitStreakBroken, 3),
+            ]),
+            'missed' => new StreakAdvance(new StreakState(6, 6, 0, 5, 0), [
+                new StreakEvent(StreakEventType::FreezeUsed, 0),
+                new StreakEvent(StreakEventType::UnderLimitStreakBroken, 3),
+            ]),
+        ];
 
-        foreach ([self::under(), self::over(), self::missed()] as $day) {
+        foreach (['under' => self::under(), 'over' => self::over(), 'missed' => self::missed()] as $name => $day) {
+            self::assertEquals($expected[$name], $this->calculator->advance($state, $day), $name);
             self::assertEquals(
                 $this->calculator->advance($state, $day),
                 $this->calculator->advance($state, $day),
+                $name,
             );
         }
     }
@@ -837,6 +878,9 @@ final class StreakCalculatorTest extends TestCase
         }
 
         self::assertEquals($first, $second);
+        // Worked out by hand: three freezes earned (streak days 7, 14 and 7 again) and all three spent,
+        // the check-in streak broken once, the longest under-limit run 8 days.
+        self::assertEquals(new StreakState(12, 15, 1, 8, 0), $first[count($first) - 1]->state);
     }
 
     public function test_NFR_04_advancing_does_not_change_the_state_passed_in(): void
