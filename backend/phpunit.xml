@@ -25,6 +25,13 @@
             comes from outside (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, TEST_DB_ADMIN_USER,
             TEST_DB_ADMIN_PASSWORD: see docker-compose.yml and .github/workflows/ci.yml).
         -->
+        <!--
+            Stack traces carry their arguments, as on a developer's machine. Tests that check that
+            no secret shows up in a trace need arguments to be there at all; a PHP that is set up
+            for production (zend.exception_ignore_args=On, the default of GitHub's runners) would
+            let them pass or fail for the wrong reason.
+        -->
+        <ini name="zend.exception_ignore_args" value="0"/>
         <env name="SETTINGS_FILE" value="" force="true"/>
         <env name="APP_ENV" value="testing" force="true"/>
         <env name="APP_RELEASE" value="test-release" force="true"/>
