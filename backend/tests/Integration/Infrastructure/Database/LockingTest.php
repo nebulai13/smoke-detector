@@ -8,6 +8,7 @@ use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SmokeDetector\Application\Account\Consent;
 use SmokeDetector\Application\Account\ConsentType;
+use SmokeDetector\Application\Auth\InvalidCredentials;
 use SmokeDetector\Application\Auth\InvalidToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
 use SmokeDetector\Application\TemporarilyUnavailable;
@@ -390,6 +391,49 @@ final class LockingTest extends IntegrationTestCase
         // And they left one account at most, with one confirmation or reset link at most per purpose.
         self::assertLessThanOrEqual(1, $this->sql()->value('SELECT COUNT(*) FROM users'));
         self::assertLessThanOrEqual(1, $this->sql()->value('SELECT MAX(links) FROM (SELECT COUNT(*) AS links FROM one_time_tokens GROUP BY purpose) AS per_purpose') ?? 0);
+    }
+
+    public function test_FR_ACC_04_three_logins_to_one_account_at_the_same_moment_all_get_a_session(): void
+    {
+        // Three devices of one user logging in at once, as three real processes. Login is the one
+        // use case that reads the sessions of the account inside its transaction.
+        $this->givenAnAccountWithTokens(false);
+        $email = $this->emailOfTheAccount();
+
+        $processes = [$this->start('login', $email), $this->start('login', $email), $this->start('login', $email)];
+
+        self::assertSame(['ok', 'ok', 'ok'], array_map($this->outputOf(...), $processes));
+        // The session the account had, and three new ones.
+        self::assertSame(4, $this->sql()->value('SELECT COUNT(*) FROM refresh_tokens'));
+        // Every attempt was counted before its password was checked and taken back afterwards:
+        // nothing is held against the client or the address.
+        self::assertSame([], $this->sql()->column('SELECT hits FROM rate_limits WHERE hits <> 0'));
+    }
+
+    public function test_FR_ACC_08_logins_that_race_the_deletion_of_the_account_get_a_session_or_invalid_credentials_and_never_an_error(): void
+    {
+        $this->givenAnAccountWithTokens(false);
+        $email = $this->emailOfTheAccount();
+
+        $processes = [
+            $this->start('login', $email),
+            $this->start('delete-account', TestData::userId(1)->value),
+            $this->start('login', $email),
+            $this->start('login', $email),
+        ];
+        $outputs = array_map($this->outputOf(...), $processes);
+
+        // The owner's deletion goes through whatever the logins do.
+        self::assertSame('ok', $outputs[1]);
+        // A login that came first got its session (which then went with the account); one that
+        // came later is told what every unknown address is told. Nothing else: no error class.
+        foreach ([0, 2, 3] as $login) {
+            self::assertContains($outputs[$login], ['ok', InvalidCredentials::class]);
+        }
+        // Whatever the order was, nothing of the account is left.
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM users'));
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM refresh_tokens'));
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM one_time_tokens'));
     }
 
     /**
