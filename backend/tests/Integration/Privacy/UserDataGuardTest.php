@@ -54,7 +54,13 @@ final class UserDataGuardTest extends IntegrationTestCase
         $registered = $this->registeredTables();
         sort($registered);
 
-        self::assertSame(['baseline_history', 'consents', 'mail_outbox', 'one_time_tokens', 'plans', 'refresh_tokens'], $registered);
+        self::assertSame(
+            [
+                'baseline_history', 'consents', 'day_summaries', 'mail_outbox', 'one_time_tokens', 'plan_history', 'plans', 'refresh_tokens',
+                'smoke_logs', 'timezone_history', 'user_progress', 'xp_events',
+            ],
+            $registered,
+        );
     }
 
     public function test_a_new_table_with_a_foreign_key_to_users_is_reported(): void
@@ -170,8 +176,13 @@ final class UserDataGuardTest extends IntegrationTestCase
     {
         $violations = UserDataGuard::violations($this->sql(), [], self::NOT_USER_DATA);
 
-        self::assertCount(6, $violations);
-        foreach (['baseline_history', 'consents', 'mail_outbox', 'one_time_tokens', 'plans', 'refresh_tokens'] as $index => $table) {
+        // In the order of the database, which sorts "s" before "_".
+        $tables = [
+            'baseline_history', 'consents', 'day_summaries', 'mail_outbox', 'one_time_tokens', 'plans', 'plan_history', 'refresh_tokens',
+            'smoke_logs', 'timezone_history', 'user_progress', 'xp_events',
+        ];
+        self::assertCount(count($tables), $violations);
+        foreach ($tables as $index => $table) {
             self::assertStringStartsWith("Table `{$table}` is neither registered", $violations[$index]);
             self::assertStringContainsString("it refers to users through the foreign key {$table}.user_id → users and it has the column user_id.", $violations[$index]);
         }

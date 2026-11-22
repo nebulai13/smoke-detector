@@ -56,6 +56,43 @@ final class UserDataTablesTest extends IntegrationTestCase
         'baseline_history.w_days' => 'baselineHistory.*.weekDays',
         'baseline_history.m_days' => 'baselineHistory.*.monthDays',
         'baseline_history.rules_version' => 'baselineHistory.*.rulesVersion',
+        'plan_history.valid_from' => 'planHistory.*.validFrom',
+        'plan_history.goal_mode' => 'planHistory.*.goalMode',
+        'plan_history.target' => 'planHistory.*.target',
+        'plan_history.taper_speed' => 'planHistory.*.taperSpeed',
+        'plan_history.rules_version' => 'planHistory.*.rulesVersion',
+        'timezone_history.valid_from' => 'timeZoneHistory.*.validFrom',
+        'timezone_history.timezone' => 'timeZoneHistory.*.timeZone',
+        'smoke_logs.id' => 'smokeLogs.*.id',
+        'smoke_logs.smoked_at' => 'smokeLogs.*.smokedAt',
+        'smoke_logs.local_date' => 'smokeLogs.*.localDate',
+        'smoke_logs.product_type' => 'smokeLogs.*.productType',
+        'smoke_logs.count' => 'smokeLogs.*.count',
+        'smoke_logs.created_at' => 'smokeLogs.*.createdAt',
+        'smoke_logs.updated_at' => 'smokeLogs.*.updatedAt',
+        'smoke_logs.deleted_at' => 'smokeLogs.*.deletedAt',
+        'day_summaries.local_date' => 'days.*.date',
+        'day_summaries.count' => 'days.*.count',
+        'day_summaries.checked_in_at' => 'days.*.checkedInAt',
+        'day_summaries.daily_limit' => 'days.*.dailyLimit',
+        'day_summaries.xp' => 'days.*.xp',
+        'day_summaries.events' => 'days.*.events',
+        'day_summaries.freeze_used' => 'days.*.freezeUsed',
+        'day_summaries.finalized_at' => 'days.*.finalizedAt',
+        'day_summaries.rules_version' => 'days.*.rulesVersion',
+        'user_progress.check_in_current' => 'progress.checkInStreak',
+        'user_progress.check_in_longest' => 'progress.longestCheckInStreak',
+        'user_progress.under_limit_current' => 'progress.underLimitStreak',
+        'user_progress.under_limit_longest' => 'progress.longestUnderLimitStreak',
+        'user_progress.freezes_held' => 'progress.freezesHeld',
+        'user_progress.xp_total' => 'progress.xpTotal',
+        'user_progress.level' => 'progress.level',
+        'user_progress.next_day' => 'progress.nextDayToFinalize',
+        'xp_events.local_date' => 'xpEvents.*.date',
+        'xp_events.source' => 'xpEvents.*.source',
+        'xp_events.amount' => 'xpEvents.*.amount',
+        'xp_events.detail' => 'xpEvents.*.detail',
+        'xp_events.created_at' => 'xpEvents.*.createdAt',
         'refresh_tokens.id' => 'sessions.*.session',
         'refresh_tokens.device_label' => 'sessions.*.deviceLabel',
         'refresh_tokens.created_at' => 'sessions.*.createdAt',
@@ -77,6 +114,15 @@ final class UserDataTablesTest extends IntegrationTestCase
         'plans.user_id' => 'The user\'s own id, which is profile.id.',
         'baseline_history.user_id' => 'The user\'s own id, which is profile.id.',
         'refresh_tokens.user_id' => 'The user\'s own id, which is profile.id.',
+        'plan_history.user_id' => 'The user\'s own id, which is profile.id.',
+        'timezone_history.user_id' => 'The user\'s own id, which is profile.id.',
+        'smoke_logs.user_id' => 'The user\'s own id, which is profile.id.',
+        'day_summaries.user_id' => 'The user\'s own id, which is profile.id.',
+        'user_progress.user_id' => 'The user\'s own id, which is profile.id.',
+        'user_progress.finalize_due_at' => 'When the cron job looks at the user next: its schedule. It follows from progress.nextDayToFinalize and the time zone.',
+        'user_progress.baseline_due_at' => 'When the cron job calculates the next weekly baseline: its schedule, the user\'s next Monday.',
+        'xp_events.id' => 'An internal row number without meaning outside the database.',
+        'xp_events.user_id' => 'The user\'s own id, which is profile.id.',
         'users.token_version' => 'How often the password was reset: the number an access token must carry to be accepted. Part of the credentials, like the password hash.',
         'refresh_tokens.key_hash' => 'A secret: the hash of the key that every token of the login carries.',
         'refresh_tokens.token_hash' => 'A secret: the hash of a token that may still be valid.',
@@ -130,10 +176,49 @@ final class UserDataTablesTest extends IntegrationTestCase
                     'goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'defaultProduct' => 'rolled',
                     'startDate' => '2026-11-02', 'rulesVersion' => 'v1',
                 ],
+                'planHistory' => [
+                    ['validFrom' => '2026-11-02', 'goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'fast', 'rulesVersion' => 'v1'],
+                    ['validFrom' => '2026-11-12', 'goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'rulesVersion' => 'v1'],
+                ],
                 'baselineHistory' => [
                     ['validFrom' => '2026-11-02', 'value' => 12.0, 'source' => 'onboarding', 'weekMean' => null, 'monthMean' => null, 'weekDays' => null, 'monthDays' => null, 'rulesVersion' => 'v1'],
                     ['validFrom' => '2026-11-09', 'value' => 9.8, 'source' => 'weekly', 'weekMean' => 9.5, 'monthMean' => 10.25, 'weekDays' => 6, 'monthDays' => 7, 'rulesVersion' => 'v1'],
                     ['validFrom' => '2026-11-16', 'value' => 9.8, 'source' => 'unchanged_low_data', 'weekMean' => null, 'monthMean' => 9.75, 'weekDays' => 0, 'monthDays' => 9, 'rulesVersion' => 'v1'],
+                ],
+                'timeZoneHistory' => [
+                    ['validFrom' => '2026-11-02', 'timeZone' => 'Europe/Lisbon'],
+                    ['validFrom' => '2026-11-12', 'timeZone' => 'Europe/Berlin'],
+                ],
+                'smokeLogs' => [
+                    // In the order they were smoked. A deleted log is still stored, and says so.
+                    [
+                        'id' => TestData::uuid(1008), 'smokedAt' => '2026-11-17T07:15:00Z', 'localDate' => '2026-11-17', 'productType' => 'cigarette', 'count' => 1,
+                        'createdAt' => '2026-11-17T07:15:04Z', 'updatedAt' => '2026-11-17T07:15:04Z', 'deletedAt' => null,
+                    ],
+                    [
+                        'id' => TestData::uuid(1009), 'smokedAt' => '2026-11-17T23:30:00Z', 'localDate' => '2026-11-18', 'productType' => 'vape', 'count' => 3,
+                        'createdAt' => '2026-11-18T06:00:00Z', 'updatedAt' => '2026-11-18T06:05:00Z', 'deletedAt' => '2026-11-18T06:05:00Z',
+                    ],
+                ],
+                'days' => [
+                    [
+                        'date' => '2026-11-10', 'count' => 6, 'checkedInAt' => '2026-11-10T21:00:00Z', 'dailyLimit' => 9, 'xp' => 80,
+                        'events' => [['type' => 'checked_in'], ['type' => 'under_limit_day', 'value' => 1], ['type' => 'streak_milestone', 'value' => 7]],
+                        'freezeUsed' => false, 'finalizedAt' => '2026-11-12T23:00:20Z', 'rulesVersion' => 'v1',
+                    ],
+                    // A day that is not final yet has nothing of what finalization adds.
+                    [
+                        'date' => '2026-11-17', 'count' => 1, 'checkedInAt' => null, 'dailyLimit' => null, 'xp' => null,
+                        'events' => null, 'freezeUsed' => null, 'finalizedAt' => null, 'rulesVersion' => null,
+                    ],
+                ],
+                'progress' => [
+                    'checkInStreak' => 3, 'longestCheckInStreak' => 5, 'underLimitStreak' => 1, 'longestUnderLimitStreak' => 4, 'freezesHeld' => 1,
+                    'xpTotal' => 250, 'level' => 2, 'nextDayToFinalize' => '2026-11-15',
+                ],
+                'xpEvents' => [
+                    ['date' => '2026-11-10', 'source' => 'check_in', 'amount' => 10, 'detail' => null, 'createdAt' => '2026-11-12T23:00:20Z'],
+                    ['date' => '2026-11-10', 'source' => 'streak_milestone', 'amount' => 50, 'detail' => 7, 'createdAt' => '2026-11-12T23:00:20Z'],
                 ],
                 'sessions' => [
                     // One entry per login, however often its token was exchanged.
@@ -165,7 +250,14 @@ final class UserDataTablesTest extends IntegrationTestCase
 
         $export = $this->service(UserDataRegistry::class)->export(TestData::userId(3));
 
-        self::assertSame(['consents' => [], 'baselineHistory' => [], 'sessions' => [], 'mailLinks' => [], 'queuedMails' => []], $export);
+        // The lists are empty. What a user has once or not at all (plan, progress) is absent.
+        self::assertSame(
+            [
+                'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
+                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [],
+            ],
+            $export,
+        );
     }
 
     public function test_FR_ACC_07_every_stored_column_about_a_user_is_exported_or_deliberately_left_out(): void
@@ -208,7 +300,7 @@ final class UserDataTablesTest extends IntegrationTestCase
     {
         $json = json_encode($this->service(ExportAccount::class)->execute(TestData::userId(1)), JSON_THROW_ON_ERROR);
 
-        foreach ([TestData::uuid(2), 'bob@example.org', 'Name 2', 'Phone 2', TestData::uuid(2101), TestData::uuid(2102), 'mailbox-2@example.org'] as $bobs) {
+        foreach ([TestData::uuid(2), 'bob@example.org', 'Name 2', 'Phone 2', TestData::uuid(2101), TestData::uuid(2102), TestData::uuid(2008), TestData::uuid(2009), 'mailbox-2@example.org'] as $bobs) {
             self::assertStringNotContainsString($bobs, $json);
         }
         self::assertStringContainsString('anna@example.org', $json);
