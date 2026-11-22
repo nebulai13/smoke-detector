@@ -152,10 +152,12 @@ erDiagram
 | `consents` | user_id, type (age18, art9, privacy), version, granted_at. Primary key (user_id, type, version) |
 | `plans` | user_id (one row per user), goal_mode, target, taper_speed, default_product, start_date, rules_version (the version at onboarding) |
 | `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days (all four NULL for the onboarding entry), rules_version. Primary key (user_id, valid_from). Append-only, never recalculated. The current baseline is the entry with the latest valid_from |
-| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at_utc, local_date, product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count, deleted (tombstone), created_at |
-| `day_summaries` | user_id, local_date, count, limit, checked_in, freeze_used, status (provisional/final), xp, rules_version |
-| `streaks` | user_id, type (checkin/under_limit), current, longest, freezes_held |
-| `xp_events` | user_id, source, ref_id, amount, created_at — append-only ledger; XP total = sum |
+| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at (UTC), local_date (worked out by the server, §4.6), product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count (1–50), deleted_at (tombstone), created_at, updated_at. Index (user_id, local_date) |
+| `day_summaries` | user_id, local_date (primary key together), count, daily_limit, checked_in_at, status (provisional/final), finalized_at, freeze_used, xp, events (JSON, the celebration events of the finalized day), rules_version. A row exists from the first log or check-in of the day; finalization creates the rows of days nobody touched |
+| `user_progress` | user_id (one row per user, created with the plan): check-in streak, under-limit streak, their longest values, freezes held, XP total, level, next_day (the next local date to finalize), finalize_due_at and baseline_due_at (UTC instants the cron job looks for). Replaces the `streaks` table of the first draft: the domain's `UserProgress` is one value |
+| `plan_history` | user_id, valid_from (local date), goal_mode, target, taper_speed, rules_version. Primary key (user_id, valid_from). Append-only. `plans` keeps the newest entry |
+| `timezone_history` | user_id, valid_from (local date), timezone. Primary key (user_id, valid_from). Append-only. `users.timezone` keeps the newest entry |
+| `xp_events` | id, user_id, local_date, source (the domain's `XpSource`), amount, created_at. Append-only ledger, written at finalization; `user_progress.xp_total` is its sum, kept for speed and checked by a test |
 | `friendships` | user_a < user_b, status (pending/accepted/blocked), requested_by |
 | `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json (per user: frozen B₀, exact actual/expected totals in tenths, smoke-free days, check-ins, rules_version) |
 | `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
@@ -390,6 +392,82 @@ Every connection sets UTC, strict mode and utf8mb4. Integration tests migrate a 
 isolate each test. The dev container mounts only `backend/` and `api/`, never the repository root, so the
 git-ignored `.env` and `server.info` are not visible inside it.
 
+### 4.6 Logging, check-in and day finalization (step 4)
+
+**Decided with the owner (2026-11-22):** feedback for a check-in is shown at once and is provisional; a
+change of the plan counts from the next local day; after a check-in the day's logs can still be corrected
+while the day is inside its 48 hours, and the check-in stays.
+
+**Local days (FR-I18N-02).** A log carries the instant it happened (`smokedAt`, UTC). The server works out
+the local date; the client's idea of the date is never trusted.
+- The time zone of a user on local date D is the newest `timezone_history` entry with `valid_from ≤ D`.
+  A change made on local day D is stored with `valid_from = D + 1`: today keeps its zone.
+- Day D runs from 00:00 of D in the zone of D to 00:00 of D+1 in the zone of D+1. So the days of a user
+  never overlap and never leave a gap, also across a change of zone. (Moving far east can make one day
+  shorter than a few hours; a jump across the date line can make it empty, and then no instant belongs
+  to it.)
+- This is pure calculation and lives in the domain (`Day\LocalDays`): local date of an instant, start and
+  end of a date, from the user's zone history.
+
+**Plan and limit.** The limit of day D is `ReductionPlan::dailyLimit` of the baseline valid on D
+(`baseline_history`), the plan valid on D (`plan_history`) and the rules of the plan. `PUT /me/plan` appends
+an entry valid from the next local day, or from today when it is the first plan (onboarding). Nobody can
+raise today's limit after going over it, and every past day can be recalculated exactly (NFR-04).
+
+**`POST /logs/sync` (FR-LOG-02, -03, -07; NFR-03).** A batch of at most 200 items
+`{id, smokedAt, productType, count}` or `{id, deleted: true}`.
+- Stored with `INSERT … ON DUPLICATE KEY UPDATE` by the client's UUID. The same item sent twice changes
+  nothing. An item with a known id and other values replaces the stored log (back-dating, correcting).
+- Each item is answered on its own: `accepted`, or `rejected` with a reason. Reasons:
+  `day_finalized` (FR-LOG-07; also when a correction would move a log out of or into a final day),
+  `in_future` (more than 5 minutes ahead of the server's clock), `before_start` (before the first day of
+  the plan), `day_full` (the day would hold more than 300 sessions), `not_yours` (the id belongs to
+  another account; the answer is the same as for any id the client must not reuse).
+- A count is 1 to 50 per log and a day holds at most 300 sessions (SRS OQ-9). A malformed item makes the
+  whole request `422`; the reasons above are answers, not errors.
+- The affected days are recomputed in the same transaction (count = sum of the logs that are not
+  deleted) and come back in the answer, so the client shows count, limit and what is left (FR-LOG-05).
+- Without a plan (onboarding not done) the request is `409 plan_required`.
+- One transaction per request, the account row locked first.
+
+**`POST /days/{date}/check-in` (FR-LOG-04).** For today and for every earlier day that is not final. It
+stores `checked_in_at` once (a repeated check-in changes nothing) and answers with the day and the
+provisional feedback described below. A day that is final, in the future or before the plan is refused.
+
+**`GET /days?from&to`** (at most 92 days) lists the days with count, limit, check-in and status.
+**`GET /me/dashboard`** gives today (count, limit, remaining), both streaks, freezes, XP and level.
+**`GET /me/baseline-history`** lists the baseline entries (FR-PLAN-08).
+
+**Provisional feedback (FR-GAME-06).** Stored progress changes only at finalization. What the user sees
+before that is a projection: the stored `user_progress` run through the domain's `DayFinalizer` for the
+days that are not final yet, in order, with their counts and check-ins as they stand. A day without a
+check-in whose local day is not over is left out of the projection (it is not missed yet).
+- The dashboard shows the projected streaks, XP and level and marks them as provisional when they differ
+  from the stored ones.
+- A check-in answers with the celebration events the projection gives for that day (checked in, under the
+  limit, smoke-free, streak extended, milestone, freeze earned, level up).
+- The projection is recalculated on every request and never stored, so it cannot drift. If the user
+  corrects a day afterwards, the next answer simply shows the new projection.
+
+**Day finalization (`days:finalize`, a step of `cron:run` after `mail:send`).**
+- A day is final 48 hours after its end. `user_progress.finalize_due_at` holds that instant for the user's
+  next day, so the job reads the users that are due from one index and nobody else.
+- Per user-day, in calendar order, one transaction with the account locked first: build the `DayOutcome`
+  (count, limit, checked in or missed), run `DayFinalizer`, store the day as final with its XP and events,
+  append `xp_events`, update `user_progress` and move `finalize_due_at` on. Running it again does nothing.
+- Days nobody touched get their row here: count 0 from the logs, not checked in.
+- Weekly baseline: when the user's Monday 00:00 has passed (`baseline_due_at`), `BaselineCalculator` gets
+  one entry per calendar day of the previous 28 local days, `null` for a day without a check-in, and the
+  result is appended to `baseline_history` valid from that Monday. Not before the plan is 7 days old.
+- The step stops taking users after 20 seconds. What is left is due at the next run a minute later.
+- Two runs at once are safe: the account lock makes them take turns, and the second finds the day final.
+
+**Export and deletion.** `smoke_logs`, `day_summaries`, `user_progress`, `xp_events`, `plan_history` and
+`timezone_history` are registered with exporter and eraser (the schema guard fails otherwise).
+
+**Left for later steps:** duels and leagues read final days (step 5); badges, health milestones and the feed
+read the stored events (step 6); the reminder that a day is still open (step 7).
+
 ---
 
 ## 5. Key flows
@@ -414,25 +492,13 @@ sequenceDiagram
 ```
 
 ### 5.2 Day finalization & scoring (cron, every minute)
-1. Select users whose local `date − 2 days` has passed midnight and still has provisional days.
-2. For each such day: build the `DayOutcome` (count, limit from `ReductionPlan`, check-in) and run
-   `DayFinalizer`. Store its result: update `streaks`, append `xp_events`, evaluate badges, mark the day
-   `final`. Days are processed once each, in calendar order per user. **One
-   transaction per user-day. Idempotent**: re-running is a no-op.
-3. **Weekly baseline** (first run after Monday 00:00 local per user): `BaselineCalculator` → append to `baseline_history` (FR-PLAN-04…06). It uses the data known at that moment (Sat/Sun may still be provisional), and the stored value is final. The job passes one entry per calendar day of the previous 28 local days, oldest first (fewer only before the user's first day), with `null` for every day without a check-in, including days that have no `day_summaries` row. A list built only from existing rows would never trigger FR-PLAN-05.
-4. Finalize any duels and league periods whose days are now all final → `DuelJudge` / `LeagueRanker`.
-5. Write feed events + `notifications_outbox` rows.
-6. Dispatch the outbox (batch ≤ 200, retries with backoff, invalid tokens pruned).
-7. Housekeeping: expire duel invites (72 h), delete registrations not confirmed within 24 h, delete expired tokens and old rate-limit rows.
+`cron:run` runs its steps in this order, each isolated from the others: `mail:send` (step 3),
+`days:finalize` with the weekly baseline (step 4, §4.6), later the finalization of duels and league periods
+whose days are all final (step 5), feed events and the notifications outbox (steps 6 and 7), and last
+`housekeeping:purge`, which also expires duel invitations after 72 hours once they exist.
 
-**Built so far (step 3):** `cron:run` runs `mail:send`, then `housekeeping:purge`, every minute. Each step
-is isolated: one failing does not stop the other, and the run exits non-zero. Overlapping runs are safe
-without a global lock: mail uses `SKIP LOCKED` plus the 10-minute hold, and the cleanup is idempotent.
-`mail:send` stops taking mails after 40 s.
-
-**Steps 1–6 come with step 4 and later.** Finalization must be safe under overlapping runs too (a DB
-advisory lock, `GET_LOCK`, or row locks per user-day; decided in step 4). The time budget per run stays
-below 50 s. Leftover work is picked up in the next run.
+Every step is safe to run twice at once and stops taking new work after its share of the minute
+(`mail:send` 40 s, `days:finalize` 20 s). Leftover work is picked up by the next run.
 
 ### 5.3 Duel lifecycle
 ```mermaid

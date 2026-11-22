@@ -100,7 +100,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-LOG-01 | M | Log a session in **≤ 2 taps** from app open. The home screen has a prominent "+1" button that uses the last product type. A long-press or secondary button picks another product type. |
 | FR-LOG-02 | M | Logging works **offline**. Logs are stored locally with a client-generated ID and synced automatically when online. Syncing is idempotent, so no duplicates are created. |
 | FR-LOG-03 | M | A log can be back-dated or deleted, but only for days still inside the grace period (48 h after local midnight). |
-| FR-LOG-04 | M | The user checks in a day ("Done for today"), which confirms the count. Yesterday can be checked in until it is finalized. |
+| FR-LOG-04 | M | The user checks in a day ("Done for today"), which confirms the count. Yesterday can be checked in until it is finalized. The check-in answers at once with the celebration and the projected streak and XP; these are provisional until the day is final. Logs of a checked-in day can still be corrected while the day is inside its grace period, and the check-in stays. |
 | FR-LOG-05 | M | After each log, the home screen shows today's count vs. the daily limit and the remaining allowance. |
 | FR-LOG-06 | M | Going over the limit shows a **neutral, encouraging** message and plays no negative sound (honor system). |
 | FR-LOG-07 | M | Logs that arrive for already finalized days are rejected, and the user sees an explanation. |
@@ -173,7 +173,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | ID | Pri | Requirement |
 |---|---|---|
 | FR-I18N-01 | M | All UI text, emails and push texts exist in German and English. The language is chosen per user. API validation errors carry a stable code per field, which the apps translate; the English message next to it is for developers only. |
-| FR-I18N-02 | M | Dates and numbers are formatted per locale. All day logic uses the user's time zone. |
+| FR-I18N-02 | M | Dates and numbers are formatted per locale. All day logic uses the user's time zone. A change of the time zone, and a change of the plan (goal, taper speed), counts from the next local day. |
 
 ---
 
@@ -239,7 +239,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | OQ-5 | Domain name and whether a staging subdomain is available | `app.<domain>` + `staging.<domain>` |
 | OQ-6 | ~~Timeline / team size~~ | **Decided:** two-person team (owner + Claude Code), no fixed deadline. The HLD build plan is ordered by steps, not dates |
 | OQ-8 | League ranking: how are ties ranked, and do the duel tie-breakers apply? | Decide in build step 5. Default: same tie-breakers as duels (FR-COMP-03), then a shared rank |
-| OQ-9 | Upper bound for sessions logged per day (the scoring code needs one) | Decide in build step 4. Default: at most 50 per log entry and 300 per day |
+| OQ-9 | ~~Upper bound for sessions logged per day~~ | **Decided:** at most 50 per log entry and 300 per day (HLD §4.6) |
 | OQ-10 | ~~A pending registration can be taken over by registering the same address again~~ | **Decided:** the confirmation page asks for the password of the sign-up and logs the user in. Five wrong passwords make the link useless (FR-ACC-03) |
 | OQ-11 | ~~Login lockout: a stranger's wrong guesses lock the owner out~~ | **Decided:** lock the client that guesses, not the account (NFR-05). Remaining weakness: OQ-15 |
 | OQ-12 | ~~Session refresh has no tolerance for two tabs or a lost answer~~ | **Decided:** for 10 seconds after a refresh, the replaced token is answered with the same new token |
