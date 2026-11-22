@@ -47,9 +47,17 @@ final class PhinxMigratorTest extends IntegrationTestCase
 
     public function test_an_empty_schema_gets_every_migration_in_order_and_a_second_run_does_nothing(): void
     {
-        foreach ($this->tables() as $table) {
-            // Names come from information_schema. A table name cannot be bound as a parameter.
-            $this->pdo()->exec("DROP TABLE `{$table}`");
+        // The tables of the test schema, which the test run built from the migrations and builds
+        // again below. Without the foreign key checks, so that they can go in any order: some
+        // tables that refer to `users` sort after it.
+        $this->pdo()->exec('SET FOREIGN_KEY_CHECKS = 0');
+        try {
+            foreach ($this->tables() as $table) {
+                // Names come from information_schema. A table name cannot be bound as a parameter.
+                $this->pdo()->exec("DROP TABLE `{$table}`");
+            }
+        } finally {
+            $this->pdo()->exec('SET FOREIGN_KEY_CHECKS = 1');
         }
         self::assertSame([], $this->tables());
 
