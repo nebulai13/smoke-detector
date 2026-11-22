@@ -331,8 +331,9 @@ plain read. That happened exactly when two requests about one address arrived to
 which request failed depended on whether the address was registered. As a safety net, errors 1020, 1213 and
 1205 are all answered as 503. `LockingTest` checks the lock order with two database sessions for verify-email, reset confirm, refresh
 and logout, and runs three real processes at once for register, resend and reset request in each state of
-the address (unknown, pending, confirmed). Login and account deletion have no concurrency test yet (open,
-first task of the next step).
+the address (unknown, pending, confirmed). Three logins to one account at once, and logins
+racing the deletion of the account, run as real processes too: every login ends with a session or with
+`invalid_credentials`, and the deletion goes through.
 
 **Mail:** `Mailer` interface, SMTP implementation (IONOS) and an in-memory one for tests. Templates in German
 and English, chosen by the user's locale. Links point to the web app (`APP_URL/verify-email?token=…`,

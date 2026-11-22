@@ -7,7 +7,8 @@ declare(strict_types=1);
 // what was thrown.
 //
 //     php use-case.php <now, UTC> <verify-email|reset-password|refresh|logout|token-first> <token>
-//     php use-case.php <now, UTC> <register|resend-verification|request-password-reset> <email>
+//     php use-case.php <now, UTC> <register|resend-verification|request-password-reset|login> <email>
+//     php use-case.php <now, UTC> delete-account <user id>
 //
 // "token-first" is not a use case. It takes the locks in the order that is forbidden (the token,
 // then the account), so that the test can show it would notice.
@@ -18,8 +19,10 @@ use SmokeDetector\Application\Account\DisplayName;
 use SmokeDetector\Application\Account\EmailAddress;
 use SmokeDetector\Application\Account\Locale;
 use SmokeDetector\Application\Account\TimeZone;
+use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Auth\GivenConsent;
+use SmokeDetector\Application\Auth\LogIn;
 use SmokeDetector\Application\Auth\LogOut;
 use SmokeDetector\Application\Auth\OneTimeTokenRepository;
 use SmokeDetector\Application\Auth\RefreshSession;
@@ -30,6 +33,7 @@ use SmokeDetector\Application\Auth\ResendVerification;
 use SmokeDetector\Application\Auth\ResetPassword;
 use SmokeDetector\Application\Auth\TokenPurpose;
 use SmokeDetector\Application\Auth\VerifyEmail;
+use SmokeDetector\Application\Privacy\DeleteAccount;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Bootstrap\ContainerFactory;
 use SmokeDetector\Config\Settings;
@@ -54,11 +58,14 @@ $logOut = $container->get(LogOut::class);
 $resendVerification = $container->get(ResendVerification::class);
 $requestPasswordReset = $container->get(RequestPasswordReset::class);
 $registerUser = $container->get(RegisterUser::class);
+$logIn = $container->get(LogIn::class);
+$deleteAccount = $container->get(DeleteAccount::class);
 $transactions = $container->get(TransactionRunner::class);
 $tokens = $container->get(OneTimeTokenRepository::class);
 $users = $container->get(UserRepository::class);
 \assert($verifyEmail instanceof VerifyEmail && $resetPassword instanceof ResetPassword && $refreshSession instanceof RefreshSession);
 \assert($logOut instanceof LogOut && $transactions instanceof TransactionRunner);
+\assert($logIn instanceof LogIn && $deleteAccount instanceof DeleteAccount);
 \assert($tokens instanceof OneTimeTokenRepository && $users instanceof UserRepository);
 \assert($resendVerification instanceof ResendVerification && $requestPasswordReset instanceof RequestPasswordReset && $registerUser instanceof RegisterUser);
 
@@ -82,6 +89,10 @@ try {
             new GivenConsent(true, $settings->consents->art9),
             new GivenConsent(true, $settings->consents->privacy),
         ), '203.0.113.99'),
+        // With the password of the test accounts, as a client that was never seen before.
+        'login' => $logIn->execute(EmailAddress::fromInput((string) $token), TestAccounts::PASSWORD, null, '203.0.113.99'),
+        // The fourth argument is the id of the account.
+        'delete-account' => $deleteAccount->execute(UserId::fromString((string) $token), TestAccounts::PASSWORD, '203.0.113.98'),
         'token-first' => $transactions->run(static function () use ($tokens, $users, $token): void {
             $stored = $tokens->lockByHash(TokenPurpose::VerifyEmail, hash('sha256', (string) $token));
             \assert($stored !== null);
