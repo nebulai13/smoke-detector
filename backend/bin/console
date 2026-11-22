@@ -1,0 +1,21 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+// The command line of the backend:  php bin/console <command>   (on the server: php8.4 app/bin/console).
+// Run it without a command for the list. Everything it does lives in SmokeDetector\Console.
+
+use SmokeDetector\Console\ConsoleEntryPoint;
+use SmokeDetector\Console\StreamOutput;
+
+require dirname(__DIR__) . '/vendor/autoload.php';
+
+$arguments = [];
+foreach (array_slice(is_array($_SERVER['argv'] ?? null) ? $_SERVER['argv'] : [], 1) as $argument) {
+    if (is_string($argument)) {
+        $arguments[] = $argument;
+    }
+}
+
+exit((new ConsoleEntryPoint())->run($arguments, getenv(), new StreamOutput(STDOUT, STDERR)));
