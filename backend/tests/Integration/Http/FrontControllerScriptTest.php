@@ -194,7 +194,10 @@ final class FrontControllerScriptTest extends IntegrationTestCase
         fclose($probe);
 
         $server = proc_open(
-            [PHP_BINARY, '-S', $address, Paths::backend() . '/public/index.php'],
+            // With a memory limit, as every web server has one (512M on the hosting). Without one
+            // (GitHub's runners set none) the settings file of the fatal-error test would ask the
+            // operating system for a tebibyte, and PHP ends the whole server process on that.
+            [PHP_BINARY, '-d', 'memory_limit=128M', '-S', $address, Paths::backend() . '/public/index.php'],
             [1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
             $pipes,
             Paths::backend() . '/public',
