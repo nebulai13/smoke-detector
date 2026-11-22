@@ -63,6 +63,9 @@ jobs:
           php-version: "8.4"
           extensions: pdo_mysql, intl, bcmath, gmp, sodium
           coverage: pcov
+          # As in the dev image: traces carry arguments, so the tests that look for secrets in them
+          # mean something, also in the processes the tests start themselves.
+          ini-values: zend.exception_ignore_args=Off
       - run: composer install --no-interaction --no-progress
       - run: composer validate --strict
       - run: composer audit
