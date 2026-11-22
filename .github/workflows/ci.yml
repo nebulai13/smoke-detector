@@ -5,25 +5,84 @@ on:
     branches: [main]
   pull_request:
 
+# The jobs only read the repository. No job gets a token that can write anything.
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: backend
+    services:
+      # Same image and health check as the db service of docker-compose.yml.
+      db:
+        image: mariadb:11.8
+        env:
+          MARIADB_ROOT_PASSWORD: ci-only-root-password
+          MARIADB_DATABASE: smoke_detector
+          MARIADB_USER: smoke_detector
+          MARIADB_PASSWORD: ci-only-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    # Throwaway values for the service container above, the same variables as the php service of
+    # docker-compose.yml. Nothing here is a secret, and no production value ever belongs here.
+    env:
+      APP_ENV: development
+      APP_RELEASE: ${{ github.sha }}
+      APP_URL: http://localhost:5173
+      LOG_FILE: php://stderr
+      DB_HOST: 127.0.0.1
+      DB_PORT: "3306"
+      DB_NAME: smoke_detector
+      DB_USER: smoke_detector
+      DB_PASSWORD: ci-only-password
+      JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789abcdef
+      MAIL_DSN: "null://null"
+      MAIL_FROM_ADDRESS: no-reply@smoke-detector.test
+      MAIL_FROM_NAME: Smoke Detector (CI)
+      CONSENT_VERSION_AGE18: ci
+      CONSENT_VERSION_ART9: ci
+      CONSENT_VERSION_PRIVACY: ci
+      # The integration tests drop and re-create their own schema (smoke_detector_test) with this login.
+      TEST_DB_ADMIN_USER: root
+      TEST_DB_ADMIN_PASSWORD: ci-only-root-password
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
           extensions: pdo_mysql, intl, bcmath, gmp, sodium
           coverage: pcov
       - run: composer install --no-interaction --no-progress
-      - run: vendor/bin/phpunit
+      - run: composer validate --strict
+      - run: composer audit
+      # The migrations must build the dev schema from nothing, as the deploy does on the server.
+      - run: php bin/console migrate
+      # The unit tests must not need the database. Point them at a port where nothing listens, so a unit
+      # test that touches the database fails here as it does locally (make test-unit runs without the db).
+      - run: vendor/bin/phpunit --testsuite=Unit
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: "1"
+      - run: vendor/bin/phpunit --testsuite=Integration
       - run: vendor/bin/phpstan analyse --no-progress
 
   traceability:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest tools/test_traceability.py
       - run: python3 tools/traceability.py
