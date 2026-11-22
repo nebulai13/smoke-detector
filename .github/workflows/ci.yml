@@ -80,6 +80,26 @@ jobs:
       - run: vendor/bin/phpunit --testsuite=Integration
       - run: vendor/bin/phpstan analyse --no-progress
 
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          # Same major version as on the development machine.
+          node-version: "26"
+      # Install scripts are off (web/.npmrc), exactly as locked in package-lock.json.
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm run check
+      - run: npm run build
+
   traceability:
     runs-on: ubuntu-latest
     timeout-minutes: 15
