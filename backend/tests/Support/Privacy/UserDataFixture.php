@@ -103,6 +103,34 @@ final readonly class UserDataFixture
         $baselines->append(new BaselineEntry(
             $userId, LocalDate::fromString('2026-11-16'), Baseline::fromTenths(98), BaselineSource::UnchangedLowData, null, 9.75, 0, 9, 'v1',
         ));
+
+        // The tables of step 4, written as rows: the fixture must not depend on the code it helps to test.
+        $user = $userId->value;
+        $this->insert('plan_history', [$user, '2026-11-02', 'quit', 0, 'fast', 'v1']);
+        $this->insert('plan_history', [$user, '2026-11-12', 'reduce', 5, 'gentle', 'v1']);
+        $this->insert('timezone_history', [$user, '2026-11-02', 'Europe/Lisbon']);
+        $this->insert('timezone_history', [$user, '2026-11-12', 'Europe/Berlin']);
+        // A log of the morning, and one of late evening (the 18th in Berlin already) that was deleted.
+        $this->insert('smoke_logs', [$id(8), $user, '2026-11-17 07:15:00', '2026-11-17', 'cigarette', 1, '2026-11-17 07:15:04', '2026-11-17 07:15:04', null]);
+        $this->insert('smoke_logs', [$id(9), $user, '2026-11-17 23:30:00', '2026-11-18', 'vape', 3, '2026-11-18 06:00:00', '2026-11-18 06:05:00', '2026-11-18 06:05:00']);
+        // A final day and one that is still open.
+        $this->insert('day_summaries', [
+            $user, '2026-11-10', 6, '2026-11-10 21:00:00', 9, 80,
+            '[{"type":"checked_in"},{"type":"under_limit_day","value":1},{"type":"streak_milestone","value":7}]', 0, '2026-11-12 23:00:20', 'v1',
+        ]);
+        $this->insert('day_summaries', [$user, '2026-11-17', 1, null, null, null, null, null, null, null]);
+        $this->insert('user_progress', [$user, 3, 5, 1, 4, 1, 250, 2, '2026-11-15', '2026-11-17 23:00:00', '2026-11-22 23:00:00']);
+        $this->insert('xp_events', [$id(10), $user, '2026-11-10', 'check_in', 10, null, '2026-11-12 23:00:20']);
+        $this->insert('xp_events', [$id(11), $user, '2026-11-10', 'streak_milestone', 50, 7, '2026-11-12 23:00:20']);
+    }
+
+    /**
+     * @param list<int|string|null> $values One for every column of the table, in the order of the table.
+     */
+    private function insert(string $table, array $values): void
+    {
+        // The table names are fixed, in fill() above.
+        $this->sql->execute("INSERT INTO `{$table}` VALUES (" . implode(', ', array_fill(0, count($values), '?')) . ')', $values);
     }
 
     /**
