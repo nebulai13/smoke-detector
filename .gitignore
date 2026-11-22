@@ -4,8 +4,22 @@ server.info
 .env
 .env.*
 !.env.example
+# Production settings: a copy from the server must never be committed. Only the example is tracked;
+# the rule tables below backend/config/rules/ are not matched by these patterns and stay tracked.
+/shared/
+/backend/config/*.php
+!/backend/config/settings.example.php
+local.php
 # Backend
 backend/vendor/
 backend/.phpunit.cache/
 backend/coverage/
 backend/var/
+# Python
+__pycache__/
+# Local session files (conversation exports, resume notes): never commit
+current.txt
+claude.continue
+# Owner instructions and work reports: local only, never commit
+/instructions/
+/reports/
