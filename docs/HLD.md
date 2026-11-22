@@ -152,12 +152,12 @@ erDiagram
 | `consents` | user_id, type (age18, art9, privacy), version, granted_at. Primary key (user_id, type, version) |
 | `plans` | user_id (one row per user), goal_mode, target, taper_speed, default_product, start_date, rules_version (the version at onboarding) |
 | `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days (all four NULL for the onboarding entry), rules_version. Primary key (user_id, valid_from). Append-only, never recalculated. The current baseline is the entry with the latest valid_from |
-| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at (UTC), local_date (worked out by the server, §4.6), product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count (1–50), deleted_at (tombstone), created_at, updated_at. Index (user_id, local_date) |
-| `day_summaries` | user_id, local_date (primary key together), count, daily_limit, checked_in_at, status (provisional/final), finalized_at, freeze_used, xp, events (JSON, the celebration events of the finalized day), rules_version. A row exists from the first log or check-in of the day; finalization creates the rows of days nobody touched |
-| `user_progress` | user_id (one row per user, created with the plan): check-in streak, under-limit streak, their longest values, freezes held, XP total, level, next_day (the next local date to finalize), finalize_due_at and baseline_due_at (UTC instants the cron job looks for). Replaces the `streaks` table of the first draft: the domain's `UserProgress` is one value |
-| `plan_history` | user_id, valid_from (local date), goal_mode, target, taper_speed, rules_version. Primary key (user_id, valid_from). Append-only. `plans` keeps the newest entry |
-| `timezone_history` | user_id, valid_from (local date), timezone. Primary key (user_id, valid_from). Append-only. `users.timezone` keeps the newest entry |
-| `xp_events` | id, user_id, local_date, source (the domain's `XpSource`), amount, created_at. Append-only ledger, written at finalization; `user_progress.xp_total` is its sum, kept for speed and checked by a test |
+| `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at (UTC), local_date (worked out by the server, §4.6), product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count (1–50), created_at (when the server first stored the log; never changes), updated_at, deleted_at (tombstone: a deleted log stays stored and stays deleted). Index (user_id, local_date). A log never changes its owner |
+| `day_summaries` | user_id, local_date (primary key together), count (the sum of the day's logs that are not deleted, kept in step by every sync), checked_in_at, and what finalization writes, NULL before it: daily_limit, xp, events (the celebration events as JSON text), freeze_used, finalized_at, rules_version. A day is final when finalized_at is set (there is no status column that could contradict it). A row exists from the first log or check-in of the day; finalization creates the rows of days nobody touched |
+| `user_progress` | user_id (one row per user, created with the plan): check_in_current, check_in_longest, under_limit_current, under_limit_longest, freezes_held, xp_total, level, next_day (the next local date to finalize: every earlier day is final), finalize_due_at and baseline_due_at (UTC instants the cron job looks for, each with an index). Replaces the `streaks` table of the first draft: the domain's `UserProgress` is one value |
+| `plan_history` | user_id, valid_from (local date), goal_mode, target, taper_speed, rules_version. Primary key (user_id, valid_from). Starts with the onboarding. An entry that is in force is never changed; a second change on the same day replaces the entry for tomorrow. `plans` keeps what the user chose last |
+| `timezone_history` | user_id, valid_from (local date), timezone. Primary key (user_id, valid_from). Starts with the onboarding, and is replaced in the same way. `users.timezone` keeps what the user chose last |
+| `xp_events` | id (UUIDv7), user_id, local_date, source (the domain's `XpSource`), amount, detail (the streak length of a milestone; NULL otherwise), created_at. Append-only ledger, written at finalization; `user_progress.xp_total` is its sum, kept for speed and checked by a test. Index (user_id, local_date) |
 | `friendships` | user_a < user_b, status (pending/accepted/blocked), requested_by |
 | `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json (per user: frozen B₀, exact actual/expected totals in tenths, smoke-free days, check-ins, rules_version) |
 | `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
@@ -401,23 +401,51 @@ while the day is inside its 48 hours, and the check-in stays.
 **Local days (FR-I18N-02).** A log carries the instant it happened (`smokedAt`, UTC). The server works out
 the local date; the client's idea of the date is never trusted.
 - The time zone of a user on local date D is the newest `timezone_history` entry with `valid_from ≤ D`.
-  A change made on local day D is stored with `valid_from = D + 1`: today keeps its zone.
-- Day D runs from 00:00 of D in the zone of D to 00:00 of D+1 in the zone of D+1. So the days of a user
-  never overlap and never leave a gap, also across a change of zone. (Moving far east can make one day
-  shorter than a few hours; a jump across the date line can make it empty, and then no instant belongs
-  to it.)
-- This is pure calculation and lives in the domain (`Day\LocalDays`): local date of an instant, start and
-  end of a date, from the user's zone history.
+  A date before the first entry has the zone of the first entry.
+- The history starts with the onboarding (first entry: the plan's start date and the zone of the account).
+  Before the onboarding no day has been played, so a change of the zone simply takes effect. After it, a
+  change made on local day D is stored with `valid_from = D + 1`: today keeps its zone.
+- A new zone never lets a day begin in the past. Moving east past midnight (23:30 in Vienna is already
+  tomorrow in Tokyo), D + 1 has begun in the new zone, so the change is valid from the first date after
+  today that has not begun there (D + 2). Otherwise a change of the profile would turn today into
+  tomorrow and leave stored logs on another date than the history gives.
+- A new change replaces the changes that were still waiting from its own first day on; a waiting entry
+  for an earlier day stays, because it decides when today ends. A change that changes nothing (back to
+  the zone the history gives for that day anyway) writes no entry.
+- Day D starts at 00:00 of D in the zone of D (where the clock skips midnight: at the first instant of
+  the date) and ends where D+1 starts. An instant belongs to the latest day that has started. So every
+  instant has exactly one day, also across a change of zone. (Moving east makes the last day in the old
+  zone shorter; a jump east across the date line can leave it empty, and then no instant belongs to it.)
+- This is pure calculation without I/O: `Application\Time\LocalDays` (zone, start and end of a date, the
+  date of an instant) from a list of `ZoneChange`. It sits next to `LocalDate`, which it builds on.
+- Every "today" of a user who has a plan comes from `LocalDays`, never from `users.timezone` directly:
+  that column may already hold the zone of tomorrow.
 
 **Plan and limit.** The limit of day D is `ReductionPlan::dailyLimit` of the baseline valid on D
 (`baseline_history`), the plan valid on D (`plan_history`) and the rules of the plan. `PUT /me/plan` appends
 an entry valid from the next local day, or from today when it is the first plan (onboarding). Nobody can
 raise today's limit after going over it, and every past day can be recalculated exactly (NFR-04).
+- Only goal and taper speed are in the history. The usual product is no rule and changes at once. A
+  request that changes neither goal nor taper speed writes no entry.
+- `GET /me` shows what the user chose last, the limit of today, and `plan.pendingFrom` (a date) while the
+  choice is not in force yet. "The current baseline" is everywhere the entry that is valid today.
+- The onboarding also creates `user_progress`: nothing earned, the first day to finalize is the start
+  date, and the first weekly baseline is due at the start of the first Monday on which the plan is seven
+  days old.
+- A change of the time zone moves the two due instants of `user_progress` in the same transaction: the
+  day to finalize may end at another instant now, and the user's Monday begins at another one.
 
 **`POST /logs/sync` (FR-LOG-02, -03, -07; NFR-03).** A batch of at most 200 items
 `{id, smokedAt, productType, count}` or `{id, deleted: true}`.
 - Stored with `INSERT … ON DUPLICATE KEY UPDATE` by the client's UUID. The same item sent twice changes
   nothing. An item with a known id and other values replaces the stored log (back-dating, correcting).
+  An id is the same log however the app spells it (upper or lower case); the answer repeats it as sent.
+- `smokedAt` needs a UTC offset. Fractions of a second are dropped.
+- A deleted log stays deleted: a later item for its id is accepted and changes nothing, so an old item
+  that arrives late cannot bring a log back. Deleting a log the server never saw is accepted and stores
+  nothing.
+- An item that is stored exactly as sent is accepted again even when its day has become final in the
+  meantime (NFR-03: the app may never have got the first answer).
 - Each item is answered on its own: `accepted`, or `rejected` with a reason. Reasons:
   `day_finalized` (FR-LOG-07; also when a correction would move a log out of or into a final day),
   `in_future` (more than 5 minutes ahead of the server's clock), `before_start` (before the first day of
@@ -427,14 +455,25 @@ raise today's limit after going over it, and every past day can be recalculated 
   whole request `422`; the reasons above are answers, not errors.
 - The affected days are recomputed in the same transaction (count = sum of the logs that are not
   deleted) and come back in the answer, so the client shows count, limit and what is left (FR-LOG-05).
+  The answer holds the day of every accepted item (for a moved log the old and the new one), oldest
+  first, also when nothing changed: a repeated batch gets the days again.
+- The rules are checked per item in this order: `not_yours`, deleted log (accepted, nothing changes),
+  stored exactly as sent (accepted), `in_future`, `before_start`, `day_finalized`, `day_full`.
 - Without a plan (onboarding not done) the request is `409 plan_required`.
 - One transaction per request, the account row locked first.
+- A day takes nothing more once its 48 hours are over, whether the cron job has already made it final or
+  not: sync and check-in compare the clock with the end of the day plus 48 hours, not only with
+  `user_progress.next_day`. So the grace period does not get longer when the cron job is late.
 
 **`POST /days/{date}/check-in` (FR-LOG-04).** For today and for every earlier day that is not final. It
 stores `checked_in_at` once (a repeated check-in changes nothing) and answers with the day and the
-provisional feedback described below. A day that is final, in the future or before the plan is refused.
+provisional feedback described below. A day that is final, in the future or before the plan is refused
+with `409` and the type `day_finalized`, `day_in_future` or `day_before_start`; a date that is none is
+`422`.
 
-**`GET /days?from&to`** (at most 92 days) lists the days with count, limit, check-in and status.
+**`GET /days?from&to`** (at most 92 days) lists the days with count, limit, check-in and status. These
+are the only query parameters of the API: query strings end up in server logs, and two calendar dates say
+nothing about a person (whose days they are is in the token). A test lists the reviewed exceptions.
 **`GET /me/dashboard`** gives today (count, limit, remaining), both streaks, freezes, XP and level.
 **`GET /me/baseline-history`** lists the baseline entries (FR-PLAN-08).
 
@@ -455,15 +494,59 @@ check-in whose local day is not over is left out of the projection (it is not mi
 - Per user-day, in calendar order, one transaction with the account locked first: build the `DayOutcome`
   (count, limit, checked in or missed), run `DayFinalizer`, store the day as final with its XP and events,
   append `xp_events`, update `user_progress` and move `finalize_due_at` on. Running it again does nothing.
+- The count of a final day is counted from its logs once more, not taken from the stored count.
 - Days nobody touched get their row here: count 0 from the logs, not checked in.
+- Inside the transaction the day is due only if `end of the day + 48 hours` has really passed, worked
+  out from the zone history. A stored due instant that is too early finalizes nothing and is put right.
 - Weekly baseline: when the user's Monday 00:00 has passed (`baseline_due_at`), `BaselineCalculator` gets
-  one entry per calendar day of the previous 28 local days, `null` for a day without a check-in, and the
-  result is appended to `baseline_history` valid from that Monday. Not before the plan is 7 days old.
-- The step stops taking users after 20 seconds. What is left is due at the next run a minute later.
+  one entry per calendar day of the previous 28 local days (days before the plan are left out), `null`
+  for a day without a check-in, and the result is appended to `baseline_history` valid from that Monday.
+  Not before the plan is 7 days old. The counts and check-ins are taken as they stand at that moment:
+  Sunday can still be corrected for 48 hours, but a baseline is never recalculated (FR-PLAN-02), and a
+  check-in that comes later counts for the next week's month. The 7 and 28 days of the windows come
+  from the rule table; the next baseline is due one calendar week later, whatever the rule table says.
+- What is due for a user is done in the order it was due (a baseline first when it is due at the same
+  instant as a day), so a day is always finalized with the baseline that is valid on it, also when the
+  cron job was down for days and catches up.
+- Users are taken in batches of 50, the one who waits longest first. The step begins no day and no
+  baseline after 20 seconds. What is left is due at the next run a minute later; the command says so,
+  and that is no failure.
+- A user whose day cannot be finalized (damaged data, a database error) does not stop the others: the
+  transaction of that day is rolled back, the failure is logged without naming the user, the run goes on
+  with the next user, and the command ends with exit code 1, so `cron:run` says FAILED and writes no
+  heartbeat until somebody has looked.
 - Two runs at once are safe: the account lock makes them take turns, and the second finds the day final.
+  A log that arrives while its day is being finalized is either part of the final day or refused with
+  `day_finalized`, never stored and left out (a test runs both as real processes).
+
+**Known limits, accepted for the pilot** (from the audit of this step):
+- Limits and finalization always use the current rule table. Stored rows name the version that produced
+  them, but there is no way yet to load an older one. Before a second rule table (`v2`) is released,
+  `RuleSets` has to give a version by name, and days of a `v1` plan have to be finalized with `v1`.
+- If 50 or more users fail in every run (damaged data), they fill the batch and the users behind them
+  are not reached. The run fails and writes no heartbeat, so it is seen; nothing is lost.
+- `not_yours` tells that an id is in use by another account. Ids are random UUIDs chosen by the app, so
+  this cannot be used to find one.
+- `POST /logs/sync` has no rate limit of its own. A batch of 200 corrections costs about 1,500 queries
+  under the lock of the caller's own account. To be looked at with the limits of step 11.
+- The 20 seconds of `days:finalize` do not count the time it waits for an account lock.
+- A move across the date line of more than 24 hours (from a zone 11 or 12 hours behind UTC to one 13 or 14
+  hours ahead) leaves one date without any instant. That day cannot be checked in and is finalized as
+  missed. If it is a Monday, the weekly baseline of that week is stored for the Tuesday and stays on
+  Tuesdays from then on. No user of the pilot lives there; to be put right by taking the Monday from the
+  weekday instead of from the stored instant.
+- The read operations (`GET /days`, dashboard) read plan, progress and days in separate statements. A
+  finalization in between can make one answer show a day as provisional that is final a moment later.
 
 **Export and deletion.** `smoke_logs`, `day_summaries`, `user_progress`, `xp_events`, `plan_history` and
-`timezone_history` are registered with exporter and eraser (the schema guard fails otherwise).
+`timezone_history` are registered with exporter and eraser (the schema guard fails otherwise). The export
+members are `planHistory`, `timeZoneHistory`, `smokeLogs` (deleted logs too, with `deletedAt`), `days`,
+`progress` (absent before the onboarding) and `xpEvents`. The two due instants of `user_progress` are the
+schedule of the cron job and are not exported.
+
+**No data to carry over.** The migrations of this step only create tables. Nothing was deployed before
+them, so there is no plan without a history and no backfill; a local database from before step 4 is
+recreated.
 
 **Left for later steps:** duels and leagues read final days (step 5); badges, health milestones and the feed
 read the stored events (step 6); the reminder that a day is still open (step 7).
@@ -697,6 +780,11 @@ Known surviving mutants, all provably harmless:
   rounded value is the integer 0, and minus zero is the same integer.
 - `Day\DayFinalizer` (milestone awards): the list cut to its first entry. One day raises the check-in
   streak by at most one, so it reaches at most one milestone and the list never has a second entry.
+- `Application\Day\Projection` (a day without a row): the count 0 mutated to 1. Such a day has no check-in,
+  so it is a missed day, and the rules ignore the count of a missed day.
+
+Mutants that make the loops of `Application\Day\FinalizeDays` and `Projection` endless end as time-outs,
+which count as caught. The run needs more memory than PHP's default (`make mutation` sets 512 MB).
 
 ---
 
@@ -708,7 +796,7 @@ Known surviving mutants, all provably harmless:
 | 1 | Monorepo, CI skeleton, OpenAPI v1 draft, traceability script | GitHub Actions; contract-first |
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
 | 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
-| 4 | Logging sync + check-in + finalization cron | Idempotent UUID upsert, 48 h grace |
+| 4 | Logging sync + check-in + finalization cron (§4.6) | Idempotent UUID upsert, 48 h grace. `days:finalize` is the second step of `cron:run`, after `mail:send` |
 | 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
