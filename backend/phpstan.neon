@@ -3,3 +3,8 @@ parameters:
     paths:
         - src
         - tests
+        - migrations
+        - config
+        - public
+        - bin/console
+        - bin/cron
