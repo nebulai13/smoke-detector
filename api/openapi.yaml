@@ -795,7 +795,8 @@ components:
       maxLength: 64
       description: >
         IANA time zone name, spelled exactly as in the tz database (case matters: `europe/berlin` is
-        `invalid_value`), including the older names browsers still report (`Asia/Calcutta`). No offsets
+        `invalid_value`). An older name that browsers still report (`Asia/Calcutta`) is accepted, and is
+        stored and returned under the zone's current name (`Asia/Kolkata`). No offsets
         (`+01:00`) and no abbreviations (`CET`). The list is the one of the server's tz database: a zone
         newer than that is `invalid_value` until the server is updated, so fall back to a zone with the
         same rules. All day logic of the user runs in it. A change applies at once.

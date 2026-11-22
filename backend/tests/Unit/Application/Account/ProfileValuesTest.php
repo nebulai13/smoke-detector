@@ -167,9 +167,60 @@ final class ProfileValuesTest extends TestCase
     {
         self::assertSame('Europe/Berlin', TimeZone::fromInput('Europe/Berlin')->name);
         self::assertSame('UTC', TimeZone::fromInput('UTC')->name);
-        // Older names that browsers still report.
-        self::assertSame('Asia/Calcutta', TimeZone::fromInput('Asia/Calcutta')->name);
         self::assertSame('America/Argentina/Buenos_Aires', TimeZone::fromInput('America/Argentina/Buenos_Aires')->name);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function olderTimeZoneNames(): iterable
+    {
+        // Each of the current names has been in the tz database for more than fifteen years, so
+        // every PHP knows it, whatever time zone data the machine has.
+        yield 'India' => ['Asia/Calcutta', 'Asia/Kolkata'];
+        yield 'Nepal' => ['Asia/Katmandu', 'Asia/Kathmandu'];
+        yield 'Vietnam' => ['Asia/Saigon', 'Asia/Ho_Chi_Minh'];
+        yield 'Argentina' => ['America/Buenos_Aires', 'America/Argentina/Buenos_Aires'];
+        yield 'Indiana' => ['America/Indianapolis', 'America/Indiana/Indianapolis'];
+        yield 'Faroe Islands' => ['Atlantic/Faeroe', 'Atlantic/Faroe'];
+    }
+
+    #[DataProvider('olderTimeZoneNames')]
+    public function test_FR_ACC_01_an_older_name_that_browsers_still_report_is_kept_under_its_current_name(string $older, string $current): void
+    {
+        // Browsers report some zones under the name they had years ago. Whether PHP knows such a
+        // name depends on the time zone data of the machine (a PHP that uses the system's data
+        // often does not), so the name is translated here and the result is the same everywhere.
+        self::assertSame($current, TimeZone::fromInput($older)->name);
+        self::assertSame($current, TimeZone::fromInput($current)->name);
+    }
+
+    public function test_FR_ACC_01_a_zone_is_kept_under_the_name_the_servers_time_zone_data_knows(): void
+    {
+        // Time zone data from before a renaming knows only the older name: then that one is kept.
+        self::assertSame('Europe/Kiev', TimeZone::nameIn('Europe/Kiev', ['Europe/Berlin', 'Europe/Kiev']));
+        // Data that knows both, or only the current one: the current name.
+        self::assertSame('Europe/Kyiv', TimeZone::nameIn('Europe/Kiev', ['Europe/Kiev', 'Europe/Kyiv']));
+        self::assertSame('Europe/Kyiv', TimeZone::nameIn('Europe/Kiev', ['Europe/Kyiv']));
+        self::assertSame('Europe/Kyiv', TimeZone::nameIn('Europe/Kyiv', ['Europe/Kyiv']));
+        // A name that is in no table is taken as it is, when the data knows it.
+        self::assertSame('Europe/Berlin', TimeZone::nameIn('Europe/Berlin', ['Europe/Berlin', 'Europe/Kiev']));
+        // Known to nobody: neither as it is nor under another name.
+        self::assertNull(TimeZone::nameIn('Europe/Kiev', ['Europe/Berlin']));
+        self::assertNull(TimeZone::nameIn('Europe/Kyiv', ['Europe/Kiev']));
+        self::assertNull(TimeZone::nameIn('europe/berlin', ['Europe/Berlin']));
+        self::assertNull(TimeZone::nameIn('', ['Europe/Berlin']));
+    }
+
+    public function test_FR_ACC_01_the_table_of_older_names_leads_to_current_names_only(): void
+    {
+        self::assertNotSame([], TimeZone::OLDER_NAMES);
+        foreach (TimeZone::OLDER_NAMES as $older => $current) {
+            self::assertNotSame($older, $current);
+            // No chains: a current name is never itself listed as an older one.
+            self::assertArrayNotHasKey($current, TimeZone::OLDER_NAMES, "{$older} leads to {$current}, which is listed as older itself.");
+            self::assertMatchesRegularExpression('#\\A[A-Z][A-Za-z_]+(/[A-Z][A-Za-z_]+)+\\z#', $current);
+        }
     }
 
     /**
