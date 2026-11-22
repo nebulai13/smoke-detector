@@ -9,10 +9,37 @@
          failOnDeprecation="true"
          displayDetailsOnTestsThatTriggerWarnings="true">
     <testsuites>
+        <!-- No I/O: no database, no network, no temporary files. Runs without the db service. -->
         <testsuite name="Unit">
             <directory>tests/Unit</directory>
         </testsuite>
+        <!-- Real MariaDB (schema smoke_detector_test) and the real Slim app, in-process. -->
+        <testsuite name="Integration">
+            <directory>tests/Integration</directory>
+        </testsuite>
     </testsuites>
+    <php>
+        <!--
+            The tests never use the settings of the developer's shell or of production: the values
+            below replace whatever is set. Only where the database server is and who may log in
+            comes from outside (DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, TEST_DB_ADMIN_USER,
+            TEST_DB_ADMIN_PASSWORD: see docker-compose.yml and .github/workflows/ci.yml).
+        -->
+        <env name="SETTINGS_FILE" value="" force="true"/>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_RELEASE" value="test-release" force="true"/>
+        <env name="APP_URL" value="https://app.example.test" force="true"/>
+        <env name="LOG_FILE" value="php://memory" force="true"/>
+        <!-- The test schema. It is dropped and re-created on every run, so it must never be a schema with data. -->
+        <env name="DB_NAME" value="smoke_detector_test" force="true"/>
+        <env name="JWT_SECRET" value="test-only-jwt-secret-0123456789abcdef0123456789abcdef" force="true"/>
+        <env name="MAIL_DSN" value="null://null" force="true"/>
+        <env name="MAIL_FROM_ADDRESS" value="no-reply@example.test" force="true"/>
+        <env name="MAIL_FROM_NAME" value="Smoke Detector Test" force="true"/>
+        <env name="CONSENT_VERSION_AGE18" value="test-age18-v1" force="true"/>
+        <env name="CONSENT_VERSION_ART9" value="test-art9-v1" force="true"/>
+        <env name="CONSENT_VERSION_PRIVACY" value="test-privacy-v1" force="true"/>
+    </php>
     <source>
         <include>
             <directory>src</directory>

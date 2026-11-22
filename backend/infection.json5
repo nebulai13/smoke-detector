@@ -1,8 +1,17 @@
 {
     "$schema": "vendor/infection/infection/resources/schema.json",
+    // Mutation testing covers the code that the Unit suite tests, and runs without the database:
+    // the pure domain rules and the use cases (which are unit-tested against in-memory repositories).
+    // Code that is tested against the real database or through HTTP (src/Infrastructure, src/Http)
+    // is not mutated: every mutant would need the Integration suite and a database.
     "source": {
-        "directories": ["src"]
+        "directories": ["src/Domain", "src/Application"]
     },
+    "testFrameworkOptions": "--testsuite=Unit",
+    // make mutation fails when the score drops below these. Both stood at 99.5 % when they were set
+    // (1714 mutants, 8 escaped: the known survivors in LevelCalculator). Raise them, never lower them.
+    "minMsi": 99,
+    "minCoveredMsi": 99,
     "mutators": {
         "@default": true
     },
