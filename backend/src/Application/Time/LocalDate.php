@@ -51,4 +51,51 @@ final readonly class LocalDate
     {
         return $this->value === $other->value;
     }
+
+    /**
+     * The date $days calendar days later (earlier for a negative number).
+     *
+     * Counted on a calendar in UTC, which has no daylight saving: a calendar day is not 24 hours
+     * of some user's clock.
+     */
+    public function plusDays(int $days): self
+    {
+        return new self($this->midnightUtc()->modify(sprintf('%+d days', $days))->format(self::FORMAT));
+    }
+
+    public function isBefore(self $other): bool
+    {
+        return $this->midnightUtc() < $other->midnightUtc();
+    }
+
+    public function isAfter(self $other): bool
+    {
+        return $this->midnightUtc() > $other->midnightUtc();
+    }
+
+    /**
+     * How many calendar days $other is after this date: negative when it is before, 0 for the same day.
+     */
+    public function daysUntil(self $other): int
+    {
+        return (int) $this->midnightUtc()->diff($other->midnightUtc())->format('%r%a');
+    }
+
+    /**
+     * The weekday as ISO 8601 numbers it: 1 is Monday, 7 is Sunday.
+     */
+    public function isoWeekday(): int
+    {
+        return (int) $this->midnightUtc()->format('N');
+    }
+
+    /**
+     * The date as an instant on a clock without daylight saving, so that calendar arithmetic on it
+     * is exact. Only for calculating: the instant means nothing to a user.
+     */
+    private function midnightUtc(): DateTimeImmutable
+    {
+        // A date without a time is its midnight.
+        return new DateTimeImmutable($this->value, new DateTimeZone('UTC'));
+    }
 }
