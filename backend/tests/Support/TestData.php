@@ -17,16 +17,27 @@ use SmokeDetector\Application\Auth\DeviceLabel;
 use SmokeDetector\Application\Auth\OneTimeToken;
 use SmokeDetector\Application\Auth\RefreshToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
+use SmokeDetector\Application\Day\DayRecord;
+use SmokeDetector\Application\Day\DayResult;
+use SmokeDetector\Application\Day\ProgressRecord;
+use SmokeDetector\Application\Day\XpEvent;
+use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Mail\MailKind;
 use SmokeDetector\Application\Mail\QueuedMail;
 use SmokeDetector\Application\Plan\BaselineEntry;
 use SmokeDetector\Application\Plan\Plan;
+use SmokeDetector\Application\Plan\PlanTerms;
 use SmokeDetector\Application\Plan\ProductType;
 use SmokeDetector\Application\Time\LocalDate;
+use SmokeDetector\Application\Time\ZoneChange;
+use SmokeDetector\Domain\Day\DayEvent;
+use SmokeDetector\Domain\Day\UserProgress;
 use SmokeDetector\Domain\Plan\Baseline;
 use SmokeDetector\Domain\Plan\BaselineSource;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
+use SmokeDetector\Domain\Streak\StreakState;
+use SmokeDetector\Domain\Xp\XpSource;
 
 /**
  * Builders for the objects tests store, with a default for everything a test does not care about.
@@ -194,5 +205,125 @@ final class TestData
             $monthDays,
             $rulesVersion,
         );
+    }
+
+    public static function date(string $value): LocalDate
+    {
+        return LocalDate::fromString($value);
+    }
+
+    /**
+     * A log of user $userNumber with the id uuid($number): one cigarette at noon UTC of its local
+     * date, stored at that moment and never changed, unless said otherwise.
+     */
+    public static function smokeLog(
+        int $number,
+        int $userNumber = 1,
+        string $localDate = '2026-11-17',
+        ?string $smokedAt = null,
+        int $count = 1,
+        ProductType $productType = ProductType::Cigarette,
+        ?string $createdAt = null,
+        ?string $updatedAt = null,
+        ?string $deletedAt = null,
+    ): SmokeLog {
+        $smokedAt ??= "{$localDate} 12:00:00";
+        $createdAt ??= $smokedAt;
+
+        return new SmokeLog(
+            self::uuid($number),
+            self::userId($userNumber),
+            self::time($smokedAt),
+            self::date($localDate),
+            $productType,
+            $count,
+            self::time($createdAt),
+            self::time($updatedAt ?? $createdAt),
+            $deletedAt === null ? null : self::time($deletedAt),
+        );
+    }
+
+    /** A day of user $userNumber that is not final yet. */
+    public static function day(int $userNumber, string $date, int $count = 0, ?string $checkedInAt = null, ?DayResult $result = null): DayRecord
+    {
+        return new DayRecord(
+            self::userId($userNumber),
+            self::date($date),
+            $count,
+            $checkedInAt === null ? null : self::time($checkedInAt),
+            $result,
+        );
+    }
+
+    /**
+     * What finalization stores with a day.
+     *
+     * @param list<DayEvent> $events
+     */
+    public static function dayResult(
+        int $dailyLimit = 9,
+        int $xp = 0,
+        array $events = [],
+        bool $freezeUsed = false,
+        string $finalizedAt = '2026-11-20 23:00:30',
+        string $rulesVersion = 'v1',
+    ): DayResult {
+        return new DayResult($dailyLimit, $xp, $events, $freezeUsed, self::time($finalizedAt), $rulesVersion);
+    }
+
+    /**
+     * The progress of user $userNumber. Without anything else: nothing earned yet, the first day to
+     * finalize is the 17th, due 48 hours after it ended in Berlin, the first weekly baseline on the
+     * Monday after next.
+     *
+     * @param array{int, int, int, int, int}|null $streaks Check-in current and longest, under-limit
+     *                                                     current and longest, freezes held.
+     */
+    public static function progress(
+        int $userNumber = 1,
+        ?array $streaks = null,
+        int $totalXp = 0,
+        int $level = 0,
+        string $nextDay = '2026-11-17',
+        string $finalizeDueAt = '2026-11-19 23:00:00',
+        string $baselineDueAt = '2026-11-29 23:00:00',
+    ): ProgressRecord {
+        return new ProgressRecord(
+            self::userId($userNumber),
+            new UserProgress($streaks === null ? StreakState::initial() : new StreakState(...$streaks), $totalXp),
+            $level,
+            self::date($nextDay),
+            self::time($finalizeDueAt),
+            self::time($baselineDueAt),
+        );
+    }
+
+    /** An entry of the XP ledger of user $userNumber with the id uuid($number). */
+    public static function xpEvent(
+        int $number,
+        int $userNumber = 1,
+        string $date = '2026-11-17',
+        XpSource $source = XpSource::CheckIn,
+        int $amount = 10,
+        ?int $detail = null,
+        string $createdAt = '2026-11-20 23:00:30',
+    ): XpEvent {
+        return new XpEvent(self::uuid($number), self::userId($userNumber), self::date($date), $source, $amount, $detail, self::time($createdAt));
+    }
+
+    /** What the plan of user $userNumber says from that day on. Without a goal: reduce to 5. */
+    public static function planTerms(
+        int $userNumber,
+        string $validFrom,
+        ?Goal $goal = null,
+        TaperSpeed $taperSpeed = TaperSpeed::Normal,
+        string $rulesVersion = 'v1',
+    ): PlanTerms {
+        return new PlanTerms(self::userId($userNumber), self::date($validFrom), $goal ?? Goal::reduceTo(5), $taperSpeed, $rulesVersion);
+    }
+
+    public static function zoneChange(string $validFrom, string $zone = 'Europe/Berlin'): ZoneChange
+    {
+        return new ZoneChange(self::date($validFrom), TimeZone::fromInput($zone));
     }
 }
