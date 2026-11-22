@@ -65,7 +65,7 @@ logging honestly.
 - iOS: 17+ (iPhone). Android: 8.0+ (API 26).
 
 ### 2.4 Constraints
-- C-1: No persistent server processes (no WebSockets, no queue workers). Background work runs only through cron.
+- C-1: No persistent server processes (no WebSockets, no queue workers). Background work runs only through cron, and a web request cannot keep working after it has answered (verified on the server), so mail is queued and sent by cron.
 - C-2: Deployment happens only via SFTP plus limited SSH.
 - C-3: Health-related personal data falls under GDPR Art. 9. Explicit consent and EU hosting are required.
 - C-4: Built test-first (TDD). Each requirement is covered by automated tests where technically feasible.
@@ -84,14 +84,14 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.1 Account & onboarding (ACC)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-ACC-01 | M | Users register with email, password (≥ 10 chars), display name, preset avatar, language and time zone. |
-| FR-ACC-02 | M | Registration requires (a) confirming age 18+, (b) explicit GDPR Art. 9 consent to processing smoking data, and (c) accepting the privacy policy. Each consent is stored with a timestamp and version. |
-| FR-ACC-03 | M | The email must be verified via a link before the user can join competitions. |
-| FR-ACC-04 | M | Login with email + password. Sessions persist across app restarts. Logout works per device. |
-| FR-ACC-05 | M | Password reset via an emailed one-time link (valid 1 h). |
+| FR-ACC-01 | M | Users register with email, password (≥ 10 chars), display name, preset avatar, language and time zone. Registration **always** answers "check your inbox", whether or not the email already has an account, so nobody can find out who is registered. A new email gets a confirmation link. An email that already has an account gets a mail saying so, with a pointer to login and password reset. These mails, like all account mails, are sent by a background job and normally arrive within one or two minutes; the request itself never sends mail. |
+| FR-ACC-02 | M | Registration requires (a) confirming age 18+, (b) explicit GDPR Art. 9 consent to processing smoking data, and (c) accepting the privacy policy. The app sends, for each consent, that it was accepted and the version of the text it showed. The server accepts it only when that is the version in force (otherwise the app must update) and stores that version with a timestamp. The apps can ask the server which versions are in force. |
+| FR-ACC-03 | M | The email must be confirmed via the link (valid 24 h) **together with the password chosen at sign-up, before the account can be used**. Confirming logs the user in. A valid link with a wrong password confirms nothing and reveals nothing about the registration; the fifth wrong password makes the link useless. Until the confirmation a login is answered exactly like a wrong password, so the answer does not tell who is registered. A login with the right password mails a fresh confirmation link, and the apps offer "resend confirmation link" next to every login error. A registration that is not confirmed within 24 h of its newest link can no longer be confirmed and is deleted. A confirmation mail that cannot be delivered is tried again for as long as its link is valid and then dropped. |
+| FR-ACC-04 | M | Login with email + password. Sessions persist across app restarts. Logout works per device. A wrong email, a wrong password and a registration that is not confirmed yet give the same answer. |
+| FR-ACC-05 | M | Password reset via an emailed one-time link (valid 1 h). The request always answers the same way, whether or not the email has an account. A successful reset signs the user out on all devices at once: every session and every access token issued before stops working immediately. A reset mail that cannot be delivered within the hour is dropped. |
 | FR-ACC-06 | M | Onboarding collects the starting baseline (sessions/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0), the taper speed (gentle / normal / fast) and the usual product type. A reduce target must be **below the current baseline**, at onboarding and when the goal is changed later. |
-| FR-ACC-07 | M | The user can export all of their data as JSON (GDPR Art. 15/20). |
-| FR-ACC-08 | M | The user can delete their account. Personal data is removed within 30 days. Active duels end as forfeits. |
+| FR-ACC-07 | M | The user can export all of their data as JSON (GDPR Art. 15/20), including the account mails that are still waiting to be sent (kind, time and failed tries). |
+| FR-ACC-08 | M | The user can delete their account after re-entering the password. All personal data is removed **immediately** (well inside the 30 days GDPR allows) and all sessions end. Active duels end as forfeits. |
 | FR-ACC-09 | S | The user can change display name, avatar, language, time zone, reminder time and notification preferences. |
 
 ### 3.2 Logging & check-in (LOG)
@@ -172,7 +172,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.9 Localisation (I18N)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-I18N-01 | M | All UI text, emails and push texts exist in German and English. The language is chosen per user. |
+| FR-I18N-01 | M | All UI text, emails and push texts exist in German and English. The language is chosen per user. API validation errors carry a stable code per field, which the apps translate; the English message next to it is for developers only. |
 | FR-I18N-02 | M | Dates and numbers are formatted per locale. All day logic uses the user's time zone. |
 
 ---
@@ -185,8 +185,8 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | NFR-02 | Performance | App cold start to an interactive "+1" button in < 2 s on a mid-range device. |
 | NFR-03 | Reliability | Zero log loss: every log confirmed locally is eventually stored on the server, or the user is told why not (FR-LOG-07). |
 | NFR-04 | Correctness | Scoring is deterministic: recomputing from the stored logs with the same rule version gives identical results. |
-| NFR-05 | Security | HTTPS only (HSTS). Passwords hashed with Argon2id (bcrypt as fallback). Login is rate-limited (5 attempts / 15 min / account + IP). OWASP ASVS L1. |
-| NFR-06 | Security | Tokens stored in the Keychain (iOS), EncryptedSharedPreferences/DataStore (Android) and an httpOnly SameSite=Strict cookie (web refresh token). |
+| NFR-05 | Security | HTTPS only (HSTS). Passwords hashed with Argon2id (no fallback to a weaker hash). Failed password checks (login, account deletion) are rate-limited so that the limit locks **the client that guesses, not the account**: 5 per 15 minutes per pair of email address and client address, 30 per 15 minutes per client address, and 50 per hour per email address over all clients (a successful password reset clears this last count). Registration, resend and reset request together are limited to 5 per hour per client and 3 per hour per pair of email address and client; an address is mailed at most 10 times per hour by them, above which the answer stays the same and nothing is mailed or stored. No web request talks to the mail server, so neither the response time nor an error reveals whether a mail was sent. Target: OWASP ASVS L1, checked against a written checklist with the accepted deviations before the pilot (build step 11). |
+| NFR-06 | Security | Tokens stored in the Keychain (iOS), EncryptedSharedPreferences/DataStore (Android) and an httpOnly SameSite=Strict cookie (web refresh token). The access token is valid 15 minutes. The refresh token changes on every use and is valid 60 days from the last refresh; presenting a replaced refresh token ends that session (after the 10 seconds of tolerance for two tabs or a lost answer). A user has at most 20 sessions. |
 | NFR-07 | Privacy | Data minimisation: no location, no contacts access, no analytics SDKs and no third-party trackers in v1. |
 | NFR-08 | Privacy | All personal data is stored in the EU (IONOS DE). Push providers receive only device tokens and non-health text. |
 | NFR-09 | Accessibility | WCAG 2.1 AA (web). VoiceOver/TalkBack labels, Dynamic Type/font scaling and reduced-motion support (celebrations simplified). |
@@ -220,7 +220,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ---
 
 ## 7. What success looks like (proposed — confirm)
-1. A new user can sign up, finish onboarding and log their first session in **< 2 minutes**.
+1. A new user can sign up, confirm their email, finish onboarding and log their first session in **< 3 minutes** of their own time (the confirmation mail can take one or two minutes to arrive on top of that).
 2. Logging takes **≤ 2 taps** from app open, online or offline.
 3. Two test users can run a 1-week duel end to end on staging, and the result matches a hand calculation.
 4. 100 % of the scoring/streak/XP rules in this SRS have passing tests that reference their FR IDs.
@@ -240,6 +240,14 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | OQ-6 | ~~Timeline / team size~~ | **Decided:** two-person team (owner + Claude Code), no fixed deadline. The HLD build plan is ordered by steps, not dates |
 | OQ-8 | League ranking: how are ties ranked, and do the duel tie-breakers apply? | Decide in build step 5. Default: same tie-breakers as duels (FR-COMP-03), then a shared rank |
 | OQ-9 | Upper bound for sessions logged per day (the scoring code needs one) | Decide in build step 4. Default: at most 50 per log entry and 300 per day |
+| OQ-10 | ~~A pending registration can be taken over by registering the same address again~~ | **Decided:** the confirmation page asks for the password of the sign-up and logs the user in. Five wrong passwords make the link useless (FR-ACC-03) |
+| OQ-11 | ~~Login lockout: a stranger's wrong guesses lock the owner out~~ | **Decided:** lock the client that guesses, not the account (NFR-05). Remaining weakness: OQ-15 |
+| OQ-12 | ~~Session refresh has no tolerance for two tabs or a lost answer~~ | **Decided:** for 10 seconds after a refresh, the replaced token is answered with the same new token |
+| OQ-13 | ~~Which consent version is recorded?~~ How do existing users consent again when a text changes? | **Decided:** the app sends the version it showed and the server refuses any other (FR-ACC-02). Still open: asking existing users again after a text change. Decide with the legal pages (step 11) |
+| OQ-14 | Password hardening beyond length: check against a list of common passwords, and mail the user after a password reset | Decide with the ASVS checklist (step 11). Default: both |
+| OQ-15 | A "client" is an IPv4 address or an IPv6 /64 network. The limits per email address over all clients can be reached by a few clients: 3 client addresses reach the 50 failed logins per hour, and 10 lock the owner out of login and account deletion for the whole hour. 4 client addresses use up the 10 account mails per hour, so the owner's reset mail is left out for the rest of that hour | Accept for the pilot. Revisit with the ASVS checklist (step 11). Options: raise the per-address limits, count only clients that never logged in successfully, or exempt account deletion from the per-address rule |
+| OQ-16 | Requests about a known and an unknown email address do different amounts of database work (resend, reset request, registration, login of an unconfirmed registration), so their response times can differ by a few milliseconds. Each probe of a known address also mails its owner, and an address can be probed at most 10 times per hour | Accept for the pilot. Revisit with the ASVS checklist (step 11). Option: do the same writes for an unknown address |
+| OQ-17 | Somebody who knows an address with an unconfirmed registration can register it again (at most 10 times per hour). Each time the owner's confirmation link stops working until the owner registers again, and the 24 hours of the unconfirmed registration start again | Accept for the pilot: it follows from "the newest registration wins" (OQ-10), nobody gets into an account, and the mail limits bound it. Revisit with the ASVS checklist (step 11) |
 | OQ-7 | Are XP values and taper steps (Appendix A) right? | Use the defaults and tune after the pilot (they are config, not code) |
 
 ---
