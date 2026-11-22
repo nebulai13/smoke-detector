@@ -242,7 +242,9 @@ final class ErrorHandlerTest extends TestCase
             $this->handle($exception, displayErrorDetails: false);
         }
 
-        self::assertStringContainsString('LEAK', $exception->getTraceAsString(), 'The test needs an argument in the trace.');
+        // The trace as PHP keeps it, not as text: how much of a text argument the text form shows
+        // depends on a php.ini setting (zend.exception_string_param_max_length).
+        self::assertSame(['LEAK-password-argument'], $exception->getTrace()[0]['args'] ?? null, 'The test needs an argument in the trace.');
         self::assertCount(1, $this->logger->records);
         $trace = $this->logger->records[0]['context']['trace'] ?? null;
         self::assertIsArray($trace);
