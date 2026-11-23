@@ -123,6 +123,7 @@ final readonly class UserDataFixture
         $this->insert('xp_events', [$id(10), $user, '2026-11-10', 'check_in', 10, null, '2026-11-12 23:00:20']);
         $this->insert('xp_events', [$id(11), $user, '2026-11-10', 'streak_milestone', 50, 7, '2026-11-12 23:00:20']);
         $this->fillLeagueResults($user);
+        $this->fillBadges($user);
     }
 
     /**
@@ -132,6 +133,15 @@ final readonly class UserDataFixture
     {
         $this->insert('league_results', [$user, 'week', '2026-W45', 120, 630, 840, 1, 6, 7, 'v1', '2026-11-10 23:00:20', '2026-11-10 23:00:20', 2, 4, 100, '2026-11-11 23:01:05']);
         $this->insert('league_results', [$user, 'month', '2026-10', 95, 28500, 29450, 0, 30, 31, 'v1', '2026-11-02 23:00:20', '2026-11-02 23:15:20', null, null, null, null]);
+    }
+
+    /**
+     * The badges of step 6, stored in another order than the badge cases have.
+     */
+    private function fillBadges(string $user): void
+    {
+        $this->insert('user_badges', [$user, 'check_in_streak_7', '2026-11-12 23:00:20']);
+        $this->insert('user_badges', [$user, 'first_check_in', '2026-11-04 23:00:20']);
     }
 
     /**
