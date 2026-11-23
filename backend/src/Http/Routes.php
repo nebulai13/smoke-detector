@@ -15,6 +15,17 @@ use SmokeDetector\Http\Action\Auth\RegisterAction;
 use SmokeDetector\Http\Action\Auth\RequestPasswordResetAction;
 use SmokeDetector\Http\Action\Auth\ResendVerificationAction;
 use SmokeDetector\Http\Action\Auth\VerifyEmailAction;
+use SmokeDetector\Http\Action\Friends\AcceptFriendRequestAction;
+use SmokeDetector\Http\Action\Friends\BlockUserAction;
+use SmokeDetector\Http\Action\Friends\DeclineFriendRequestAction;
+use SmokeDetector\Http\Action\Friends\ListBlockedUsersAction;
+use SmokeDetector\Http\Action\Friends\ListFriendsAction;
+use SmokeDetector\Http\Action\Friends\RemoveFriendAction;
+use SmokeDetector\Http\Action\Friends\RenewInviteAction;
+use SmokeDetector\Http\Action\Friends\SendFriendRequestAction;
+use SmokeDetector\Http\Action\Friends\ShowInviteAction;
+use SmokeDetector\Http\Action\Friends\UnblockUserAction;
+use SmokeDetector\Http\Action\Friends\WithdrawFriendRequestAction;
 use SmokeDetector\Http\Action\HealthAction;
 use SmokeDetector\Http\Action\Legal\ShowConsentVersionsAction;
 use SmokeDetector\Http\Action\Logging\CheckInAction;
@@ -104,5 +115,18 @@ final readonly class Routes
         $routes->post('/logs/sync', SyncLogsAction::class);
         $routes->get('/days', ListDaysAction::class);
         $routes->post('/days/{date}/check-in', CheckInAction::class);
+
+        // Friends (HLD §4.7). The other user's id is in the body, never in the path.
+        $routes->get('/me/invite', ShowInviteAction::class);
+        $routes->post('/me/invite', RenewInviteAction::class);
+        $routes->get('/friends', ListFriendsAction::class);
+        $routes->post('/friends/requests', SendFriendRequestAction::class);
+        $routes->post('/friends/requests/accept', AcceptFriendRequestAction::class);
+        $routes->post('/friends/requests/decline', DeclineFriendRequestAction::class);
+        $routes->post('/friends/requests/withdraw', WithdrawFriendRequestAction::class);
+        $routes->post('/friends/remove', RemoveFriendAction::class);
+        $routes->post('/friends/block', BlockUserAction::class);
+        $routes->post('/friends/unblock', UnblockUserAction::class);
+        $routes->get('/friends/blocked', ListBlockedUsersAction::class);
     }
 }

@@ -23,6 +23,10 @@ use SmokeDetector\Application\Auth\TokenGenerator;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Friends\Blocks;
+use SmokeDetector\Application\Friends\FriendLinks;
+use SmokeDetector\Application\Friends\InviteCodeGenerator;
+use SmokeDetector\Application\Friends\InviteCodes;
 use SmokeDetector\Application\Health\CheckHealth;
 use SmokeDetector\Application\Health\CronHeartbeat;
 use SmokeDetector\Application\Health\DatabaseProbe;
@@ -52,6 +56,7 @@ use SmokeDetector\Console\FinalizeDaysCommand;
 use SmokeDetector\Console\MailSendCommand;
 use SmokeDetector\Console\MigrateCommand;
 use SmokeDetector\Console\PurgeCommand;
+use SmokeDetector\Http\Friends\FriendsResponder;
 use SmokeDetector\Infrastructure\Auth\Argon2idPasswordHasher;
 use SmokeDetector\Infrastructure\Auth\HmacRefreshSecrets;
 use SmokeDetector\Infrastructure\Auth\JwtAccessTokens;
@@ -64,6 +69,7 @@ use SmokeDetector\Infrastructure\Database\LazyPdoDatabase;
 use SmokeDetector\Infrastructure\Database\PdoConnectionFactory;
 use SmokeDetector\Infrastructure\Database\PdoDatabaseProbe;
 use SmokeDetector\Infrastructure\Database\PdoTransactionRunner;
+use SmokeDetector\Infrastructure\Friends\RandomInviteCodes;
 use SmokeDetector\Infrastructure\Log\StreamLogger;
 use SmokeDetector\Infrastructure\Health\FileCronHeartbeat;
 use SmokeDetector\Infrastructure\Mail\FileMailTemplates;
@@ -75,8 +81,11 @@ use SmokeDetector\Infrastructure\Migration\PhinxMigrator;
 use SmokeDetector\Infrastructure\Privacy\UserDataTables;
 use SmokeDetector\Infrastructure\RateLimit\HmacRateLimitKeyHasher;
 use SmokeDetector\Infrastructure\Repository\PdoBaselineHistory;
+use SmokeDetector\Infrastructure\Repository\PdoBlocks;
 use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
 use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
+use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
+use SmokeDetector\Infrastructure\Repository\PdoInviteCodes;
 use SmokeDetector\Infrastructure\Repository\PdoMailOutbox;
 use SmokeDetector\Infrastructure\Repository\PdoOneTimeTokenRepository;
 use SmokeDetector\Infrastructure\Repository\PdoPlanHistory;
@@ -194,6 +203,14 @@ final readonly class ContainerFactory
             DayRecords::class => autowire(PdoDayRecords::class),
             ProgressRecords::class => autowire(PdoProgressRecords::class),
             XpLedger::class => autowire(PdoXpLedger::class),
+
+            // Friends (HLD §4.7)
+            InviteCodes::class => autowire(PdoInviteCodes::class),
+            InviteCodeGenerator::class => autowire(RandomInviteCodes::class),
+            FriendLinks::class => autowire(PdoFriendLinks::class),
+            Blocks::class => autowire(PdoBlocks::class),
+            // The invite link is the address of the web app with the code behind a "#".
+            FriendsResponder::class => autowire()->constructorParameter('appUrl', $settings->appUrl),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),

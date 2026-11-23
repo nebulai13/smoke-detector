@@ -12,6 +12,13 @@ use Slim\Exception\HttpMethodNotAllowedException;
 use Slim\Interfaces\ErrorHandlerInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Day\DayNotOpen;
+use SmokeDetector\Application\Friends\AlreadyFriends;
+use SmokeDetector\Application\Friends\BlockNotFound;
+use SmokeDetector\Application\Friends\FriendLimitReached;
+use SmokeDetector\Application\Friends\FriendNotFound;
+use SmokeDetector\Application\Friends\FriendRequestNotFound;
+use SmokeDetector\Application\Friends\InviteNotFound;
+use SmokeDetector\Application\Friends\OwnInvite;
 use SmokeDetector\Application\Logging\Rejection;
 use SmokeDetector\Application\Plan\PlanRequired;
 use SmokeDetector\Application\RateLimit\RateLimitExceeded;
@@ -37,6 +44,8 @@ use Throwable;
  *   its token is worth nothing any more.
  * - PlanRequired: 409 plan_required. The onboarding is not done yet.
  * - DayNotOpen: 409 day_finalized, day_in_future or day_before_start, by its reason.
+ * - The refusals of the friends operations: 404 invite_not_found, friend_request_not_found,
+ *   friend_not_found and block_not_found; 409 own_invite, already_friends and friend_limit_reached.
  * - The framework's "no such route" and "wrong method": 404 and 405.
  * - Anything else is a bug or an outage: 500 internal_error, logged, and described in the response
  *   only outside production.
@@ -103,6 +112,10 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
                 return $problem;
             }
         }
+        $friends = self::friendsProblem($exception);
+        if ($friends !== null) {
+            return $friends;
+        }
         if ($exception instanceof HttpMethodNotAllowedException) {
             return Problem::methodNotAllowed(array_values(array_map(strval(...), $exception->getAllowedMethods())));
         }
@@ -132,6 +145,23 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
             basename($exception->getFile()),
             $exception->getLine(),
         ));
+    }
+
+    /**
+     * The refusals of the friends operations (HLD §4.7), or null for any other exception.
+     */
+    private static function friendsProblem(Throwable $exception): ?Problem
+    {
+        return match (true) {
+            $exception instanceof InviteNotFound => Problem::inviteNotFound(),
+            $exception instanceof OwnInvite => Problem::ownInvite(),
+            $exception instanceof AlreadyFriends => Problem::alreadyFriends(),
+            $exception instanceof FriendLimitReached => Problem::friendLimitReached(),
+            $exception instanceof FriendRequestNotFound => Problem::friendRequestNotFound(),
+            $exception instanceof FriendNotFound => Problem::friendNotFound(),
+            $exception instanceof BlockNotFound => Problem::blockNotFound(),
+            default => null,
+        };
     }
 
     private function log(ServerRequestInterface $request, Throwable $exception): void
