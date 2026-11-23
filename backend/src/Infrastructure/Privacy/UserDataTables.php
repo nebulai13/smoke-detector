@@ -39,7 +39,13 @@ final readonly class UserDataTables
         return new UserDataRegistry([
             new UserDataTable('consents', 'consents', new ConsentsExporter($this->sql), new RowsOfUser($this->sql, 'consents')),
             new UserDataTable('plans', 'plan', new PlanExporter($this->sql), new RowsOfUser($this->sql, 'plans')),
+            new UserDataTable('plan_history', 'planHistory', new PlanHistoryExporter($this->sql), new RowsOfUser($this->sql, 'plan_history')),
             new UserDataTable('baseline_history', 'baselineHistory', new BaselineHistoryExporter($this->sql), new RowsOfUser($this->sql, 'baseline_history')),
+            new UserDataTable('timezone_history', 'timeZoneHistory', new TimeZoneHistoryExporter($this->sql), new RowsOfUser($this->sql, 'timezone_history')),
+            new UserDataTable('smoke_logs', 'smokeLogs', new SmokeLogsExporter($this->sql), new RowsOfUser($this->sql, 'smoke_logs')),
+            new UserDataTable('day_summaries', 'days', new DaysExporter($this->sql), new RowsOfUser($this->sql, 'day_summaries')),
+            new UserDataTable('user_progress', 'progress', new ProgressExporter($this->sql), new RowsOfUser($this->sql, 'user_progress')),
+            new UserDataTable('xp_events', 'xpEvents', new XpEventsExporter($this->sql), new RowsOfUser($this->sql, 'xp_events')),
             new UserDataTable('refresh_tokens', 'sessions', new SessionsExporter($this->sql), new RowsOfUser($this->sql, 'refresh_tokens')),
             new UserDataTable('one_time_tokens', 'mailLinks', new MailLinksExporter($this->sql), new RowsOfUser($this->sql, 'one_time_tokens')),
             new UserDataTable('mail_outbox', 'queuedMails', new QueuedMailsExporter($this->sql), new RowsOfUser($this->sql, 'mail_outbox')),

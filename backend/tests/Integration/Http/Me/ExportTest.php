@@ -28,7 +28,10 @@ final class ExportTest extends HttpTestCase
         self::assertSame('application/json', $response->header('Content-Type'));
         $export = $response->json();
         self::assertSame(
-            ['formatVersion', 'exportedAt', 'profile', 'consents', 'plan', 'baselineHistory', 'sessions', 'mailLinks', 'queuedMails'],
+            [
+                'formatVersion', 'exportedAt', 'profile', 'consents', 'plan', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days',
+                'progress', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails',
+            ],
             array_keys($export),
         );
         self::assertSame(1, $export['formatVersion']);
@@ -52,7 +55,11 @@ final class ExportTest extends HttpTestCase
             ['goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'defaultProduct' => 'rolled', 'startDate' => '2026-11-02', 'rulesVersion' => 'v1'],
             $export['plan'],
         );
-        foreach (['consents' => 3, 'baselineHistory' => 3, 'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2] as $member => $entries) {
+        $lists = [
+            'consents' => 3, 'planHistory' => 2, 'baselineHistory' => 3, 'timeZoneHistory' => 2, 'smokeLogs' => 2, 'days' => 2, 'xpEvents' => 2,
+            'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2,
+        ];
+        foreach ($lists as $member => $entries) {
             self::assertIsArray($export[$member]);
             self::assertCount($entries, $export[$member], $member);
         }
@@ -165,8 +172,12 @@ final class ExportTest extends HttpTestCase
 
         $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
 
-        self::assertSame(['formatVersion', 'exportedAt', 'profile', 'consents', 'baselineHistory', 'sessions', 'mailLinks', 'queuedMails'], array_keys($export));
-        self::assertSame([[], [], [], [], []], [$export['consents'], $export['baselineHistory'], $export['sessions'], $export['mailLinks'], $export['queuedMails']]);
+        $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails'];
+        // No plan and no progress before the onboarding.
+        self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists], array_keys($export));
+        foreach ($lists as $member) {
+            self::assertSame([], $export[$member], $member);
+        }
     }
 
     public function test_FR_ACC_07_the_export_holds_the_data_of_the_user_of_the_token_and_of_nobody_else(): void

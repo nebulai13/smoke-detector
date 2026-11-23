@@ -156,7 +156,11 @@ final class AuthSchemaTest extends IntegrationTestCase
             'tbl' => $table, 'col' => 'user_id', 'parent' => 'users', 'parent_col' => 'id', 'on_delete' => 'CASCADE',
         ];
         self::assertSame(
-            [$row('baseline_history'), $row('consents'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'), $row('refresh_tokens')],
+            [
+                $row('baseline_history'), $row('consents'), $row('day_summaries'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
+                // The database sorts "s" before "_".
+                $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_progress'), $row('xp_events'),
+            ],
             $references,
         );
     }

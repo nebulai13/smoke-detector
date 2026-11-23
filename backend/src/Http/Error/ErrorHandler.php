@@ -11,6 +11,9 @@ use Slim\Exception\HttpException;
 use Slim\Exception\HttpMethodNotAllowedException;
 use Slim\Interfaces\ErrorHandlerInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
+use SmokeDetector\Application\Day\DayNotOpen;
+use SmokeDetector\Application\Logging\Rejection;
+use SmokeDetector\Application\Plan\PlanRequired;
 use SmokeDetector\Application\RateLimit\RateLimitExceeded;
 use SmokeDetector\Application\TemporarilyUnavailable;
 use SmokeDetector\Application\Validation\ValidationFailed;
@@ -32,6 +35,8 @@ use Throwable;
  *   server. An outage, not a bug: the client repeats the request later. Logged, like every 5xx.
  * - AccountNotFound: 401 unauthorized. The account was deleted after the request was let in, so
  *   its token is worth nothing any more.
+ * - PlanRequired: 409 plan_required. The onboarding is not done yet.
+ * - DayNotOpen: 409 day_finalized, day_in_future or day_before_start, by its reason.
  * - The framework's "no such route" and "wrong method": 404 and 405.
  * - Anything else is a bug or an outage: 500 internal_error, logged, and described in the response
  *   only outside production.
@@ -82,6 +87,21 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
         }
         if ($exception instanceof AccountNotFound) {
             return Problem::unauthorized();
+        }
+        if ($exception instanceof PlanRequired) {
+            return Problem::planRequired();
+        }
+        if ($exception instanceof DayNotOpen) {
+            // The other reasons belong to logs, not to days: one here would be a bug, answered as 500.
+            $problem = match ($exception->reason) {
+                Rejection::DayFinalized => Problem::dayFinalized(),
+                Rejection::InFuture => Problem::dayInFuture(),
+                Rejection::BeforeStart => Problem::dayBeforeStart(),
+                default => null,
+            };
+            if ($problem !== null) {
+                return $problem;
+            }
         }
         if ($exception instanceof HttpMethodNotAllowedException) {
             return Problem::methodNotAllowed(array_values(array_map(strval(...), $exception->getAllowedMethods())));

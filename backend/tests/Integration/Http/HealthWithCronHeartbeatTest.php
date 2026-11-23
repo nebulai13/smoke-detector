@@ -80,6 +80,7 @@ final class HealthWithCronHeartbeatTest extends HttpTestCase
         self::assertSame(0, $exitCode);
         self::assertSame(
             ['mail:send: Sent 1 mail, kept 0 mails for another try, gave up 0 mails. | '
+                . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
                 . 'housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.'],
             $output->lines,
         );
@@ -104,10 +105,43 @@ final class HealthWithCronHeartbeatTest extends HttpTestCase
         self::assertSame(1, $exitCode);
         // The cleanup ran all the same.
         self::assertStringStartsWith(
-            'mail:send: FAILED (SmokeDetector\\Application\\Validation\\InvalidValue) | housekeeping:purge: Deleted 0 ',
+            'mail:send: FAILED (SmokeDetector\\Application\\Validation\\InvalidValue) | '
+            . 'days:finalize: Finalized 0 days, calculated 0 baselines. | housekeeping:purge: Deleted 0 ',
             $output->lines[0] ?? '',
         );
         self::assertSame('2026-11-17T12:00:00+00:00', $this->call('GET', '/health')->json()['cronLastRunAt'] ?? null);
+    }
+
+    public function test_a_user_whose_days_cannot_be_finalized_fails_the_cron_run_and_the_other_steps_still_run(): void
+    {
+        $this->cronRun();
+        $this->clock()->advanceSeconds(60);
+        // Damaged data: progress that is due, of a user who has no plan.
+        $anna = $this->givenUser();
+        $this->sql()->execute(
+            "INSERT INTO user_progress VALUES (?, 0, 0, 0, 0, 0, 0, 0, '2026-11-10', '2026-11-12 23:00:00', '2026-11-22 23:00:00')",
+            [$anna->id->value],
+        );
+
+        [$exitCode, $output] = $this->cronRun();
+
+        self::assertSame(1, $exitCode);
+        // Counts only, and the cleanup ran all the same.
+        self::assertStringStartsWith(
+            'mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
+            . 'days:finalize: FAILED (Finalized 0 days, calculated 0 baselines. Could not finalize the days of 1 user: see the log.) | '
+            . 'housekeeping:purge: Deleted 0 ',
+            $output->lines[0] ?? '',
+        );
+        // No heartbeat for this run: GET /health shows that the cron job needs a look.
+        self::assertSame('2026-11-17T12:00:00+00:00', $this->call('GET', '/health')->json()['cronLastRunAt'] ?? null);
+        // The log names the kind of failure and nobody.
+        $logged = array_values(array_filter($this->logs()->records, static fn (array $record): bool => $record['level'] === 'error'));
+        self::assertSame(
+            [['level' => 'error', 'message' => 'The days of a user could not be finalized.', 'context' => ['exception' => \LogicException::class]]],
+            $logged,
+        );
+        self::assertStringNotContainsString($anna->id->value, $this->logs()->text());
     }
 
     /**

@@ -6,7 +6,9 @@ namespace SmokeDetector\Tests\Unit\Application\Account;
 
 use LogicException;
 use SmokeDetector\Application\Account\AccountNotFound;
+use SmokeDetector\Application\Plan\Plan;
 use SmokeDetector\Application\Plan\ProductType;
+use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Domain\Rules\RuleSet;
@@ -115,7 +117,7 @@ final class ShowAccountTest extends AccountUseCaseTestCase
     public function test_a_plan_without_any_baseline_is_a_broken_state_and_not_a_limit_of_zero(): void
     {
         $user = $this->givenUser();
-        $this->plans->save(TestData::plan((int) substr($user->id->value, -12)));
+        $this->givenPlanWithoutBaseline($user, new Plan($user->id, Goal::reduceTo(5), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-10'), 'v1'));
 
         $this->expectException(LogicException::class);
         $this->expectExceptionMessage('A plan exists without a baseline history.');

@@ -8,6 +8,7 @@ use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SmokeDetector\Application\Account\Consent;
 use SmokeDetector\Application\Account\ConsentType;
+use SmokeDetector\Application\Auth\InvalidCredentials;
 use SmokeDetector\Application\Auth\InvalidToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
 use SmokeDetector\Application\TemporarilyUnavailable;
@@ -390,6 +391,110 @@ final class LockingTest extends IntegrationTestCase
         // And they left one account at most, with one confirmation or reset link at most per purpose.
         self::assertLessThanOrEqual(1, $this->sql()->value('SELECT COUNT(*) FROM users'));
         self::assertLessThanOrEqual(1, $this->sql()->value('SELECT MAX(links) FROM (SELECT COUNT(*) AS links FROM one_time_tokens GROUP BY purpose) AS per_purpose') ?? 0);
+    }
+
+    public function test_FR_ACC_04_three_logins_to_one_account_at_the_same_moment_all_get_a_session(): void
+    {
+        // Three devices of one user logging in at once, as three real processes. Login is the one
+        // use case that reads the sessions of the account inside its transaction.
+        $this->givenAnAccountWithTokens(false);
+        $email = $this->emailOfTheAccount();
+
+        $processes = [$this->start('login', $email), $this->start('login', $email), $this->start('login', $email)];
+
+        self::assertSame(['ok', 'ok', 'ok'], array_map($this->outputOf(...), $processes));
+        // The session the account had, and three new ones.
+        self::assertSame(4, $this->sql()->value('SELECT COUNT(*) FROM refresh_tokens'));
+        // Every attempt was counted before its password was checked and taken back afterwards:
+        // nothing is held against the client or the address.
+        self::assertSame([], $this->sql()->column('SELECT hits FROM rate_limits WHERE hits <> 0'));
+    }
+
+    public function test_FR_ACC_08_logins_that_race_the_deletion_of_the_account_get_a_session_or_invalid_credentials_and_never_an_error(): void
+    {
+        $this->givenAnAccountWithTokens(false);
+        $email = $this->emailOfTheAccount();
+
+        $processes = [
+            $this->start('login', $email),
+            $this->start('delete-account', TestData::userId(1)->value),
+            $this->start('login', $email),
+            $this->start('login', $email),
+        ];
+        $outputs = array_map($this->outputOf(...), $processes);
+
+        // The owner's deletion goes through whatever the logins do.
+        self::assertSame('ok', $outputs[1]);
+        // A login that came first got its session (which then went with the account); one that
+        // came later is told what every unknown address is told. Nothing else: no error class.
+        foreach ([0, 2, 3] as $login) {
+            self::assertContains($outputs[$login], ['ok', InvalidCredentials::class]);
+        }
+        // Whatever the order was, nothing of the account is left.
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM users'));
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM refresh_tokens'));
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM one_time_tokens'));
+    }
+
+    public function test_NFR_04_three_cron_runs_at_the_same_moment_finalize_every_day_exactly_once(): void
+    {
+        // Three runs of days:finalize as three real processes, for a user with five days that are due.
+        $this->givenAUserWithOpenDays();
+
+        $processes = [$this->start('finalize-days', '-'), $this->start('finalize-days', '-'), $this->start('finalize-days', '-')];
+
+        self::assertSame(['ok', 'ok', 'ok'], array_map($this->outputOf(...), $processes));
+        // The 10th to the 14th, each once, each checked in without a log: 70 XP a day.
+        self::assertSame(
+            [['2026-11-10', 70], ['2026-11-11', 70], ['2026-11-12', 70], ['2026-11-13', 70], ['2026-11-14', 70]],
+            array_map(array_values(...), $this->sql()->rows('SELECT local_date, xp FROM day_summaries WHERE finalized_at IS NOT NULL ORDER BY local_date')),
+        );
+        self::assertSame(15, $this->sql()->value('SELECT COUNT(*) FROM xp_events'));
+        self::assertSame(
+            [['check_in_current' => 5, 'xp_total' => 350, 'level' => 2, 'next_day' => '2026-11-15']],
+            $this->sql()->rows('SELECT check_in_current, xp_total, level, next_day FROM user_progress'),
+        );
+    }
+
+    public function test_FR_LOG_07_a_log_that_races_the_finalization_of_its_day_is_stored_and_counted_or_refused_and_never_lost(): void
+    {
+        $this->givenAUserWithOpenDays();
+        $log = implode(',', [TestData::userId(1)->value, TestData::uuid(500), '2026-11-14 10:00:00', '4']);
+
+        $processes = [$this->start('finalize-days', '-'), $this->start('sync-log', $log), $this->start('finalize-days', '-')];
+        $outputs = array_map($this->outputOf(...), $processes);
+
+        self::assertSame(['ok', 'ok'], [$outputs[0], $outputs[2]]);
+        self::assertContains($outputs[1], ['accepted', 'day_finalized']);
+        $stored = $this->sql()->value('SELECT COUNT(*) FROM smoke_logs');
+        $finalCount = $this->sql()->value("SELECT `count` FROM day_summaries WHERE local_date = '2026-11-14' AND finalized_at IS NOT NULL");
+        // Either the log came first and is part of the final day, or the day was final and the
+        // app is told so. Never a log that is stored and missing from its final day.
+        self::assertSame($outputs[1] === 'accepted' ? [1, 4] : [0, 0], [$stored, $finalCount]);
+    }
+
+    /**
+     * User 1 in Berlin with a plan since the 10th and every day up to the 14th checked in without a
+     * log. At noon on the 17th (self::NOW) the 10th to the 14th ended more than 48 hours ago.
+     */
+    private function givenAUserWithOpenDays(): void
+    {
+        $userId = TestData::userId(1);
+        (new PdoUserRepository($this->sql()))->add(TestData::user(1, passwordHash: TestAccounts::PASSWORD_HASH, createdAt: self::NOW));
+        $this->sql()->execute("INSERT INTO plans VALUES (?, 'quit', 0, 'normal', 'cigarette', '2026-11-10', 'v1')", [$userId->value]);
+        $this->sql()->execute("INSERT INTO baseline_history VALUES (?, '2026-11-10', 12.0, 'onboarding', NULL, NULL, NULL, NULL, 'v1')", [$userId->value]);
+        $this->sql()->execute("INSERT INTO plan_history VALUES (?, '2026-11-10', 'quit', 0, 'normal', 'v1')", [$userId->value]);
+        $this->sql()->execute("INSERT INTO timezone_history VALUES (?, '2026-11-10', 'Europe/Berlin')", [$userId->value]);
+        $this->sql()->execute(
+            "INSERT INTO user_progress VALUES (?, 0, 0, 0, 0, 0, 0, 0, '2026-11-10', '2026-11-12 23:00:00', '2026-11-22 23:00:00')",
+            [$userId->value],
+        );
+        foreach (['2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14'] as $date) {
+            $this->sql()->execute(
+                'INSERT INTO day_summaries (user_id, local_date, `count`, checked_in_at) VALUES (?, ?, 0, ?)',
+                [$userId->value, $date, "{$date} 21:00:00"],
+            );
+        }
     }
 
     /**

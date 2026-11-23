@@ -184,6 +184,38 @@ final readonly class Problem
     }
 
     /**
+     * The user has not done the onboarding yet: logging, days and dashboard need the plan.
+     */
+    public static function planRequired(): self
+    {
+        return new self('plan_required', 'Plan required', 409, 'Set up the plan first (PUT /me/plan).');
+    }
+
+    /**
+     * The day is final (FR-LOG-07): nothing about it changes any more.
+     */
+    public static function dayFinalized(): self
+    {
+        return new self('day_finalized', 'Day finalized', 409, 'The day is final and cannot be changed any more.');
+    }
+
+    /**
+     * The day has not begun for the user.
+     */
+    public static function dayInFuture(): self
+    {
+        return new self('day_in_future', 'Day in the future', 409, 'The day has not begun yet.');
+    }
+
+    /**
+     * The day is before the first day of the plan.
+     */
+    public static function dayBeforeStart(): self
+    {
+        return new self('day_before_start', 'Day before the start', 409, 'The day is before the first day of the plan.');
+    }
+
+    /**
      * @param string|null $detail Only ever given outside production: it describes the exception.
      */
     public static function internalError(?string $detail = null): self
