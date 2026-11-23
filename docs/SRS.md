@@ -128,15 +128,15 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-GAME-05 | M | Levels come from cumulative XP via a threshold table (Appendix A). |
 | FR-GAME-06 | M | Celebration feedback (animation + positive sound + haptics on mobile) for: log saved (subtle), check-in, under-limit day, smoke-free day, streak extended, level up, badge earned, duel/league won. |
 | FR-GAME-07 | M | Sounds can be muted in settings. Mobile respects the system silent mode. Sound is never the only feedback (accessibility). |
-| FR-GAME-08 | M | Badges are awarded for defined achievements (Appendix B), e.g. first check-in, 7/30/100/365-day streaks, first smoke-free day, first duel won, limit halved. |
-| FR-GAME-09 | M | Health milestones are based on time since the last logged session (Appendix C). The texts are written for smoking. For vape-only users the milestones are shown with a note that the evidence base differs. Each shows its source and a disclaimer. |
+| FR-GAME-08 | M | Badges are awarded for defined achievements (Appendix B), e.g. first check-in, 7/30/100/365-day streaks, first smoke-free day, first duel won, limit halved. A badge is awarded once, when what justifies it is final (a day 48 hours after it ended, a duel when it is decided, a league when the rank is stored), and is never taken back. |
+| FR-GAME-09 | M | Health milestones are based on time since the last logged session (Appendix C). The texts are written for smoking. For vape-only users the milestones are shown with a note that the evidence base differs. Each shows its source and a disclaimer. Without a logged session there is nothing to count from and no milestone is shown. The user chooses what friends see of the milestones: those from two weeks on (the default), none, or all. |
 
 ### 3.5 Friends (FRND)
 | ID | Pri | Requirement |
 |---|---|---|
 | FR-FRND-01 | M | Each user has a personal invite code/link. Opening it sends a friend request, and the other user must accept. The user can replace the code by a new one at any time, and the old one stops working at once. If both users have asked each other, they are friends without a further step. |
 | FR-FRND-02 | M | Users can list, remove and block friends. Somebody with an open friend request can be blocked too. Blocking hides both users from each other everywhere. Only the user who set a block sees it and can lift it, and lifting it does not bring the friendship back. Removing or blocking a friend ends a running duel of the two without a winner and deletes a proposed one. |
-| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period (in whole percent), streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps, counts, limits or the baseline, and nothing precise enough to calculate these. |
+| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period (in whole percent), streaks, level, XP, which badges a friend holds (not when they were earned) and, as far as the friend's own setting allows (FR-GAME-09), health milestones reached. They do **not** see individual log timestamps, counts, limits or the baseline, and nothing precise enough to calculate these. The one exception is a user who chose to show all health milestones: the two short ones (20 minutes, 12 hours) tell friends roughly when the last session was. |
 | FR-FRND-04 | M | Maximum 50 friends per user. A user's own open requests count towards the 50, when sending a request and when accepting one. Requests from others do not count, and the other user's number of friends never decides (it must not be revealed). |
 
 ### 3.6 Competitions (COMP)
@@ -271,8 +271,15 @@ All numbers in this appendix, the taper factors (FR-PLAN-01), the baseline rule 
 
 ## Appendix B — Initial badge set
 First check-in · First smoke-free day · 7/30/100/365-day check-in streak · 7/30-day under-limit streak ·
-Limit halved · Reached quit target · First duel won · 5 duels won · League champion (each period type) ·
+Limit halved · Reached target · First duel won · 5 duels won · League champion (each period type) ·
 Cheerleader (50 reactions sent).
+
+- **Limit halved:** a day that was checked in and kept at or under its limit, when that limit is at most half
+  the limit of the first day of the plan.
+- **Reached target:** a day that was checked in and kept at or under its limit, when the limit has arrived at
+  the target of the plan (0 for "quit"). One good day while the limit is still on its way down is not it.
+- **League champion:** rank 1 among at least three participants, one badge per period type.
+- The streak badges follow the longest streak the user ever had.
 
 ## Appendix C — Health milestones (to be text-reviewed against sources: WHO, CDC)
 | Time since last session | Milestone (summary) |

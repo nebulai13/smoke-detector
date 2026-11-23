@@ -163,7 +163,7 @@ erDiagram
 | `blocks` | blocker_id, blocked_id (primary key together), created_at. A table of its own and not a status of the friendship: a block has a direction, and each of two users can block the other. A CHECK constraint: nobody blocks themselves |
 | `duels` | id, challenger_id, opponent_id (each NULL once that account is deleted), period_days, status (proposed / active / declined / expired / cancelled / completed / forfeited), created_at, expires_at, answered_at, challenger_start, opponent_start (the first day of the duel in each user's own calendar), and what the decision writes, NULL before it: decided_at, winner (challenger / opponent / draw), and per side b0_tenths, actual_tenths, expected_tenths (exact totals), smoke_free_days, check_ins, xp; rules_version. Columns and not JSON, so that the side of a deleted user can be emptied by name |
 | `league_results` | user_id, period_type (week / month / quarter / half_year), period_key (e.g. 2026-W47), primary key together. b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), smoke_free_days, check_ins, counted_days, rules_version, scored_at. For the ranking: check_at (when the cron step looks next), and NULL until ranked: rank, participants, xp, ranked_at |
-| `user_badges` | user_id, badge_key, awarded_at |
+| `user_badges` | user_id, badge_key (the domain's `Badge`), primary key together: a user holds a badge once. awarded_at (UTC): when it was stored, which is when the day, the duel or the rank became final. The first award stays; a row is never changed |
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
@@ -179,7 +179,7 @@ erDiagram
 | Legal | `GET /legal/consents` (public: the versions of the consent texts in force) |
 | Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/export`, `DELETE /me`. `GET /me/baseline-history` comes with the weekly update in step 4 |
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
-| Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
+| Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges`, `GET /me/health-milestones` (§4.10) |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
 | Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
@@ -552,8 +552,8 @@ schedule of the cron job and are not exported.
 them, so there is no plan without a history and no backfill; a local database from before step 4 is
 recreated.
 
-**Left for later steps:** duels and leagues read final days (step 5); badges, health milestones and the feed
-read the stored events (step 6); the reminder that a day is still open (step 7).
+**Left for later steps:** duels and leagues read final days (step 5); badges and health milestones (§4.10)
+and the feed (step 6); the reminder that a day is still open (step 7).
 
 ### 4.7 Friends (step 5, first part)
 
@@ -595,8 +595,9 @@ Nobody learns who has blocked them, not even from their own data export.
 when they are friends. The values are the stored ones, as they were when the friend's last day became final.
 A friend's open days stay the friend's own business (§4.6 shows them to the user alone). A friend never
 sees counts, limits, the baseline, streak freezes, the time zone or the time of a log. Somebody with an open
-request sees name and avatar only. Reduction in percent comes with the leagues, badges and health milestones
-with step 6.
+request sees name and avatar only. Reduction in percent comes with the leagues (§4.9). Of the badges a friend
+sees which ones a friend holds and never when they were earned (§4.10). Health milestones follow the user's
+own setting, with the second part of step 6.
 
 **Locks.** Every change locks the accounts of both users first, in the order of their ids. Two requests that
 cross each other cannot wait for each other, and two acceptances at the same moment cannot pass the limit
@@ -757,7 +758,8 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
   100 newest duels.
 - **A failing duel is tried again every minute.** With 50 or more of them, the ones behind are not reached
   (as in §4.6). The run fails visibly.
-- **Badges** for duels ("First duel won") come with step 6, from the stored results.
+- **Badges** for duels ("First duel won", "5 duels won") are awarded when a duel is decided, from the stored
+  results (§4.10).
 - **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week. Accepted: a week of
   real days is the price.
 
@@ -864,7 +866,70 @@ first of every run.
   the own rank. Accepted for a pilot among friends.
 - **The XP of a day counts in the week it became final,** not in the week of the day. Sunday's XP is in the
   next week's ranking.
-- **Badges** ("League champion") come with step 6, from the stored ranks.
+- **Badges** ("League champion") are awarded when a rank is stored (§4.10).
+
+### 4.10 Badges and health milestones (step 6, first part)
+
+**Badges (FR-GAME-08, Appendix B).** Seventeen badges, each with a fixed key (`Badge`). The domain's
+`BadgeEvaluator` says which badges a set of facts justifies. It names a badge every time its condition holds,
+and the storage keeps the first award: so an award that was missed once is made up for at the next occasion,
+and nothing is given twice. The thresholds (7, 30, 100, 365 days, 5 duels, 50 reactions) are part of what a
+badge is, so they are constants of the domain and not numbers of the versioned rule table.
+
+| Badge | Justified by |
+|---|---|
+| `first_check_in` | a checked-in day |
+| `first_smoke_free_day` | a checked-in day without a session. A day without a check-in is never smoke-free |
+| `check_in_streak_7`, `_30`, `_100`, `_365` | the longest check-in streak has that length |
+| `under_limit_streak_7`, `_30` | the longest under-limit streak has that length |
+| `limit_halved` | a kept day (checked in, at or under the limit) whose limit is at most half the limit of the first day of the plan. A plan that began with a limit of 0 has nothing to halve |
+| `target_reached` | a kept day whose limit has arrived at the target that was valid on that day. For "quit" that is a limit of 0, which the weekly baseline reaches after about a month without a session |
+| `first_duel_won`, `five_duels_won` | the number of decided duels the user won. A draw, a cancelled duel and a forfeit are not won |
+| `league_champion_week`, `_month`, `_quarter`, `_half_year` | rank 1 of a league period of that type among at least three (the minimum for the XP of a rank, from the rule table). A shared rank 1 makes both champions |
+| `cheerleader` | 50 reactions sent. Awarded from the second part of step 6 on, which brings the reactions |
+
+**When a badge is awarded.** Only from what is final, in the transaction that makes it final (`AwardBadges`):
+when `days:finalize` makes a day final, when `competitions:finalize` decides a duel (the winner only) or
+stores a league rank. A check-in alone earns nothing: the day can still be changed for 48 hours. `awarded_at`
+is the time of that step. If the step fails, the badge is rolled back with it. A badge is never taken back,
+also not when the streak breaks or a friend leaves the league afterwards.
+
+**The first limit** of `limit_halved` is calculated from the calendar (the baseline and the plan terms of the
+first day of the plan), not read from the stored first day. Both are the same as long as the rule table of the
+first day is in force. To settle with the first new rule version (§4.6).
+
+**Celebration (FR-GAME-06).** `GET /me/badges` lists the badges with their time. An app celebrates a badge
+it has not shown yet, on each device once. There is no `badge_earned` entry in the events of a day: a day
+event carries a number, a badge a key, and two of the three occasions are not days.
+
+**What friends see (FR-FRND-03, decided by the owner on 2026-11-23).** `GET /friends` lists the keys of the
+badges each friend holds, and no time. Somebody with an open request shows none. A date would say more than
+the badge: the day of `first_smoke_free_day` is a day with a count of zero. Known limit: somebody who looks
+at the list every day sees on which day a badge appeared, which is two days after the day itself. Accepted:
+the activity feed (second part of step 6) announces badges to friends by design (FR-SOC-01).
+
+**Health milestones (FR-GAME-09, Appendix C).** Eight fixed spans of elapsed time since the last session, from
+20 minutes to 15 years. A month counts as 30 days and a year as 365 days: the sources give round figures, and a
+fixed span needs no calendar and no time zone. `GET /me/health-milestones` works them out at the moment of the
+request from the user's last log that is not deleted (`smoked_at`), and stores nothing:
+
+- **No logged session, nothing to count from:** `since` is null and the list is empty. The app does not know
+  when somebody smoked last who never logged a session, and the day of the onboarding would be a guess.
+- **A new session starts the count again.** A deleted log is no session.
+- **Vaping only** (`vapingOnly`): every logged session was vaping, or, without a log, the plan names vaping.
+  The apps then say that the evidence differs. The texts, their sources and the disclaimer (LEG-04) are in
+  the apps.
+- **Known limit:** the app knows the logged sessions only. Somebody who stops logging reaches every
+  milestone. This view is for the user alone, who knows better.
+
+**What friends see of the milestones** is the user's own setting (decided by the owner on 2026-11-23), built
+with the second part of step 6: `from_two_weeks` (the default: the milestones from two weeks on, worked out
+from final days), `private` (none) or `all`. The two short milestones tell almost to the hour when the last
+session was, which friends see nowhere else (FR-FRND-03), so showing them is the user's own choice.
+
+**Export and deletion.** `user_badges` is registered with exporter and eraser. The export member `badges`
+holds key and time. Health milestones are not stored and so not exported: the logs they are calculated from
+are.
 
 ---
 
