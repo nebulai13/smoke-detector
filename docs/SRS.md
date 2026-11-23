@@ -238,7 +238,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | OQ-4 | ~~Developer accounts~~ | **Decided:** owner owns both and pays the fees **after development**. Consequences: see HLD §11 (iOS push + TestFlight only after paying) |
 | OQ-5 | Domain name and whether a staging subdomain is available | `app.<domain>` + `staging.<domain>` |
 | OQ-6 | ~~Timeline / team size~~ | **Decided:** two-person team (owner + Claude Code), no fixed deadline. The HLD build plan is ordered by steps, not dates |
-| OQ-8 | League ranking: how are ties ranked, and do the duel tie-breakers apply? | Decide in build step 5. Default: same tie-breakers as duels (FR-COMP-03), then a shared rank |
+| OQ-8 | ~~League ranking: how are ties ranked, and do the duel tie-breakers apply?~~ | **Decided:** the tie-breakers of the duels (FR-COMP-03), then a shared rank (1, 1, 3). HLD §4.9 |
 | OQ-9 | ~~Upper bound for sessions logged per day~~ | **Decided:** at most 50 per log entry and 300 per day (HLD §4.6) |
 | OQ-10 | ~~A pending registration can be taken over by registering the same address again~~ | **Decided:** the confirmation page asks for the password of the sign-up and logs the user in. Five wrong passwords make the link useless (FR-ACC-03) |
 | OQ-11 | ~~Login lockout: a stranger's wrong guesses lock the owner out~~ | **Decided:** lock the client that guesses, not the account (NFR-05). Remaining weakness: OQ-15 |
