@@ -37,7 +37,7 @@ final readonly class UserReference
      *
      * @throws InvalidValue
      */
-    private static function userId(string $value): UserId
+    public static function userId(string $value): UserId
     {
         if (preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/i', $value) !== 1) {
             throw new InvalidValue(ErrorCode::InvalidFormat, 'Must be a UUID.');
