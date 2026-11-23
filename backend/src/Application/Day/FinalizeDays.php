@@ -11,6 +11,7 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Competition\LeagueScores;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\Logging\SmokeLogs;
 use SmokeDetector\Application\Plan\BaselineEntry;
@@ -60,6 +61,7 @@ final readonly class FinalizeDays
         private BaselineHistory $baselines,
         private IdGenerator $ids,
         private LoggerInterface $logger,
+        private LeagueScores $leagueScores,
     ) {
     }
 
@@ -165,6 +167,8 @@ final readonly class FinalizeDays
             $now,
             $calendar->rules->version,
         )));
+        // The last day of a league period stores the user's result for it (HLD §4.9 "Final scores").
+        $this->leagueScores->dayFinalized($calendar, $date, $now);
         foreach ($finalization->xpAwards as $award) {
             $this->ledger->append(new XpEvent($this->ids->next(), $userId, $date, $award->source, $award->amount, $award->detail, $now));
         }

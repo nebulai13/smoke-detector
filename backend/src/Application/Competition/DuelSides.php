@@ -7,6 +7,7 @@ namespace SmokeDetector\Application\Competition;
 use DateTimeImmutable;
 use LogicException;
 use SmokeDetector\Application\Account\UserId;
+use SmokeDetector\Application\Day\Calendar;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Time\LocalDate;
@@ -53,15 +54,29 @@ final readonly class DuelSides
     {
         // Proposing and accepting need a plan, and a plan is deleted with its account only.
         $calendar = $this->calendars->of($userId) ?? throw new LogicException('A side of a duel has no plan.');
+
+        return self::read($this->records, $calendar, $start, $start->plusDays($periodDays - 1), $b0Tenths, $now);
+    }
+
+    /**
+     * The days from $start to $last of the user whose calendar it is, against the frozen baseline.
+     * Shared with the leagues (HLD §4.9), which count the days of a calendar period in the same way.
+     *
+     * @param int|null               $b0Tenths The baseline the days were scored with, or null to freeze
+     *                                         the baseline entry valid on $start.
+     * @param DateTimeImmutable|null $now      Null when every day counts; otherwise the days that count
+     *                                         so far at that moment.
+     */
+    public static function read(DayRecords $records, Calendar $calendar, LocalDate $start, LocalDate $last, ?int $b0Tenths, ?DateTimeImmutable $now): SideDays
+    {
         $baseline = FrozenBaseline::freeze(
             $b0Tenths === null ? $calendar->baselineOn($start)->value : Baseline::fromTenths($b0Tenths),
             $calendar->rules->competition,
         );
         $today = $now === null ? null : $calendar->today($now);
-        $last = $start->plusDays($periodDays - 1);
 
         $byDate = [];
-        foreach ($this->records->between($userId, $start, $last) as $record) {
+        foreach ($records->between($calendar->plan->userId, $start, $last) as $record) {
             $byDate[$record->date->value] = $record;
         }
 

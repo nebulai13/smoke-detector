@@ -26,4 +26,13 @@ final readonly class PublicProfile
     {
         return new self($user->id, $user->displayName, $user->avatar);
     }
+
+    /**
+     * The order of names in a list: without regard to capitals (also with accents), then by id.
+     */
+    public static function compareByName(self $a, self $b): int
+    {
+        return strcmp(mb_strtolower($a->displayName->value), mb_strtolower($b->displayName->value))
+            ?: strcmp($a->userId->value, $b->userId->value);
+    }
 }
