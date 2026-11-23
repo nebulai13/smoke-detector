@@ -112,7 +112,7 @@ final class FriendsTest extends HttpTestCase
         self::assertSame(200, $response->status());
         $annaAsFriend = [
             'user' => self::publicUser($anna, 'Anna'), 'since' => '2026-11-17T12:05:00Z', 'level' => 0, 'xp' => 0,
-            'checkInStreak' => self::NO_STREAK, 'underLimitStreak' => self::NO_STREAK, 'badges' => [],
+            'checkInStreak' => self::NO_STREAK, 'underLimitStreak' => self::NO_STREAK, 'badges' => [], 'healthMilestones' => [],
         ];
         self::assertSame($annaAsFriend, $response->json());
         self::assertSame(['friends' => [$annaAsFriend], 'incoming' => [], 'outgoing' => []], $this->friendsOf($bob));
@@ -155,7 +155,7 @@ final class FriendsTest extends HttpTestCase
             [[
                 'user' => self::publicUser($bob, 'Bob'), 'since' => '2026-11-17T12:00:00Z', 'level' => 3, 'xp' => 640,
                 'checkInStreak' => ['current' => 3, 'longest' => 12], 'underLimitStreak' => ['current' => 2, 'longest' => 8],
-                'badges' => [],
+                'badges' => [], 'healthMilestones' => [],
             ]],
             $response->json()['friends'] ?? null,
         );
