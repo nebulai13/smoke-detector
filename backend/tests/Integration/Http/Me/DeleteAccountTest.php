@@ -142,6 +142,7 @@ final class DeleteAccountTest extends HttpTestCase
             'GET /me/export' => null,
             'GET /me/dashboard' => null,
             'GET /me/baseline-history' => null,
+            'GET /feed' => null,
             'GET /me/settings' => null,
             'PUT /me/settings' => ['milestoneSharing' => 'all'],
             'GET /me/badges' => null,

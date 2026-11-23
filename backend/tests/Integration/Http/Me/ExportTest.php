@@ -31,7 +31,7 @@ final class ExportTest extends HttpTestCase
             [
                 'formatVersion', 'exportedAt', 'profile', 'consents', 'plan', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days',
                 'progress', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults', 'badges',
-                'healthMilestones', 'settings',
+                'healthMilestones', 'settings', 'feedEvents',
             ],
             array_keys($export),
         );
@@ -59,7 +59,7 @@ final class ExportTest extends HttpTestCase
         $lists = [
             'consents' => 3, 'planHistory' => 2, 'baselineHistory' => 3, 'timeZoneHistory' => 2, 'smokeLogs' => 2, 'days' => 2, 'xpEvents' => 2,
             'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2, 'friends' => 0, 'blockedUsers' => 0, 'duels' => 0, 'leagueResults' => 2, 'badges' => 2,
-            'healthMilestones' => 2,
+            'healthMilestones' => 2, 'feedEvents' => 2,
         ];
         foreach ($lists as $member => $entries) {
             self::assertIsArray($export[$member]);
@@ -177,8 +177,8 @@ final class ExportTest extends HttpTestCase
         $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults', 'badges', 'healthMilestones'];
         // No plan and no progress before the onboarding, and no invite code before the first look at it.
         // The settings are always there: who never chose has the defaults.
-        self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists, 'settings'], array_keys($export));
-        foreach ($lists as $member) {
+        self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists, 'settings', 'feedEvents'], array_keys($export));
+        foreach ([...$lists, 'feedEvents'] as $member) {
             self::assertSame([], $export[$member], $member);
         }
         self::assertSame(['milestoneSharing' => 'from_two_weeks'], $export['settings']);

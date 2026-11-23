@@ -64,6 +64,9 @@ final readonly class UserDataTables
             // Health milestones for friends, and the settings (HLD §4.11). Each row belongs to its user alone.
             new UserDataTable('user_milestones', 'healthMilestones', new HealthMilestonesExporter($this->sql), new RowsOfUser($this->sql, 'user_milestones')),
             new UserDataTable('user_settings', 'settings', new SettingsExporter($this->sql), new RowsOfUser($this->sql, 'user_settings')),
+            // Activity feed (HLD §4.12). An entry belongs to its user; another user's entry that names
+            // the user as the opponent of a duel stays and forgets the id.
+            new UserDataTable('feed_events', 'feedEvents', new FeedEventsExporter($this->sql), new FeedEventsOfUser($this->sql)),
         ]);
     }
 }

@@ -163,6 +163,12 @@ final class UserDataTablesTest extends IntegrationTestCase
         'user_milestones.milestone_key' => 'healthMilestones.*.key',
         'user_milestones.reached_at' => 'healthMilestones.*.reachedAt',
         'user_settings.milestone_sharing' => 'settings.milestoneSharing',
+        'feed_events.type' => 'feedEvents.*.type',
+        'feed_events.detail' => 'feedEvents.*.detail',
+        // The opponent of a duel in an entry about the user. Being the opponent in somebody else's
+        // entry is not exported: that entry is the other user's.
+        'feed_events.other_user_id' => 'feedEvents.*.opponentId',
+        'feed_events.created_at' => 'feedEvents.*.createdAt',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -201,6 +207,9 @@ final class UserDataTablesTest extends IntegrationTestCase
         'user_badges.user_id' => 'The user\'s own id, which is profile.id.',
         'user_milestones.user_id' => 'The user\'s own id, which is profile.id.',
         'user_settings.user_id' => 'The user\'s own id, which is profile.id.',
+        'feed_events.user_id' => 'The user\'s own id, which is profile.id.',
+        'feed_events.position' => 'The order in which the entries were written: the export lists them in it, and it says nothing beyond feedEvents.*.createdAt.',
+        'feed_events.id' => 'The random name of the entry for the apps, without meaning outside the feed.',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
@@ -357,6 +366,13 @@ final class UserDataTablesTest extends IntegrationTestCase
                     ['key' => 'circulation', 'reachedAt' => '2026-11-15T08:00:00Z'],
                 ],
                 'settings' => ['milestoneSharing' => 'all'],
+                // The entries about the user, in the order they were written, with their time. Of the
+                // opponent: the id. Not that user 11 has an entry naming the user.
+                'feedEvents' => [
+                    ['type' => 'level_up', 'detail' => '2', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z'],
+                    ['type' => 'badge_earned', 'detail' => 'check_in_streak_7', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z'],
+                    ['type' => 'duel_won', 'detail' => null, 'opponentId' => TestData::uuid(11), 'createdAt' => '2026-10-30T23:00:40Z'],
+                ],
             ],
             $export,
         );
@@ -378,7 +394,7 @@ final class UserDataTablesTest extends IntegrationTestCase
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
                 'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [], 'badges' => [],
-                'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'],
+                'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'], 'feedEvents' => [],
             ],
             $export,
         );
