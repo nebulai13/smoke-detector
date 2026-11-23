@@ -76,6 +76,28 @@ trait DuelRepositoryContract
         self::assertEquals([$forfeited, $completed], $this->duels()->ofUser(TestData::userId(1), 100));
     }
 
+    public function test_FR_GAME_08_a_duel_won_without_a_reduction_is_not_counted(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        $none = new SideResult(120, 840, 840, 0, 7, 0);
+        $more = new SideResult(120, 960, 840, 0, 7, 0);
+        $least = new SideResult(120, 839, 840, 0, 7, 100);
+        $duels = [
+            // User 1 won as the challenger with exactly the baseline, and as the opponent with more than it.
+            TestData::duel(1, 1, 2, 7, DuelStatus::Completed, '2026-10-01 08:00:00', '2026-10-02 09:00:00', '2026-10-03', '2026-10-03', TestData::decision(DuelWinner::Challenger, $none, $more)),
+            TestData::duel(2, 2, 1, 7, DuelStatus::Completed, '2026-10-02 08:00:00', '2026-10-03 09:00:00', '2026-10-04', '2026-10-04', TestData::decision(DuelWinner::Opponent, new SideResult(120, 1000, 840, 0, 7, 0), $more)),
+            // User 2 won with a tenth of a session saved, from each side.
+            TestData::duel(3, 2, 1, 7, DuelStatus::Completed, '2026-10-03 08:00:00', '2026-10-04 09:00:00', '2026-10-05', '2026-10-05', TestData::decision(DuelWinner::Challenger, $least, $none)),
+            TestData::duel(4, 1, 2, 7, DuelStatus::Completed, '2026-10-04 08:00:00', '2026-10-05 09:00:00', '2026-10-06', '2026-10-06', TestData::decision(DuelWinner::Opponent, $none, $least)),
+        ];
+        foreach ($duels as $duel) {
+            $this->duels()->save($duel);
+        }
+
+        self::assertSame(0, $this->duels()->wonBy(TestData::userId(1)));
+        self::assertSame(2, $this->duels()->wonBy(TestData::userId(2)));
+    }
+
     public function test_FR_GAME_08_the_duels_a_user_won_are_counted_from_both_sides(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
