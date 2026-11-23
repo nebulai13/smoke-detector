@@ -737,9 +737,17 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
   narrows the possible baselines without fixing one (an audit counted hundreds of candidates for a 7-day
   duel) and gives a lower bound for the baseline. A side at exactly 100 % had no session. Accepted: a result
   needs a figure.
-- **Who is ahead, day by day,** tells how the opponent's reduction over the final days compares with one's
-  own: one comparison for each day that becomes final. A user can choose what to log on a day before it is
-  final, and so place one threshold a day. Accepted: the standing has to mean something.
+- **Who is ahead still tells something, slowly.** Every day that becomes final gives one fixed comparison in
+  each competition two friends share: their duel and up to four league periods (§4.9), of which the short
+  ones say the most. A user can choose what to log on a day before it is final, and so place the threshold.
+  The two users' days become final at different hours, so a comparison can be read twice, before and after
+  the other one's day is in. "Level" says that the two are exactly equal. An audit estimated that somebody who
+  logs made-up values for a few weeks, with two days of waiting for each answer, could narrow a friend's
+  reduction of a week to about one session. The only way to tell nothing is to show nothing until the result
+  is final. The owner chose a standing that means something; this is the price, written down so that it can be
+  decided again.
+- **The standing compares each side's own final days.** They can differ by a day or two in number, because
+  each user's days become final by their own clock.
 - **Shown days use today's rule table.** A completed duel's days are worked out again from the stored days
   and the stored baseline. After a new rule version the levels could disagree with the stored totals. To be
   settled when rule versions become selectable (§4.6).
