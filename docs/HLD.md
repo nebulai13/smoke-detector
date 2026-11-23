@@ -641,6 +641,47 @@ optimistic "+1 saved" sound/animation that plays locally.
 
 Sounds and animations live in `shared/assets/`. They must be original or licensed (OQ-1).
 
+### 6.1 Web client: the core without screens (first part of step 8)
+
+Built before the screens, because it needs no visual decision and everything else stands on it. Plain
+TypeScript in `web/src/core/`, no React in it:
+
+| Module | What it does |
+|---|---|
+| `api/api.ts` | Calls typed from the contract (`web/src/api/schema.d.ts`, generated; a check fails when it is out of date). Answers with the data of a success and throws for everything else: `ApiProblem` (the problem document of the server) or `NetworkError` (no answer). On `401 unauthorized` it renews the access token once and sends the request again |
+| `session/session.ts` | The access token, in a variable and nowhere else. Login asks for the refresh token as an `HttpOnly` cookie. At the start of the app the session is restored from that cookie. Refreshes that overlap are one request |
+| `logging/logbook.ts` | The outbox in IndexedDB: a log is stored on the device first, with an id made on the device, and sent later in batches of at most 200. Accepted items leave the outbox. Refused items leave it too and are kept with their reason for the user to see (FR-LOG-07). Without a connection everything stays and goes out unchanged later |
+| `logging/autosync.ts` | Sends the outbox when the app starts, when the connection comes back and when the app comes to the front |
+
+- A log counts as sent from the moment its batch leaves, because the server may have it from then on.
+  Deleting such a log queues a deletion; deleting a log that never left only takes it out of the outbox.
+- The tests run against a mocked server (MSW) and a real IndexedDB implementation in memory. A request
+  that no test expects fails the test.
+- Dependencies are pinned to exact versions and install scripts are switched off (`web/.npmrc`).
+
+- Requests carry cookies and the token to the app's own origin only (`credentials: 'same-origin'`, AD-9).
+- **A logout without a connection** forgets the token on the device at once, but the server has not heard
+  of it and the refresh cookie is still good. So the device notes that a logout is owed (a flag in
+  `localStorage`, never a token). The next start delivers it before anything else and stays signed out,
+  with or without a connection. A new login replaces the cookie and clears the note. A logout the
+  server answered with a failure is owed in the same way. While one is owed nothing renews the session,
+  and the other tabs of the app are signed out as well.
+- Every request has a time limit (30 seconds). One that hangs counts as "no connection", so a sync can
+  never hold its lock for ever.
+- A request that comes back unauthorized after the user logged out never renews the token.
+- **Every user has a logbook of their own** on the device (the database is named after the user id). What
+  one user has not sent yet is never sent with another user's token, also on a shared computer.
+- **Tabs take turns** (Web Locks): a sync of one tab waits for the sync of another, so an old item cannot
+  reach the server after its correction. Reading a batch and marking it as sent is one database
+  transaction, so a log that is deleted at the very moment it goes out gets its deletion queued. A log
+  that was corrected on this device counts as known to the server too.
+- A log the server could never take (a date outside the years 1 to 9999, a count outside 1 to 50) is
+  refused when it is made, so it cannot block the outbox for everything behind it.
+
+Not built yet (they belong to the screens): a timer that tries again while the browser says it is online
+and the server cannot be reached, asking the browser to keep the storage (`storage.persist()`), and
+emptying the list of sent ids.
+
 ---
 
 ## 7. Cross-cutting concerns
@@ -800,7 +841,7 @@ which count as caught. The run needs more memory than PHP's default (`make mutat
 | 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
-| 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot | React + Vite |
+| 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot. The core without screens (§6.1) was built ahead, after step 4 | React + Vite |
 | 9 | **iOS client**: built and tested in the simulator and on your own iPhone (free Apple ID). **Pay the Apple Developer Program** before the push test + TestFlight | SwiftUI + SwiftData. APNs code tested against a fake until then |
 | 10 | **Android client**: emulator + sideloaded APK on real devices (push via FCM works without a Play account). **Pay Google Play** before store/internal testing | Compose + Room. Free Firebase project for FCM |
 | 11 | Legal pages, store listings, pilot with 5–10 friends (SRS §7) | — |

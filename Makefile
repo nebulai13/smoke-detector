@@ -3,7 +3,7 @@ PHP = docker compose run --rm php
 # Without the database: unit tests, static analysis and mutation testing must not need it.
 PHP_NO_DB = docker compose run --rm --no-deps php
 
-.PHONY: setup test test-unit test-integration migrate stan trace mutation check
+.PHONY: setup test test-unit test-integration migrate stan trace mutation check web-setup web-test web-check
 
 setup:            ## build the PHP image and install backend dependencies
 	docker compose build php
@@ -34,3 +34,12 @@ mutation:         ## mutation testing: how many deliberately broken versions of 
 	$(PHP_NO_DB) php -d memory_limit=512M vendor/bin/infection --threads=8 --no-progress --show-mutations=0
 
 check: test stan trace mutation   ## everything: all tests, static analysis, traceability, mutation testing
+
+web-setup:        ## install the web client's dependencies exactly as locked (npm ci in web/)
+	cd web && npm ci
+
+web-test:         ## web client tests (Vitest)
+	cd web && npm test
+
+web-check:        ## web client: type check, lint, API types up to date, tests
+	cd web && npm run check
