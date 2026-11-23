@@ -2686,7 +2686,8 @@ components:
       description: >
         A badge (SRS Appendix B). `limit_halved`: a day kept at half the limit of the first day of the
         plan, or less. `target_reached`: a day kept at a limit that has arrived at the target of the
-        plan. `league_champion_*`: rank 1 among at least three. The apps have a picture and a text for
+        plan, in a plan that began above it. `league_champion_*`: rank 1 among at least three, with a
+        reduction above zero. The apps have a picture and a text for
         each. A later version of the API may add keys.
       enum:
         - first_check_in
@@ -3255,7 +3256,7 @@ components:
         xp:
           type: integer
           minimum: 0
-          description: Rank 1 to 3 among at least three participants earns XP.
+          description: Rank 1 to 3 among at least three participants earns XP, for a result with a reduction above zero.
     XpLeague:
       type: object
       additionalProperties: false

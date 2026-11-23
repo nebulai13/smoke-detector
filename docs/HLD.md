@@ -796,7 +796,10 @@ not hold up everybody else for ever.
 - The rank is 1 plus the number of participants who are better: more reduction (compared exactly), then
   more smoke-free days, then more check-ins. Equal on all three share the rank (1, 1, 3).
 - Participants are the user and the friends who have a result. With at least `leagueMinParticipants` (3 in
-  v1), rank 1 to 3 earns `XpCalculator::forLeague` XP (150 / 100 / 50, times 1, 2, 3 or 4 by period type). It
+  v1), rank 1 to 3 earns `XpCalculator::forLeague` XP (150 / 100 / 50, times 1, 2, 3 or 4 by period type).
+  Only a result with a reduction above zero earns it (decided by the owner on 2026-11-23, after an audit):
+  otherwise three friends who all do nothing share rank 1 and collect its XP every week. The rank is stored
+  all the same, with 0 XP. It
   is written to the ledger and to `user_progress` as the XP of a duel is (§4.8).
 - The rank is the user's rank among the friends of that moment. It is stored with the number of participants
   and the XP, and never recalculated.
@@ -872,8 +875,10 @@ first of every run.
 
 **Badges (FR-GAME-08, Appendix B).** Seventeen badges, each with a fixed key (`Badge`). The domain's
 `BadgeEvaluator` says which badges a set of facts justifies. It names a badge every time its condition holds,
-and the storage keeps the first award: so an award that was missed once is made up for at the next occasion,
-and nothing is given twice. The thresholds (7, 30, 100, 365 days, 5 duels, 50 reactions) are part of what a
+and the storage keeps the first award, so nothing is given twice. A badge that follows a stored total (the
+longest streaks, the duels won) is made up for at the next occasion if it was missed once. A badge of a
+single day (`first_smoke_free_day`, `limit_halved`, `target_reached`) is not: it is awarded with that day or
+with the next day of its kind. The thresholds (7, 30, 100, 365 days, 5 duels, 50 reactions) are part of what a
 badge is, so they are constants of the domain and not numbers of the versioned rule table.
 
 | Badge | Justified by |
@@ -883,9 +888,9 @@ badge is, so they are constants of the domain and not numbers of the versioned r
 | `check_in_streak_7`, `_30`, `_100`, `_365` | the longest check-in streak has that length |
 | `under_limit_streak_7`, `_30` | the longest under-limit streak has that length |
 | `limit_halved` | a kept day (checked in, at or under the limit) whose limit is at most half the limit of the first day of the plan. A plan that began with a limit of 0 has nothing to halve |
-| `target_reached` | a kept day whose limit has arrived at the target that was valid on that day. For "quit" that is a limit of 0, which the weekly baseline reaches after about a month without a session |
+| `target_reached` | a kept day whose limit has arrived at the target that was valid on that day, in a plan whose first limit was above that target. For "quit" that is a limit of 0, which the weekly baseline reaches after about a month without a session. Not reached: a limit that was the target from the first day, and a target the user set above the limit later (the limit then goes up to it). An audit found both before the first push |
 | `first_duel_won`, `five_duels_won` | the number of decided duels the user won. A draw, a cancelled duel and a forfeit are not won |
-| `league_champion_week`, `_month`, `_quarter`, `_half_year` | rank 1 of a league period of that type among at least three (the minimum for the XP of a rank, from the rule table). A shared rank 1 makes both champions |
+| `league_champion_week`, `_month`, `_quarter`, `_half_year` | rank 1 of a league period of that type among at least three (the minimum for the XP of a rank, from the rule table), with a reduction above zero (§4.9). A shared rank 1 makes both champions |
 | `cheerleader` | 50 reactions sent. Awarded from the second part of step 6 on, which brings the reactions |
 
 **When a badge is awarded.** Only from what is final, in the transaction that makes it final (`AwardBadges`):
@@ -926,6 +931,21 @@ request from the user's last log that is not deleted (`smoked_at`), and stores n
 with the second part of step 6: `from_two_weeks` (the default: the milestones from two weeks on, worked out
 from final days), `private` (none) or `all`. The two short milestones tell almost to the hour when the last
 session was, which friends see nowhere else (FR-FRND-03), so showing them is the user's own choice.
+
+**Known limits.**
+
+- **The two log queries of the milestones** (the last session, the products used) read all logs of the user:
+  the one index of `smoke_logs` is by day. About 7,000 rows for a year of heavy logging, some tens of
+  milliseconds. An index by time would need a migration of an existing table; to settle with the pilot's
+  numbers.
+- **Compacting old logs** (§11, planned for logs older than 12 months) must keep the last session and the
+  products of a user, or the milestones of somebody who quit a year ago start again from nothing.
+- **Vaping only** looks at every log there is. Somebody who smoked for a year and vapes since last month is
+  not "vaping only".
+- **A failing badge step fails its day, duel or rank,** which is tried again at the next run, like every
+  other part of that step. A badge is never worth an inconsistent result.
+- **Badges by arrangement:** two accounts of one person can win duels against each other, as they can earn the
+  XP of a duel (§4.8).
 
 **Export and deletion.** `user_badges` is registered with exporter and eraser. The export member `badges`
 holds key and time. Health milestones are not stored and so not exported: the logs they are calculated from

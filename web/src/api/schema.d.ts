@@ -1388,7 +1388,7 @@ export interface components {
             badges: components["schemas"]["BadgeKey"][];
         };
         /**
-         * @description A badge (SRS Appendix B). `limit_halved`: a day kept at half the limit of the first day of the plan, or less. `target_reached`: a day kept at a limit that has arrived at the target of the plan. `league_champion_*`: rank 1 among at least three. The apps have a picture and a text for each. A later version of the API may add keys.
+         * @description A badge (SRS Appendix B). `limit_halved`: a day kept at half the limit of the first day of the plan, or less. `target_reached`: a day kept at a limit that has arrived at the target of the plan, in a plan that began above it. `league_champion_*`: rank 1 among at least three, with a reduction above zero. The apps have a picture and a text for each. A later version of the API may add keys.
          * @enum {string}
          */
         BadgeKey: "first_check_in" | "first_smoke_free_day" | "check_in_streak_7" | "check_in_streak_30" | "check_in_streak_100" | "check_in_streak_365" | "under_limit_streak_7" | "under_limit_streak_30" | "limit_halved" | "target_reached" | "first_duel_won" | "five_duels_won" | "league_champion_week" | "league_champion_month" | "league_champion_quarter" | "league_champion_half_year" | "cheerleader";
@@ -1664,7 +1664,7 @@ export interface components {
             rank: number;
             /** @description The user and the friends who had a result. */
             participants: number;
-            /** @description Rank 1 to 3 among at least three participants earns XP. */
+            /** @description Rank 1 to 3 among at least three participants earns XP, for a result with a reduction above zero. */
             xp: number;
         };
         XpLeague: {
