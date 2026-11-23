@@ -23,6 +23,7 @@ use SmokeDetector\Application\Auth\TokenGenerator;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Competition\Duels;
+use SmokeDetector\Application\Competition\LeagueResults;
 use SmokeDetector\Application\Day\XpLedger;
 use SmokeDetector\Application\Friends\Blocks;
 use SmokeDetector\Application\Friends\FriendLinks;
@@ -87,6 +88,7 @@ use SmokeDetector\Infrastructure\Repository\PdoBlocks;
 use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
 use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
 use SmokeDetector\Infrastructure\Repository\PdoDuels;
+use SmokeDetector\Infrastructure\Repository\PdoLeagueResults;
 use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
 use SmokeDetector\Infrastructure\Repository\PdoInviteCodes;
 use SmokeDetector\Infrastructure\Repository\PdoMailOutbox;
@@ -217,6 +219,9 @@ final readonly class ContainerFactory
 
             // Duels (HLD §4.8)
             Duels::class => autowire(PdoDuels::class),
+
+            // Leagues (HLD §4.9)
+            LeagueResults::class => autowire(PdoLeagueResults::class),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),

@@ -162,9 +162,9 @@ final class DuelsTest extends HttpTestCase
 
         // The 24th ended at 23:00 UTC and is final 48 hours later. A second earlier nothing is decided.
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 22:59:59 UTC'));
-        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked ', $this->cronRun());
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 23:00:00 UTC'));
-        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel, ranked ', $this->cronRun());
 
         // Anna: 39 of 84 (53.6 %). Bob: 36 of 84 (57.1 %) with four smoke-free days. Bob wins. Now that
         // the duel is decided, both percentages are shown.
@@ -213,7 +213,7 @@ final class DuelsTest extends HttpTestCase
             $this->sql()->rows('SELECT user_id, xp_total AS xp FROM user_progress ORDER BY user_id'),
         );
         // A second run decides nothing twice.
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(2, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
@@ -231,7 +231,7 @@ final class DuelsTest extends HttpTestCase
         self::assertProblem(409, 'duel_not_open', $this->post($anna, '/duels/cancel', ['duelId' => $id]));
         self::assertSame('proposed', $this->sql()->value('SELECT status FROM duels'));
 
-        self::assertStringContainsString('competitions:finalize: Expired 1 duel proposal, decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 1 duel proposal, decided 0 duels, ranked ', $this->cronRun());
         self::assertSame('expired', $this->sql()->value('SELECT status FROM duels'));
         // And a new one can be proposed.
         self::assertSame(201, $this->post($bob, '/duels', ['opponentId' => $anna->id->value, 'periodDays' => 7])->status());
@@ -336,7 +336,7 @@ final class DuelsTest extends HttpTestCase
         );
         // Long after its last day: nothing is decided, nobody earns anything.
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-01 12:00:00 UTC'));
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(0, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
@@ -366,7 +366,7 @@ final class DuelsTest extends HttpTestCase
         self::assertSame(['duels' => []], $this->call('GET', '/duels', headers: $this->authorization($carol))->json());
         // And the cron job never decides it.
         $this->clock()->travelTo(new DateTimeImmutable('2027-01-15 12:00:00 UTC'));
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(0, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
