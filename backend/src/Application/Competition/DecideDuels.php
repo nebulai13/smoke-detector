@@ -10,6 +10,7 @@ use Psr\Log\LoggerInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
@@ -56,6 +57,7 @@ final readonly class DecideDuels
         XpLedger $ledger,
         IdGenerator $ids,
         private LoggerInterface $logger,
+        private AwardBadges $badges,
     ) {
         $this->sides = new DuelSides($calendars, $records, $progress);
         $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
@@ -93,6 +95,8 @@ final readonly class DecideDuels
                         $this->duels->delete($duel->id);
                     } else {
                         $this->duels->save($changed);
+                        // The badges of a decided duel (HLD §4.10), counted from what is stored now.
+                        $this->badges->duelStored($changed);
                     }
 
                     return 1;

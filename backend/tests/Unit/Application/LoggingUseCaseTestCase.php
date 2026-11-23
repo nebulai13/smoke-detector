@@ -6,6 +6,8 @@ namespace SmokeDetector\Tests\Unit\Application;
 
 use SmokeDetector\Application\Account\TimeZone;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Badge\AwardBadges;
+use SmokeDetector\Application\Badge\AwardedBadge;
 use SmokeDetector\Application\Competition\LeagueScores;
 use SmokeDetector\Application\Day\CheckIn;
 use SmokeDetector\Application\Day\DayRecord;
@@ -27,7 +29,9 @@ use SmokeDetector\Domain\Day\UserProgress;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Domain\Streak\StreakState;
+use SmokeDetector\Tests\Support\InMemory\InMemoryBadgeRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDayRecords;
+use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
 use SmokeDetector\Tests\Support\InMemory\InMemoryLeagueResults;
 use SmokeDetector\Tests\Support\InMemory\InMemorySmokeLogs;
 use SmokeDetector\Tests\Support\InMemory\InMemoryXpLedger;
@@ -47,6 +51,9 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
     protected InMemoryDayRecords $dayRecords;
     protected InMemoryXpLedger $xpLedger;
     protected InMemoryLeagueResults $leagueResults;
+    protected InMemoryBadgeRecords $badgeRecords;
+    /** Here and not with the duel tests: the badges of the duels are awarded from what is stored of them. */
+    protected InMemoryDuels $duels;
 
     protected function setUp(): void
     {
@@ -55,6 +62,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
         $this->dayRecords = new InMemoryDayRecords($this->transactions);
         $this->xpLedger = new InMemoryXpLedger($this->transactions);
         $this->leagueResults = new InMemoryLeagueResults($this->transactions);
+        $this->badgeRecords = new InMemoryBadgeRecords($this->transactions);
+        $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 
     protected function syncLogs(): SyncLogs
@@ -92,7 +101,35 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
             $this->ids,
             $this->logger,
             new LeagueScores($this->leagueResults, $this->dayRecords),
+            $this->awardBadges(),
         );
+    }
+
+    /**
+     * What stores the badges a final day, a decided duel or a league rank justifies (HLD §4.10).
+     */
+    protected function awardBadges(): AwardBadges
+    {
+        return new AwardBadges($this->badgeRecords, $this->duels);
+    }
+
+    /**
+     * @return list<array{string, string}> Key and time of every badge the user holds, in the order of the badge cases.
+     */
+    protected function badgesOf(User $user): array
+    {
+        return array_map(
+            static fn (AwardedBadge $badge): array => [$badge->badge->value, $badge->awardedAt->format('Y-m-d H:i:s')],
+            $this->badgeRecords->ofUser($user->id),
+        );
+    }
+
+    /**
+     * @return list<string> The keys of the badges the user holds, in the order of the badge cases.
+     */
+    protected function badgeKeysOf(User $user): array
+    {
+        return array_column($this->badgesOf($user), 0);
     }
 
     /**

@@ -11,6 +11,7 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpLedger;
@@ -61,6 +62,7 @@ final readonly class RankLeagues
         XpLedger $ledger,
         IdGenerator $ids,
         private LoggerInterface $logger,
+        private AwardBadges $badges,
     ) {
         $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
     }
@@ -126,6 +128,8 @@ final readonly class RankLeagues
         $award = (new XpCalculator($calendar->rules->xp))->forLeague($rank, $result->period->type, $participants);
         $xp = $this->rewards->pay($userId, $calendar, $award, $now);
         $this->results->save($result->ranked(new LeagueAward($rank, $participants, $xp, $now)));
+        // The champion badge (HLD §4.10), in the same transaction as the rank.
+        $this->badges->leagueRanked($userId, $result->period->type, $rank, $participants, $calendar, $now);
 
         return [1, 0];
     }
