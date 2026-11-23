@@ -128,7 +128,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         self::assertSame(
             'mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
             . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
-            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | '
+            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked 0 league results. | '
             . "housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.\n",
             $stdout,
         );
@@ -164,7 +164,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         self::assertSame(
             'cron:run: mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
             . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
-            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | '
+            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked 0 league results. | '
             . 'housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.',
             $entries[0]['message'],
         );

@@ -81,7 +81,7 @@ final class HealthWithCronHeartbeatTest extends HttpTestCase
         self::assertSame(
             ['mail:send: Sent 1 mail, kept 0 mails for another try, gave up 0 mails. | '
                 . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
-                . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | '
+                . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked 0 league results. | '
                 . 'housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.'],
             $output->lines,
         );
@@ -107,7 +107,7 @@ final class HealthWithCronHeartbeatTest extends HttpTestCase
         // The cleanup ran all the same.
         self::assertStringStartsWith(
             'mail:send: FAILED (SmokeDetector\\Application\\Validation\\InvalidValue) | '
-            . 'days:finalize: Finalized 0 days, calculated 0 baselines. | competitions:finalize: Expired 0 duel proposals, decided 0 duels. | housekeeping:purge: Deleted 0 ',
+            . 'days:finalize: Finalized 0 days, calculated 0 baselines. | competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked 0 league results. | housekeeping:purge: Deleted 0 ',
             $output->lines[0] ?? '',
         );
         self::assertSame('2026-11-17T12:00:00+00:00', $this->call('GET', '/health')->json()['cronLastRunAt'] ?? null);
@@ -131,7 +131,7 @@ final class HealthWithCronHeartbeatTest extends HttpTestCase
         self::assertStringStartsWith(
             'mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
             . 'days:finalize: FAILED (Finalized 0 days, calculated 0 baselines. Could not finalize the days of 1 user: see the log.) | '
-            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | housekeeping:purge: Deleted 0 ',
+            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked 0 league results. | housekeeping:purge: Deleted 0 ',
             $output->lines[0] ?? '',
         );
         // No heartbeat for this run: GET /health shows that the cron job needs a look.
