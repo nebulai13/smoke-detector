@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Tests\Support\InMemory;
 
+use DateTimeImmutable;
 use LogicException;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Day\XpEvent;
@@ -37,6 +38,18 @@ final class InMemoryXpLedger implements XpLedger, InMemoryState
         usort($events, static fn (XpEvent $a, XpEvent $b): int => [$a->date->value, $a->id] <=> [$b->date->value, $b->id]);
 
         return $events;
+    }
+
+    public function earnedBetween(UserId $userId, DateTimeImmutable $from, DateTimeImmutable $until): int
+    {
+        $sum = 0;
+        foreach ($this->events as $event) {
+            if ($event->userId->equals($userId) && $event->createdAt >= $from && $event->createdAt < $until) {
+                $sum += $event->amount;
+            }
+        }
+
+        return $sum;
     }
 
     public function snapshot(): array

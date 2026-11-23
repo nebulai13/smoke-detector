@@ -17,10 +17,13 @@ use SmokeDetector\Application\Auth\DeviceLabel;
 use SmokeDetector\Application\Auth\OneTimeToken;
 use SmokeDetector\Application\Auth\RefreshToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
+use SmokeDetector\Application\Competition\CalendarPeriod;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\DuelDecision;
 use SmokeDetector\Application\Competition\DuelStatus;
 use SmokeDetector\Application\Competition\DuelWinner;
+use SmokeDetector\Application\Competition\LeagueAward;
+use SmokeDetector\Application\Competition\LeagueResult;
 use SmokeDetector\Application\Competition\SideResult;
 use SmokeDetector\Application\Day\DayRecord;
 use SmokeDetector\Application\Day\DayResult;
@@ -44,6 +47,7 @@ use SmokeDetector\Domain\Plan\BaselineSource;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Domain\Streak\StreakState;
+use SmokeDetector\Domain\Xp\LeaguePeriod;
 use SmokeDetector\Domain\Xp\XpSource;
 
 /**
@@ -397,5 +401,43 @@ final class TestData
         string $rulesVersion = 'v1',
     ): DuelDecision {
         return new DuelDecision(self::time($decidedAt), $winner, $challenger, $opponent, $rulesVersion);
+    }
+
+    /**
+     * The final result of user $userNumber for a league period. Without anything else: the week
+     * 2026-W46, 42 of 84 against a baseline of 12.0, scored at the end of the 17th and not ranked yet.
+     *
+     * @param array{int, int, int}|null $award Rank, participants and XP, decided at $rankedAt.
+     */
+    public static function leagueResult(
+        int $userNumber = 1,
+        LeaguePeriod $type = LeaguePeriod::Week,
+        string $key = '2026-W46',
+        int $b0Tenths = 120,
+        int $actualTenths = 420,
+        int $expectedTenths = 840,
+        int $smokeFreeDays = 0,
+        int $checkIns = 7,
+        int $countedDays = 7,
+        string $scoredAt = '2026-11-17 23:00:20',
+        ?string $checkAt = null,
+        ?array $award = null,
+        string $rankedAt = '2026-11-18 23:01:05',
+        string $rulesVersion = 'v1',
+    ): LeagueResult {
+        return new LeagueResult(
+            self::userId($userNumber),
+            CalendarPeriod::fromKey($type, $key),
+            $b0Tenths,
+            $actualTenths,
+            $expectedTenths,
+            $smokeFreeDays,
+            $checkIns,
+            $countedDays,
+            $rulesVersion,
+            self::time($scoredAt),
+            self::time($checkAt ?? $scoredAt),
+            $award === null ? null : new LeagueAward($award[0], $award[1], $award[2], self::time($rankedAt)),
+        );
     }
 }

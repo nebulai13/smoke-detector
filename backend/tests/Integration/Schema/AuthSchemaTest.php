@@ -164,7 +164,7 @@ final class AuthSchemaTest extends IntegrationTestCase
                 // A duel stays for the other user and stops pointing at the account that is gone.
                 $row('duels', 'challenger_id', 'SET NULL'), $row('duels', 'opponent_id', 'SET NULL'),
                 $row('friendships', 'user_a'), $row('friendships', 'user_b'),
-                $row('invite_codes'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
+                $row('invite_codes'), $row('league_results'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".
                 $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_progress'), $row('xp_events'),
             ],
