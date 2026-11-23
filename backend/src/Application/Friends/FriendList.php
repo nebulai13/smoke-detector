@@ -10,6 +10,8 @@ use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Badge\BadgeRecords;
 use SmokeDetector\Application\Competition\EndDuels;
 use SmokeDetector\Application\Day\ProgressRecords;
+use SmokeDetector\Application\Recovery\MilestoneRecords;
+use SmokeDetector\Application\Settings\UserSettings;
 use SmokeDetector\Application\TransactionRunner;
 
 /**
@@ -25,6 +27,8 @@ final readonly class FriendList
         private ProgressRecords $progress,
         private EndDuels $endDuels,
         private BadgeRecords $badges,
+        private MilestoneRecords $milestones,
+        private UserSettings $settings,
     ) {
     }
 
@@ -40,7 +44,8 @@ final readonly class FriendList
             $incoming = [];
             $outgoing = [];
             $links = $this->links->ofUser($userId);
-            // The badges of all friends in one read. Somebody with an open request is not asked for.
+            // The badges, health milestones and settings of all friends in one read each. Somebody
+            // with an open request is not asked for.
             $friendIds = [];
             foreach ($links as $link) {
                 if ($link->acceptedAt !== null) {
@@ -48,6 +53,9 @@ final readonly class FriendList
                 }
             }
             $badges = $this->badges->heldBy($friendIds);
+            $milestones = $this->milestones->reachedBy($friendIds);
+            // Each friend's own setting decides what of the milestones the user sees.
+            $settings = $this->settings->findAll($friendIds);
             foreach ($links as $link) {
                 $otherId = $link->other($userId);
                 $other = $this->users->find($otherId);
@@ -56,7 +64,14 @@ final readonly class FriendList
                 }
                 if ($link->acceptedAt !== null) {
                     // The stored progress, never the projection: a friend's open days are the friend's own business.
-                    $friends[] = FriendView::of($other, $link->acceptedAt, $this->progress->find($otherId), $badges[$otherId->value] ?? []);
+                    $friends[] = FriendView::of(
+                        $other,
+                        $link->acceptedAt,
+                        $this->progress->find($otherId),
+                        $badges[$otherId->value] ?? [],
+                        $milestones[$otherId->value] ?? [],
+                        $settings[$otherId->value]->milestoneSharing,
+                    );
                 } elseif ($link->requester->equals($userId)) {
                     $outgoing[] = new PendingRequest(PublicProfile::of($other), $link->requestedAt);
                 } else {
