@@ -125,6 +125,7 @@ final readonly class UserDataFixture
         $this->fillLeagueResults($user);
         $this->fillBadges($user);
         $this->fillMilestonesAndSettings($user);
+        $this->fillFeed($user, $number);
     }
 
     /**
@@ -157,6 +158,16 @@ final readonly class UserDataFixture
     }
 
     /**
+     * The entries of the activity feed of step 6 that name nobody else: a level and a badge written by
+     * one final day. The position is left to the database.
+     */
+    private function fillFeed(string $user, int $number): void
+    {
+        $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 40), $user, 'level_up', '2', null, '2026-11-12 23:00:20']);
+        $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 41), $user, 'badge_earned', 'check_in_streak_7', null, '2026-11-12 23:00:20']);
+    }
+
+    /**
      * The tables of step 5, in which a row belongs to two users: rows between the user and three
      * other accounts, which must exist. $friend is a friend the user has asked, $asking has asked the
      * user and waits for the answer, and $blocked and the user have blocked each other.
@@ -180,6 +191,10 @@ final readonly class UserDataFixture
             TestData::uuid($number * 1000 + 21), $asking->value, $user, 30, 'declined', '2026-11-14 08:00:00', '2026-11-17 08:00:00', '2026-11-14 10:00:00',
             ...array_fill(0, 17, null),
         ]);
+        // The feed entry of the duel the user won, naming the friend; and one of the friend, of an
+        // earlier duel, naming the user.
+        $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 42), $user, 'duel_won', null, $friend->value, '2026-10-30 23:00:40']);
+        $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 43), $friend->value, 'duel_won', null, $user, '2026-10-09 23:00:40']);
     }
 
     /**
