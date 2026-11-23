@@ -15,7 +15,7 @@ use SmokeDetector\Application\Friends\PublicProfile;
 /**
  * Writes duels as the schemas Duel, DuelList and DuelDetail of api/openapi.yaml.
  *
- * Built from DuelView and DayStanding only: whole percentages and day levels, never a baseline, a count or a limit, so
+ * Built from DuelView and DayStanding only: whole percentages, who is ahead and day levels, never a baseline, a count or a limit, so
  * nothing else of the other user can get into these answers (HLD §4.8 "What the opponent sees").
  */
 final readonly class DuelsResponder
@@ -61,6 +61,7 @@ final readonly class DuelsResponder
             'endsOn' => $duel->endsOn?->value,
             'mine' => $duel->mine === null ? null : self::side($duel->mine),
             'theirs' => $duel->theirs === null ? null : self::side($duel->theirs),
+            'standing' => $duel->standing?->value,
             'outcome' => $duel->outcome?->value,
             'xp' => $duel->xp,
             'provisional' => $duel->provisional,
@@ -68,12 +69,13 @@ final readonly class DuelsResponder
     }
 
     /**
-     * @return array<string, int>
+     * @return array<string, int|null>
      */
     private static function side(SideStanding $side): array
     {
         return [
             // Whole percent: no decimal that could be calculated back to the baseline and the counts.
+            // Null for the opponent of a running duel, which never had one (ShowDuels).
             'reductionPercent' => $side->reductionPercent,
             'smokeFreeDays' => $side->smokeFreeDays,
             'checkIns' => $side->checkIns,

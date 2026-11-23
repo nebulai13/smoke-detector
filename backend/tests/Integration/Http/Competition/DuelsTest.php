@@ -9,6 +9,7 @@ use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Competition\DayLevel;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\DuelInvitations;
+use SmokeDetector\Application\Competition\DuelStanding;
 use SmokeDetector\Application\Competition\DuelStatus;
 use SmokeDetector\Application\Competition\ShowDuels;
 use SmokeDetector\Console\Console;
@@ -34,7 +35,7 @@ final class DuelsTest extends HttpTestCase
 {
     private const array PLAN = ['startingBaseline' => 12, 'goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'normal', 'defaultProduct' => 'rolled'];
 
-    private const array NOTHING_YET = ['startsOn' => null, 'endsOn' => null, 'mine' => null, 'theirs' => null, 'outcome' => null, 'xp' => null, 'provisional' => false];
+    private const array NOTHING_YET = ['startsOn' => null, 'endsOn' => null, 'mine' => null, 'theirs' => null, 'standing' => null, 'outcome' => null, 'xp' => null, 'provisional' => false];
 
     private int $logs = 0;
 
@@ -81,7 +82,7 @@ final class DuelsTest extends HttpTestCase
             [
                 'id' => $id, 'status' => 'active', 'periodDays' => 7, 'challenger' => false, 'opponent' => self::publicUser($anna, 'Anna'),
                 'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
-                'mine' => null, 'theirs' => null, 'outcome' => null, 'xp' => null, 'provisional' => true,
+                'mine' => null, 'theirs' => null, 'standing' => null, 'outcome' => null, 'xp' => null, 'provisional' => true,
             ],
             $response->json(),
         );
@@ -104,16 +105,23 @@ final class DuelsTest extends HttpTestCase
         $list = $this->call('GET', '/duels', headers: $this->authorization($anna));
         $detail = $this->post($anna, '/duels/show', ['duelId' => $id]);
 
-        // Anna: 15 of 36, 58.3 %, shown as 58. Bob: 12 of 24, his today does not count yet.
+        // Anna: 15 of 36, 58.3 %, shown as 58. Bob: 12 of 24, his today does not count yet. While the
+        // duel runs she sees that she is ahead, and no percentage of his.
         $duel = [
             'id' => $id, 'status' => 'active', 'periodDays' => 7, 'challenger' => true, 'opponent' => self::publicUser($bob, 'Bob'),
             'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
             'mine' => ['reductionPercent' => 58, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
-            'theirs' => ['reductionPercent' => 50, 'smokeFreeDays' => 1, 'checkIns' => 2, 'countedDays' => 2],
-            'outcome' => null, 'xp' => null, 'provisional' => true,
+            'theirs' => ['reductionPercent' => null, 'smokeFreeDays' => 1, 'checkIns' => 2, 'countedDays' => 2],
+            'standing' => 'ahead', 'outcome' => null, 'xp' => null, 'provisional' => true,
         ];
         self::assertSame(['duels' => [$duel]], $list->json());
         self::assertSame(200, $detail->status());
+        // Bob sees his own percentage, and that he is behind.
+        $bobs = $this->call('GET', '/duels', headers: $this->authorization($bob))->json();
+        self::assertSame(
+            [50, null, 'behind'],
+            [self::at($bobs, 'duels', '0', 'mine', 'reductionPercent'), self::at($bobs, 'duels', '0', 'theirs', 'reductionPercent'), self::at($bobs, 'duels', '0', 'standing')],
+        );
         // A day is a level and never a number: exact figures would give the baseline and the counts away.
         self::assertSame(
             [
@@ -158,13 +166,14 @@ final class DuelsTest extends HttpTestCase
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 23:00:00 UTC'));
         self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel.', $this->cronRun());
 
-        // Anna: 39 of 84 (53.6 %). Bob: 36 of 84 (57.1 %) with four smoke-free days. Bob wins.
+        // Anna: 39 of 84 (53.6 %). Bob: 36 of 84 (57.1 %) with four smoke-free days. Bob wins. Now that
+        // the duel is decided, both percentages are shown.
         $annas = [
             'id' => $id, 'status' => 'completed', 'periodDays' => 7, 'challenger' => true, 'opponent' => self::publicUser($bob, 'Bob'),
             'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
             'mine' => ['reductionPercent' => 54, 'smokeFreeDays' => 0, 'checkIns' => 7, 'countedDays' => 7],
             'theirs' => ['reductionPercent' => 57, 'smokeFreeDays' => 4, 'checkIns' => 5, 'countedDays' => 7],
-            'outcome' => 'lost', 'xp' => 20, 'provisional' => false,
+            'standing' => null, 'outcome' => 'lost', 'xp' => 20, 'provisional' => false,
         ];
         self::assertSame(['duels' => [$annas]], $this->call('GET', '/duels', headers: $this->authorization($anna))->json());
         $bobs = $this->post($bob, '/duels/show', ['duelId' => $id])->json();
@@ -322,8 +331,8 @@ final class DuelsTest extends HttpTestCase
         self::assertNull($this->sql()->value('SELECT id FROM duels WHERE id = ?', [$proposal]));
         $annas = $this->call('GET', '/duels', headers: $this->authorization($anna))->json();
         self::assertSame(
-            ['cancelled', null, null, null, null, null, false],
-            array_map(static fn (string $member): mixed => self::at($annas, 'duels', '0', $member), ['status', 'opponent', 'mine', 'theirs', 'outcome', 'xp', 'provisional']),
+            ['cancelled', null, null, null, null, null, null, false],
+            array_map(static fn (string $member): mixed => self::at($annas, 'duels', '0', $member), ['status', 'opponent', 'mine', 'theirs', 'standing', 'outcome', 'xp', 'provisional']),
         );
         // Long after its last day: nothing is decided, nobody earns anything.
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-01 12:00:00 UTC'));
@@ -483,7 +492,8 @@ final class DuelsTest extends HttpTestCase
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'maxItems'));
         self::assertSame(array_map(static fn (DayLevel $level): string => $level->value, DayLevel::cases()), $schema('DuelDayLevel', 'enum'));
         // Whole percent for a duel, a level for a day: nothing with a decimal that could be calculated back.
-        self::assertSame('integer', $schema('DuelSide', 'properties', 'reductionPercent', 'type'));
+        self::assertSame(['integer', true], [$schema('DuelSide', 'properties', 'reductionPercent', 'type'), $schema('DuelSide', 'properties', 'reductionPercent', 'nullable')]);
+        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('DuelStanding', 'enum'));
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'items', 'properties', 'day', 'maximum'));
         self::assertSame([72, 5], [Duel::OPEN_FOR_HOURS, DuelInvitations::MAX_OPEN]);
         $notes = self::at($document, 'paths', '/duels', 'post', 'description');

@@ -593,7 +593,7 @@ export interface paths {
         };
         /**
          * The duels of the user, newest first (SRS FR-COMP-01)
-         * @description Proposals in both directions, running duels and the ones that are over, at most 100. Of the opponent the user sees name and avatar and, in a running or completed duel, the reduction in whole percent, the smoke-free days and the check-ins of the duel. Never counts, limits or the baseline. When the two are not friends any more, the opponent and the opponent's side are `null`.
+         * @description Proposals in both directions, running duels and the ones that are over, at most 100. Of the opponent the user sees name and avatar, smoke-free days and check-ins, in a running duel who is ahead, and in a completed duel the reduction in whole percent. Never counts, limits or the baseline. When the two are not friends any more, the opponent and the opponent's side are `null`.
          */
         get: operations["listDuels"];
         put?: never;
@@ -1388,8 +1388,8 @@ export interface components {
         DuelStatus: "proposed" | "active" | "declined" | "expired" | "cancelled" | "completed" | "forfeited";
         /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
         DuelSide: {
-            /** @description In whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
-            reductionPercent: number;
+            /** @description `null` for the opponent while the duel runs: then only `standing` says who is ahead. A figure that moves every day could be calculated back, day by day. For the user's own side, and for both sides once the duel is decided: in whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
+            reductionPercent: number | null;
             smokeFreeDays: number;
             checkIns: number;
             countedDays: number;
@@ -1424,6 +1424,8 @@ export interface components {
             mine: components["schemas"]["DuelSide"] | null;
             /** @description As `mine`, and `null` whenever `opponent` is. */
             theirs: components["schemas"]["DuelSide"] | null;
+            /** @description Where the user stands in a running duel, once both sides have a day that counts. `null` before that, for every duel that is not running, and whenever `opponent` is. */
+            standing: components["schemas"]["DuelStanding"] | null;
             /**
              * @description Of a completed duel. More reduction wins, then more smoke-free days, then more check-ins.
              * @enum {string|null}
@@ -1448,6 +1450,11 @@ export interface components {
                 theirs: components["schemas"]["DuelDayLevel"] | null;
             }[];
         };
+        /**
+         * @description The user against the opponent over the days that count so far: more reduction is ahead (compared exactly, not as rounded percent), then more smoke-free days, then more check-ins. `level` when all three are equal.
+         * @enum {string}
+         */
+        DuelStanding: "ahead" | "level" | "behind";
         /**
          * @description How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in below the baseline. `not_under`: at or over the baseline, or not checked in.
          * @enum {string}

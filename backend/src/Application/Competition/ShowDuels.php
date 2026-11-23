@@ -16,13 +16,16 @@ use SmokeDetector\Application\Friends\FriendLinks;
 use SmokeDetector\Application\Friends\PublicProfile;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\TransactionRunner;
+use SmokeDetector\Domain\Competition\CompetitionScore;
+use SmokeDetector\Domain\Competition\CompetitionScoreComparator;
 
 /**
  * GET /duels and POST /duels/show (FR-COMP-01, 03, 08, 09; FR-FRND-03; HLD §4.8 "What the opponent
- * sees"): the duels of a user, both sides in whole percent and each day as a level.
+ * sees"): the duels of a user, each day as a level.
  *
- * - A running duel shows the days that count so far, each side in its own calendar.
- * - A completed duel shows the stored result, and its days against the stored frozen baselines.
+ * - A running duel shows the days that count so far, each side in its own calendar: the own side in
+ *   whole percent, of the opponent's side no percentage, only who is ahead.
+ * - A completed duel shows the stored result, both sides in whole percent, and its days against the stored frozen baselines.
  * - The opponent (name and side) is shown only while the two are friends and the account exists.
  *
  * Locks nothing: one transaction only so that everything is read from one snapshot.
@@ -102,8 +105,13 @@ final readonly class ShowDuels
         $start = $duel->startOf($userId);
         $opponent = $this->visibleOpponent($userId, $duel->otherThan($userId));
 
-        [$mine, $myDays, $xp] = $this->side($duel, $status, $userId, $now);
-        [$theirs, $theirDays] = $opponent === null ? [null, []] : $this->side($duel, $status, $opponent->userId, $now);
+        [$mine, $myDays, $xp, $myScore] = $this->side($duel, $status, $userId, $now, true);
+        [$theirs, $theirDays, , $theirScore] = $opponent === null
+            ? [null, [], null, null]
+            : $this->side($duel, $status, $opponent->userId, $now, false);
+        $standing = $myScore === null || $theirScore === null
+            ? null
+            : DuelStanding::of((new CompetitionScoreComparator())->compare($myScore, $theirScore));
         $result = $status === DuelStatus::Completed ? $duel->decision : null;
 
         $days = [];
@@ -126,6 +134,7 @@ final readonly class ShowDuels
                 $start?->plusDays($duel->periodDays - 1),
                 $mine,
                 $theirs,
+                $standing,
                 $result?->winner->resultFor($isChallenger),
                 $xp,
                 $status === DuelStatus::Active,
@@ -149,18 +158,26 @@ final readonly class ShowDuels
     }
 
     /**
-     * One side: its standing, the level of each day that counts (day 1 at index 0), and the XP the
-     * side earned with a completed duel.
+     * One side: its standing, the level of each day that counts (day 1 at index 0), the XP the side
+     * earned with a completed duel, and the score so far of a running duel (to decide who is ahead).
      *
-     * @return array{SideStanding|null, list<DayLevel>, int|null}
+     * @param bool $own Whether it is the user's own side. The opponent's side of a running duel is
+     *                  built without its percentage.
+     *
+     * @return array{SideStanding|null, list<DayLevel>, int|null, CompetitionScore|null}
      */
-    private function side(Duel $duel, DuelStatus $status, UserId $userId, DateTimeImmutable $now): array
+    private function side(Duel $duel, DuelStatus $status, UserId $userId, DateTimeImmutable $now, bool $own): array
     {
         if ($status === DuelStatus::Active) {
             $days = $this->sides->soFar($userId, self::startOf($duel, $userId), $duel->periodDays, $now);
             $score = $days->score();
+            $standing = match (true) {
+                $score === null => null,
+                $own => SideStanding::ofScore($score),
+                default => SideStanding::ofOpponentScore($score),
+            };
 
-            return [$score === null ? null : SideStanding::ofScore($score), $days->levels(), null];
+            return [$standing, $days->levels(), null, $score];
         }
         if ($status === DuelStatus::Completed) {
             $decision = $duel->decision;
@@ -170,10 +187,10 @@ final readonly class ShowDuels
             \assert($result !== null);
             $days = $this->sides->whole($userId, self::startOf($duel, $userId), $duel->periodDays, $result->b0Tenths);
 
-            return [SideStanding::ofResult($result, $duel->periodDays), $days->levels(), $result->xp];
+            return [SideStanding::ofResult($result, $duel->periodDays), $days->levels(), $result->xp, null];
         }
 
-        return [null, [], null];
+        return [null, [], null, null];
     }
 
     private static function startOf(Duel $duel, UserId $userId): LocalDate
