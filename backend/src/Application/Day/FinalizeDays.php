@@ -17,6 +17,7 @@ use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\Logging\SmokeLogs;
 use SmokeDetector\Application\Plan\BaselineEntry;
 use SmokeDetector\Application\Plan\BaselineHistory;
+use SmokeDetector\Application\Recovery\AwardMilestones;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Domain\Day\DayEventType;
 use SmokeDetector\Domain\Day\DayFinalizer;
@@ -64,6 +65,7 @@ final readonly class FinalizeDays
         private LoggerInterface $logger,
         private LeagueScores $leagueScores,
         private AwardBadges $badges,
+        private AwardMilestones $milestones,
     ) {
     }
 
@@ -173,6 +175,8 @@ final readonly class FinalizeDays
         $this->leagueScores->dayFinalized($calendar, $date, $now);
         // The badges a final day justifies (HLD §4.10), in the same transaction.
         $this->badges->dayFinalized($calendar, $date, $outcome, $finalization->streaks, $now);
+        // The health milestones reached by the end of the day, for friends (HLD §4.11), in the same transaction.
+        $this->milestones->dayFinalized($calendar, $date);
         foreach ($finalization->xpAwards as $award) {
             $this->ledger->append(new XpEvent($this->ids->next(), $userId, $date, $award->source, $award->amount, $award->detail, $now));
         }

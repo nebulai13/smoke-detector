@@ -43,6 +43,18 @@ final class InMemoryDayRecords implements DayRecords, InMemoryState
         return $days;
     }
 
+    public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate
+    {
+        $last = null;
+        foreach ($this->days as $stored) {
+            if ($stored->userId->equals($userId) && !$stored->isCheckedIn() && !$stored->date->isAfter($day) && ($last === null || $stored->date->isAfter($last))) {
+                $last = $stored->date;
+            }
+        }
+
+        return $last;
+    }
+
     /**
      * @return list<DayRecord> Of one user, oldest first.
      */

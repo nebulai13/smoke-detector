@@ -39,6 +39,13 @@ interface SmokeLogs
     public function lastSessionAt(UserId $userId): ?DateTimeImmutable;
 
     /**
+     * When the user's latest log that is not deleted, of that day or a day before it, was smoked
+     * (HLD §4.11), or null without one. The latest by time: after a move west a later moment can
+     * belong to an earlier day.
+     */
+    public function lastSessionUntil(UserId $userId, LocalDate $day): ?DateTimeImmutable;
+
+    /**
      * @return list<ProductType> The products of the user's logs that are not deleted, each once, in
      *                           the order of the ProductType cases.
      */

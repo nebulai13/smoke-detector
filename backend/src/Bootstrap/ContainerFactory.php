@@ -47,6 +47,8 @@ use SmokeDetector\Application\Plan\RuleSets;
 use SmokeDetector\Application\Privacy\UserDataRegistry;
 use SmokeDetector\Application\RateLimit\RateLimitCounters;
 use SmokeDetector\Application\RateLimit\RateLimitKeyHasher;
+use SmokeDetector\Application\Recovery\MilestoneRecords;
+use SmokeDetector\Application\Settings\UserSettings;
 use SmokeDetector\Application\Time\ZoneHistory;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Config\ConsentVersions;
@@ -94,6 +96,7 @@ use SmokeDetector\Infrastructure\Repository\PdoLeagueResults;
 use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
 use SmokeDetector\Infrastructure\Repository\PdoInviteCodes;
 use SmokeDetector\Infrastructure\Repository\PdoMailOutbox;
+use SmokeDetector\Infrastructure\Repository\PdoMilestoneRecords;
 use SmokeDetector\Infrastructure\Repository\PdoOneTimeTokenRepository;
 use SmokeDetector\Infrastructure\Repository\PdoPlanHistory;
 use SmokeDetector\Infrastructure\Repository\PdoPlanRepository;
@@ -102,6 +105,7 @@ use SmokeDetector\Infrastructure\Repository\PdoRateLimitCounters;
 use SmokeDetector\Infrastructure\Repository\PdoRefreshTokenRepository;
 use SmokeDetector\Infrastructure\Repository\PdoSmokeLogs;
 use SmokeDetector\Infrastructure\Repository\PdoUserRepository;
+use SmokeDetector\Infrastructure\Repository\PdoUserSettings;
 use SmokeDetector\Infrastructure\Repository\PdoXpLedger;
 use SmokeDetector\Infrastructure\Repository\PdoZoneHistory;
 use SmokeDetector\Infrastructure\Rules\FileRuleSets;
@@ -227,6 +231,10 @@ final readonly class ContainerFactory
 
             // Badges (HLD §4.10)
             BadgeRecords::class => autowire(PdoBadgeRecords::class),
+
+            // Health milestones for friends, and the settings (HLD §4.11)
+            MilestoneRecords::class => autowire(PdoMilestoneRecords::class),
+            UserSettings::class => autowire(PdoUserSettings::class),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),

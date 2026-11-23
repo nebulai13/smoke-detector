@@ -151,6 +151,36 @@ trait LoggingRepositoriesContract
         self::assertNull($this->smokeLogs()->lastSessionAt(TestData::userId(1)));
     }
 
+    public function test_FR_GAME_09_the_last_session_up_to_a_day_leaves_out_the_days_after_it(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-14', '2026-11-14 10:00:00'));
+        // A session after midnight UTC that belongs to the 15th of the user, and one that is deleted.
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-15', '2026-11-15 22:30:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(12, 1, '2026-11-15', '2026-11-15 22:45:00', deletedAt: '2026-11-16 08:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(13, 1, '2026-11-17', '2026-11-17 07:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(14, 2, '2026-11-14', '2026-11-14 23:59:59'));
+
+        self::assertNull($this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-13')));
+        self::assertEquals(TestData::time('2026-11-14 10:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-14')));
+        self::assertEquals(TestData::time('2026-11-15 22:30:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-15')));
+        // A day without a session has the session before it.
+        self::assertEquals(TestData::time('2026-11-15 22:30:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-16')));
+        self::assertEquals(TestData::time('2026-11-17 07:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-30')));
+        self::assertNull($this->smokeLogs()->lastSessionUntil(TestData::userId(3), TestData::date('2026-11-30')));
+    }
+
+    public function test_FR_GAME_09_the_last_session_up_to_a_day_is_the_latest_by_time_also_when_it_was_logged_for_an_earlier_day(): void
+    {
+        $this->givenUsers(TestData::userId(1));
+        // After a move west a later moment can belong to an earlier day of the user.
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-15', '2026-11-15 08:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-14', '2026-11-15 09:00:00'));
+
+        self::assertEquals(TestData::time('2026-11-15 09:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-15')));
+        self::assertEquals(TestData::time('2026-11-15 09:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-14')));
+    }
+
     public function test_FR_GAME_09_the_products_of_a_user_are_those_of_the_logs_that_are_not_deleted_each_once(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
@@ -220,6 +250,32 @@ trait LoggingRepositoriesContract
         self::assertEquals($final, $this->dayRecords()->find(TestData::userId(1), TestData::date('2026-11-17')));
         self::assertEquals(TestData::day(1, '2026-11-18', 0), $this->dayRecords()->find(TestData::userId(1), TestData::date('2026-11-18')));
         self::assertEquals(TestData::day(2, '2026-11-17', 9), $this->dayRecords()->find(TestData::userId(2), TestData::date('2026-11-17')));
+    }
+
+    public function test_FR_GAME_09_the_last_day_without_a_check_in_up_to_a_day(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        // Stored in another order than the days have. The 15th and the 18th have no check-in.
+        $this->dayRecords()->save(TestData::day(1, '2026-11-18', 4));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-14', 0, '2026-11-14 21:00:00'));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-15', 0));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-16', 2, '2026-11-17 07:00:00'));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-17', 0, '2026-11-17 21:00:00'));
+        $this->dayRecords()->save(TestData::day(2, '2026-11-16', 0));
+
+        $last = fn (int $user, string $day): ?string => $this->dayRecords()->lastMissedUntil(TestData::userId($user), TestData::date($day))?->value;
+
+        self::assertNull($last(1, '2026-11-14'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-15'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-17'));
+        self::assertSame('2026-11-18', $last(1, '2026-11-18'));
+        self::assertSame('2026-11-18', $last(1, '2026-12-31'));
+        // The days of another user, and a user without a day.
+        self::assertSame('2026-11-16', $last(2, '2026-11-17'));
+        self::assertNull($last(3, '2026-11-17'));
+        // A day that is checked in later is not missed any more.
+        $this->dayRecords()->save(TestData::day(1, '2026-11-18', 4, '2026-11-19 08:00:00'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-18'));
     }
 
     public function test_the_days_between_two_dates_come_oldest_first_and_include_both_ends(): void

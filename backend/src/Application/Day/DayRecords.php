@@ -24,4 +24,9 @@ interface DayRecords
      *                         first. Empty when $to is before $from.
      */
     public function between(UserId $userId, LocalDate $from, LocalDate $to): array;
+
+    /**
+     * The latest stored day of the user up to $day, included, that has no check-in; null without one.
+     */
+    public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate;
 }
