@@ -182,14 +182,19 @@ final readonly class DecideDuels
     }
 
     /**
-     * Pays the XP of one side (CompetitionRewards).
+     * Pays the XP of one side (CompetitionRewards), only for a reduction above zero.
      *
      * @return SideResult The side as it is stored.
      */
     private function settle(UserId $userId, SideDays $side, DuelResult $result, DateTimeImmutable $now): SideResult
     {
-        $xp = $this->rewards->pay($userId, $side->calendar, (new XpCalculator($side->calendar->rules->xp))->forDuel($result), $now);
         $score = self::scoreOf($side);
+        $xp = 0;
+        // A duel is rewarded only for a reduction: otherwise two who both do nothing would draw and
+        // collect the XP of a draw week after week (HLD §4.8 "Score").
+        if ($score->reduction->savedTenths() > 0) {
+            $xp = $this->rewards->pay($userId, $side->calendar, (new XpCalculator($side->calendar->rules->xp))->forDuel($result), $now);
+        }
 
         return new SideResult(
             $side->baseline->tenths,

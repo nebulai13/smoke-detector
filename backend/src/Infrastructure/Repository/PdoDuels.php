@@ -95,10 +95,11 @@ final readonly class PdoDuels implements Duels
 
     public function wonBy(UserId $userId): int
     {
-        // One count on each index, as ofEitherSide reads, instead of one OR.
+        // One count on each index, as ofEitherSide reads, instead of one OR. Only a win with a
+        // reduction counts: a side that saved nothing wins no reward (HLD §4.8 "Score").
         $won = $this->sql->value(
-            "SELECT (SELECT COUNT(*) FROM duels WHERE challenger_id = ? AND winner = 'challenger') "
-            . "+ (SELECT COUNT(*) FROM duels WHERE opponent_id = ? AND winner = 'opponent')",
+            "SELECT (SELECT COUNT(*) FROM duels WHERE challenger_id = ? AND winner = 'challenger' AND challenger_actual_tenths < challenger_expected_tenths) "
+            . "+ (SELECT COUNT(*) FROM duels WHERE opponent_id = ? AND winner = 'opponent' AND opponent_actual_tenths < opponent_expected_tenths)",
             [$userId->value, $userId->value],
         );
 
