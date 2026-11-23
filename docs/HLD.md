@@ -163,6 +163,8 @@ erDiagram
 | `blocks` | blocker_id, blocked_id (primary key together), created_at. A table of its own and not a status of the friendship: a block has a direction, and each of two users can block the other. A CHECK constraint: nobody blocks themselves |
 | `duels` | id, challenger_id, opponent_id (each NULL once that account is deleted), period_days, status (proposed / active / declined / expired / cancelled / completed / forfeited), created_at, expires_at, answered_at, challenger_start, opponent_start (the first day of the duel in each user's own calendar), and what the decision writes, NULL before it: decided_at, winner (challenger / opponent / draw), and per side b0_tenths, actual_tenths, expected_tenths (exact totals), smoke_free_days, check_ins, xp; rules_version. Columns and not JSON, so that the side of a deleted user can be emptied by name |
 | `league_results` | user_id, period_type (week / month / quarter / half_year), period_key (e.g. 2026-W47), primary key together. b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), smoke_free_days, check_ins, counted_days, rules_version, scored_at. For the ranking: check_at (when the cron step looks next), and NULL until ranked: rank, participants, xp, ranked_at |
+| `user_milestones` | user_id, milestone_key (the domain's `HealthMilestone`), primary key together. reached_at (UTC): the moment the milestone was first reached. Written when a day becomes final, never changed (§4.11) |
+| `user_settings` | user_id (one row per user, made by the first choice), milestone_sharing (from_two_weeks / private / all). No row means the defaults |
 | `user_badges` | user_id, badge_key (the domain's `Badge`), primary key together: a user holds a badge once. awarded_at (UTC): when it was stored, which is when the day, the duel or the rank became final. The first award stays; a row is never changed |
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
@@ -177,7 +179,7 @@ erDiagram
 |---|---|
 | Auth | `POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password-reset/{request,confirm}` |
 | Legal | `GET /legal/consents` (public: the versions of the consent texts in force) |
-| Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/export`, `DELETE /me`. `GET /me/baseline-history` comes with the weekly update in step 4 |
+| Me | `GET/PATCH /me`, `PUT /me/plan`, `GET/PUT /me/settings` (§4.11), `GET /me/export`, `DELETE /me`. `GET /me/baseline-history` comes with the weekly update in step 4 |
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges`, `GET /me/health-milestones` (§4.10) |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
@@ -927,10 +929,8 @@ request from the user's last log that is not deleted (`smoked_at`), and stores n
 - **Known limit:** the app knows the logged sessions only. Somebody who stops logging reaches every
   milestone. This view is for the user alone, who knows better.
 
-**What friends see of the milestones** is the user's own setting (decided by the owner on 2026-11-23), built
-with the second part of step 6: `from_two_weeks` (the default: the milestones from two weeks on, worked out
-from final days), `private` (none) or `all`. The two short milestones tell almost to the hour when the last
-session was, which friends see nowhere else (FR-FRND-03), so showing them is the user's own choice.
+**What friends see of the milestones** is the user's own setting (decided by the owner on 2026-11-23): see
+§4.11.
 
 **Known limits.**
 
@@ -950,6 +950,41 @@ session was, which friends see nowhere else (FR-FRND-03), so showing them is the
 **Export and deletion.** `user_badges` is registered with exporter and eraser. The export member `badges`
 holds key and time. Health milestones are not stored and so not exported: the logs they are calculated from
 are.
+
+### 4.11 Health milestones for friends, and the settings (step 6, second part)
+
+**The setting (FR-GAME-09, decided by the owner on 2026-11-23).** Every user chooses what friends see of the
+health milestones: `from_two_weeks` (the default: the milestones from two weeks on), `private` (none) or
+`all` (also 20 minutes and 12 hours). `GET /me/settings` and `PUT /me/settings`; a change counts at once.
+Stored in `user_settings`, one row per user, made by the first choice: no row means the defaults. The
+notification settings of step 7 will join it.
+
+**Milestones for friends are reached for good.** A friend does not see where the user stands now (that is
+`GET /me/health-milestones`, for the user alone, §4.10). A friend sees which milestones the user has reached
+at some time:
+
+- `days:finalize` stores them in the transaction that makes a day final (`AwardMilestones`): from the last
+  session logged for that day or a day before it, to the end of that day. A session of a day that is not final
+  does not count (§4.8: of another user only final days are shown).
+- A milestone is stored once, with the moment it was first reached, and never taken back. So a relapse does
+  not show: the list of a friend only ever grows. This is less than "the milestones as they stand", which
+  would tell friends the day of every session after a long pause.
+- `GET /friends` (and the answer to an accepted request) lists the keys the friend's setting allows, without
+  a time. Somebody with an open request shows none.
+- With `all`, the two short milestones appear after the first day with a logged session that ends 12 hours
+  after it. They say little, which is why they are not in the default.
+
+**Known limits.**
+
+- Somebody who looks at the friend list every day sees on which day a milestone appeared: two days after
+  the day that completed the span. For `circulation` that says "no logged session for two weeks until two
+  days ago". Accepted with the setting: the user can choose `private`.
+- A milestone stays when the logs it came from are deleted with a later correction: a final day cannot be
+  changed, so this cannot happen after the fact.
+- The last session up to a day is read from all logs of the user (§4.10 "Known limits").
+
+**Export and deletion.** `user_milestones` and `user_settings` are registered with exporter and eraser. The
+export members are `healthMilestones` (key and the moment it was first reached) and `settings`.
 
 ---
 
