@@ -161,7 +161,7 @@ erDiagram
 | `invite_codes` | user_id (one row per user, made at the first look), code (10 characters, unique), created_at |
 | `friendships` | user_a, user_b (the two users, the one with the smaller id as text first: one row per pair, primary key), requested_by, requested_at, accepted_at (NULL while the request waits). There is no status column that could contradict it. A declined or withdrawn request and an ended friendship are deleted. CHECK constraints: the two users differ, and `requested_by` is one of them |
 | `blocks` | blocker_id, blocked_id (primary key together), created_at. A table of its own and not a status of the friendship: a block has a direction, and each of two users can block the other. A CHECK constraint: nobody blocks themselves |
-| `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json (per user: frozen B₀, exact actual/expected totals in tenths, smoke-free days, check-ins, rules_version) |
+| `duels` | id, challenger_id, opponent_id (each NULL once that account is deleted), period_days, status (proposed / active / declined / expired / cancelled / completed / forfeited), created_at, expires_at, answered_at, challenger_start, opponent_start (the first day of the duel in each user's own calendar), and what the decision writes, NULL before it: decided_at, winner (challenger / opponent / draw), and per side b0_tenths, actual_tenths, expected_tenths (exact totals), smoke_free_days, check_ins, xp; rules_version. Columns and not JSON, so that the side of a deleted user can be emptied by name |
 | `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
 | `user_badges` | user_id, badge_key, awarded_at |
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
@@ -181,7 +181,7 @@ erDiagram
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
-| Competition | `POST /duels`, `POST /duels/{id}/{accept,decline,cancel}`, `GET /duels`, `GET /duels/{id}`, `GET /leagues/{type}/{periodKey}`, `GET /leagues/xp/current` |
+| Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). Leagues follow: `GET /leagues/{type}/{periodKey}`, `GET /leagues/xp/current` |
 | Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
 
@@ -621,6 +621,97 @@ account deletes its code, every friendship and request it is part of, and every 
 - **No test with two requests at the same moment.** The tests show that every change waits for both accounts
   (with a second database connection) and that the limit holds one request after the other.
 
+### 4.8 Duels (step 5, second part)
+
+Decided by the owner: friends see percentages, never counts, limits or the baseline; the detail shows the
+reduction of every duel day; a running duel ends without a winner when the two stop being friends; when an
+account is deleted, its running duels are forfeits without XP for the user who is left.
+
+**Own calendar.** Each of the two is rated over their own local days (§4.6). An accepted duel starts for
+each on their own next local day and is exactly N dates of that calendar (FR-COMP-02). So the two sides can
+start on different dates, and the detail numbers the days from 1.
+
+**Lifecycle (FR-COMP-01, §5.3).**
+
+| Status | How it is reached |
+|---|---|
+| `proposed` | `POST /duels {opponentId, periodDays}`: a user with a plan challenges a friend for 7, 30, 90 or 180 days |
+| `declined` | The friend declines. The duel stays in both lists |
+| `expired` | 72 hours pass without an answer. This is decided by the clock, as the grace period in §4.6: an expired proposal is shown as expired and can be answered or taken back by nobody, also before the cron step has written the status |
+| (deleted) | The challenger takes an open proposal back. Or the two stop being friends, or one account is deleted, while it is a proposal |
+| `active` | The friend accepts, within the 72 hours, with a plan of their own |
+| `completed` | The last day of both is final. Decided by the cron step |
+| `cancelled` | The two stopped being friends while it ran (removal or block). No winner, no XP |
+| `forfeited` | One account was deleted while it ran. The other user keeps the duel, without a winner and without XP |
+
+A running duel cannot be given up. Leaving it means ending the friendship, which ends it for both without a
+result.
+
+**Limits (FR-COMP-05).** Two friends have at most one open duel (proposed or running), whoever proposed it.
+A user has at most 5 open duels: running duels and own proposals count. Proposals from others do not count
+until they are accepted: otherwise friends could fill somebody's list. The limit is checked for the
+challenger at the proposal and for the friend at the acceptance. An expired proposal takes no place, and a
+new proposal to the same friend marks it as expired on the way.
+
+**Score (FR-COMP-03, FR-PLAN-07, §5.4).** `CompetitionScoreCalculator` with the frozen baseline: the baseline
+entry valid on the side's first day, at least the minimum of the rule table. A day with a check-in counts
+with its count. A day without one counts as the baseline, or as what was logged when that is more.
+
+- While the duel runs, the standing is provisional. It counts the duel days up to yesterday, and today once
+  today is checked in (the rule of the projection in §4.6). A day without a check-in counts as missed even
+  while it could still be checked in.
+- The decision reads the final days of both sides and stores per side the frozen baseline, the exact totals,
+  smoke-free days, check-ins and XP, with the rules version (NFR-04). The winner comes from
+  `CompetitionScoreComparator`: more reduction (compared exactly), then more smoke-free days, then more
+  check-ins. Equal on all three is a draw.
+- XP by `XpCalculator::forDuel` (won 100, draw 50, lost 20 in v1). It goes to the ledger with the user's own
+  local date of the decision, and to `user_progress` with the level recalculated, in the transaction that
+  decides the duel. A reward of 0 writes nothing.
+
+**What the opponent sees (FR-FRND-03).** Per side: reduction in percent with one decimal (negative when over
+the baseline), smoke-free days, check-ins and counted days. In the detail: the reduction of every day that
+counts. Never the baseline, a count or a limit. A day at 100 % was smoke-free and a day at 0 % was at the
+baseline or missed: that much a percentage tells, and the owner accepted it. When the two are not friends
+any more, each sees the own side of their past duels and neither the name nor the side of the other.
+
+**No id in a URL** (as §4.7): the duel id is sent in the body, also for reading one duel (`POST /duels/show`).
+
+**Cron step `competitions:finalize`.** Third step of `cron:run`, after `days:finalize`, so a duel is decided
+in the run that makes its last day final. Per run at most 50 proposals expire and at most 50 duels are
+decided, proposals first; the rest follows a minute later. Every item is one transaction with both accounts
+locked in the order of their ids, and is looked at again after the locks: a duel that was answered, taken
+back or cancelled in the meantime is left alone. An item that fails is rolled back, logged without any id
+and counted; the others are still done, and the run then fails visibly, without a heartbeat (as §4.6).
+
+**Locks.** Proposing, accepting, declining and taking back lock both accounts first, in the order of their
+ids, and read the duel again after that. Lists and details lock nothing. A duel that is gone after the wait is answered
+`duel_not_found` after the transaction, so what happened in the meantime stays. The table has no CHECK that
+the two ids differ: MariaDB allows none on a column with `ON DELETE SET NULL`. The code makes sure of it.
+
+**Friends (§4.7).** Removing a friend and blocking delete the proposal between the two and cancel their
+running duel, in the same transaction.
+
+**Export and deletion (FR-ACC-07, FR-ACC-08).** The export lists the user's duels with the user's own side:
+role, dates, outcome, and the own result as it was scored. Of the opponent it holds the id. Deleting an
+account deletes its proposals, turns its running duels into forfeits and empties its side of every other
+duel: id, first day and result. A duel that belongs to nobody any more is deleted.
+
+**Known limits, accepted for the pilot:**
+
+- **Leaving instead of losing.** Whoever is behind can end the friendship, and the duel ends without a
+  result. The owner chose this over "the one who leaves loses", which would punish a block for good reason.
+- **Declined and expired proposals are kept** until one of the two accounts is deleted. The list shows the
+  100 newest duels.
+- **A failing duel is tried again every minute.** With 50 or more of them, the ones behind are not reached
+  (as in §4.6). The run fails visibly.
+- **Badges** for duels ("First duel won") come with step 6, from the stored results.
+- **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week. Accepted: a week of
+  real days is the price.
+
+**Leagues** (FR-COMP-06 to 08) are the next part: calendar periods, a stored result per user and period when
+its last day becomes final, ranks among the user and their friends with the duel tie-breakers and then a
+shared rank (OQ-8), and the weekly XP ranking.
+
 ---
 
 ## 5. Key flows
@@ -646,9 +737,9 @@ sequenceDiagram
 
 ### 5.2 Day finalization & scoring (cron, every minute)
 `cron:run` runs its steps in this order, each isolated from the others: `mail:send` (step 3),
-`days:finalize` with the weekly baseline (step 4, §4.6), later the finalization of duels and league periods
-whose days are all final (step 5), feed events and the notifications outbox (steps 6 and 7), and last
-`housekeeping:purge`, which also expires duel invitations after 72 hours once they exist.
+`days:finalize` with the weekly baseline (step 4, §4.6), `competitions:finalize`, which lets duel proposals
+expire and decides the duels whose days are all final (step 5, §4.8; league periods follow), later feed events
+and the notifications outbox (steps 6 and 7), and last `housekeeping:purge`.
 
 Every step is safe to run twice at once and stops taking new work after its share of the minute
 (`mail:send` 40 s, `days:finalize` 20 s). Leftover work is picked up by the next run.
@@ -659,13 +750,14 @@ stateDiagram-v2
   [*] --> proposed
   proposed --> declined
   proposed --> expired : 72h
-  proposed --> accepted
-  accepted --> active : next local day
+  proposed --> [*] : taken back, friendship ended, account deleted
+  proposed --> active : accepted (starts on the next local day of each)
+  active --> cancelled : friendship ended or blocked
   active --> forfeited : account deleted
-  active --> finalizing : last day ended
-  finalizing --> completed : both users' days final (+48h)
+  active --> completed : both users' last days final (+48h)
   completed --> [*]
 ```
+The rules are in §4.8.
 
 ### 5.4 Reduction formula (FR-COMP-03/06)
 ```
@@ -894,6 +986,10 @@ Known surviving mutants, all provably harmless:
 - `Application\Day\Projection` (a day without a row): the count 0 mutated to 1. Such a day has no check-in,
   so it is a missed day, and the rules ignore the count of a missed day.
 
+- `Application\Competition\DuelSides` (a duel day without a row): the count 0 mutated to 1. Such a day has no
+  check-in, so it counts as the frozen baseline or as its count when that is more. The baseline is at least
+  1.0, and a count of 1 is never more than that.
+
 Mutants that make the loops of `Application\Day\FinalizeDays` and `Projection` endless end as time-outs,
 which count as caught. The run needs more memory than PHP's default (`make mutation` sets 512 MB).
 
@@ -908,7 +1004,7 @@ which count as caught. The run needs more memory than PHP's default (`make mutat
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
 | 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
 | 4 | Logging sync + check-in + finalization cron (§4.6) | Idempotent UUID upsert, 48 h grace. `days:finalize` is the second step of `cron:run`, after `mail:send` |
-| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in two parts: friends first (§4.7), then duels and leagues | Calendar-aligned leagues |
+| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in parts: friends (§4.7), duels (§4.8), then leagues | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot. The core without screens (§6.1) was built ahead, after step 4 | React + Vite |
