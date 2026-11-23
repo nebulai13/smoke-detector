@@ -23,10 +23,13 @@ use Symfony\Component\Yaml\Yaml;
  * tests/Unit/Application/Friends.
  *
  * It is noon UTC on Tuesday, 17 November 2026, and users live in Berlin: their days end at 23:00 UTC.
- * Anna, Bob and Dora are friends and do the onboarding today. Anna logs a session at 10:00 UTC every
- * day up to Sunday the 22nd. Dora logs one session today at 10:00 UTC and none after it. Bob logs
- * nothing. On 3 December at 23:00 UTC the days up to 1 December are final: for Dora that is two weeks
- * and 13 hours without a session, for Anna nine days.
+ * Bob is a friend of Anna, Dora and Erik, and all four do the onboarding today.
+ * - Anna logs a session at 10:00 UTC every day up to Sunday the 22nd and checks those days in.
+ * - Dora logs one session today at 10:00 UTC, none after it, and checks in every day.
+ * - Erik logs one session today at 10:00 UTC and never opens the app again.
+ * - Bob logs nothing.
+ * On 3 December at 23:00 UTC the days up to 1 December are final: for Dora that is two weeks and 13
+ * hours without a session, every day of them confirmed.
  */
 final class MilestoneSharingTest extends HttpTestCase
 {
@@ -36,21 +39,25 @@ final class MilestoneSharingTest extends HttpTestCase
 
     public function test_FR_FRND_03_friends_see_the_milestones_from_two_weeks_on_unless_the_friend_chose_otherwise(): void
     {
-        [$anna, $bob, $dora] = $this->threeFriendsInDecember();
+        [$anna, $bob, $dora, $erik] = $this->threeFriendsInDecember();
 
-        // Nobody chose anything. Anna has reached the two short ones only.
-        self::assertSame(['Anna' => [], 'Dora' => ['circulation']], $this->milestonesSeenBy($bob));
+        // Nobody chose anything. Anna has reached the two short ones only. Erik has logged no session
+        // for two weeks either, but he confirmed no day: nobody said that they were smoke-free.
+        self::assertSame(['Anna' => [], 'Dora' => ['circulation'], 'Erik' => []], $this->milestonesSeenBy($bob));
+        self::assertSame(200, $this->call('PUT', '/me/settings', ['milestoneSharing' => 'all'], $this->authorization($erik))->status());
+        self::assertSame(['Anna' => [], 'Dora' => ['circulation'], 'Erik' => []], $this->milestonesSeenBy($bob));
+        self::assertSame([], $this->sql()->rows('SELECT * FROM user_milestones WHERE user_id = ?', [$erik->id->value]));
 
         // Anna shows everything, Dora nothing. It counts at once.
         self::assertSame(['milestoneSharing' => 'all'], $this->call('PUT', '/me/settings', ['milestoneSharing' => 'all'], $this->authorization($anna))->json());
         self::assertSame(200, $this->call('PUT', '/me/settings', ['milestoneSharing' => 'private'], $this->authorization($dora))->status());
-        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => []], $this->milestonesSeenBy($bob));
+        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => [], 'Erik' => []], $this->milestonesSeenBy($bob));
 
         // Bob's own setting changes nothing about what he sees of the others.
         self::assertSame(200, $this->call('PUT', '/me/settings', ['milestoneSharing' => 'private'], $this->authorization($bob))->status());
-        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => []], $this->milestonesSeenBy($bob));
+        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => [], 'Erik' => []], $this->milestonesSeenBy($bob));
         self::assertSame(200, $this->call('PUT', '/me/settings', ['milestoneSharing' => 'from_two_weeks'], $this->authorization($dora))->status());
-        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => ['circulation']], $this->milestonesSeenBy($bob));
+        self::assertSame(['Anna' => ['heart_rate', 'carbon_monoxide'], 'Dora' => ['circulation'], 'Erik' => []], $this->milestonesSeenBy($bob));
     }
 
     public function test_FR_FRND_03_no_time_of_a_milestone_reaches_a_friend(): void
@@ -71,15 +78,16 @@ final class MilestoneSharingTest extends HttpTestCase
         [, $bob, $dora] = $this->threeFriendsInDecember();
         $before = $this->call('GET', '/friends', headers: $this->authorization($bob))->body();
 
-        // Dora smokes again on 4 December. Three days later that day is final.
+        // Dora smokes again on 4 December, and checks the day in. Three days later that day is final.
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-04 12:00:00 UTC'));
         self::assertSame(200, $this->post($dora, '/logs/sync', ['items' => [['id' => TestData::uuid(900), 'smokedAt' => '2026-12-04T11:00:00Z', 'productType' => 'rolled', 'count' => 1]]])->status());
+        self::assertSame(200, $this->call('POST', '/days/2026-12-04/check-in', headers: $this->authorization($dora))->status());
         self::assertSame($before, $this->call('GET', '/friends', headers: $this->authorization($bob))->body());
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-07 23:00:00 UTC'));
         $this->cronRun();
 
         // What Bob sees of Dora is what it was: nothing in it moved.
-        self::assertSame(['Anna' => [], 'Dora' => ['circulation']], $this->milestonesSeenBy($bob));
+        self::assertSame(['Anna' => [], 'Dora' => ['circulation'], 'Erik' => []], $this->milestonesSeenBy($bob));
         // Dora's own view counts from the new session.
         $own = $this->call('GET', '/me/health-milestones', headers: $this->authorization($dora))->json();
         self::assertSame('2026-12-04T11:00:00Z', $own['since'] ?? null);
@@ -156,28 +164,39 @@ final class MilestoneSharingTest extends HttpTestCase
     }
 
     /**
-     * Anna, Bob and Dora as the class comment says, on 3 December at 23:00 UTC after a run of the cron job.
+     * Anna, Bob, Dora and Erik as the class comment says, on 3 December at 23:00 UTC after a run of the cron job.
      *
-     * @return array{User, User, User}
+     * @return array{User, User, User, User}
      */
     private function threeFriendsInDecember(): array
     {
         $anna = $this->onboarded('Anna');
         $bob = $this->onboarded('Bob');
         $dora = $this->onboarded('Dora');
+        $erik = $this->onboarded('Erik');
         $this->befriend($anna, $bob);
         $this->befriend($bob, $dora);
-        foreach (['2026-11-17', '2026-11-18', '2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22'] as $date) {
-            $this->clock()->travelTo(new DateTimeImmutable("{$date} 12:00:00 UTC"));
-            foreach ($date === '2026-11-17' ? [$anna, $dora] : [$anna] as $user) {
-                $log = ['id' => TestData::uuid(++$this->logs), 'smokedAt' => "{$date}T10:00:00Z", 'productType' => 'rolled', 'count' => 1];
+        $this->befriend($erik, $bob);
+        for ($date = new DateTimeImmutable('2026-11-17 12:00:00 UTC'); $date->format('Y-m-d') <= '2026-12-01'; $date = $date->modify('+1 day')) {
+            $day = $date->format('Y-m-d');
+            $this->clock()->travelTo($date);
+            $logging = match (true) {
+                $day === '2026-11-17' => [$anna, $dora, $erik],
+                $day <= '2026-11-22' => [$anna],
+                default => [],
+            };
+            foreach ($logging as $user) {
+                $log = ['id' => TestData::uuid(++$this->logs), 'smokedAt' => "{$day}T10:00:00Z", 'productType' => 'rolled', 'count' => 1];
                 self::assertSame(200, $this->post($user, '/logs/sync', ['items' => [$log]])->status());
+            }
+            foreach ($day <= '2026-11-22' ? [$anna, $dora] : [$dora] as $user) {
+                self::assertSame(200, $this->call('POST', "/days/{$day}/check-in", headers: $this->authorization($user))->status());
             }
         }
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-03 23:00:00 UTC'));
         $this->cronRun();
 
-        return [$anna, $bob, $dora];
+        return [$anna, $bob, $dora, $erik];
     }
 
     /**

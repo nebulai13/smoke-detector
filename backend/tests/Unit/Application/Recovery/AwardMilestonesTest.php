@@ -13,9 +13,11 @@ use SmokeDetector\Tests\Unit\Application\LoggingUseCaseTestCase;
 
 /**
  * The health milestones a user has reached for good (HLD §4.11 "Milestones for friends"; FR-GAME-09,
- * FR-FRND-03): stored in the transaction that makes a day final, from the last session up to that day
- * and the end of that day. Open days do not count, and what is stored is never taken back, so friends
- * cannot see a session of today or a relapse in it.
+ * FR-FRND-03): stored in the transaction that makes a day final. They count confirmed time only: from
+ * the last session logged up to that day, or from the end of the last day without a check-in if that
+ * is later, to the end of the day. A day without a check-in is not a day without a session (FR-LOG-03),
+ * so an account that is not used reaches nothing. Open days do not count, and what is stored is never
+ * taken back, so friends cannot see a session of today or a relapse in it.
  *
  * It is noon UTC on Tuesday, 17 November 2026, and Anna lives in Vienna: her days end at 23:00 UTC,
  * and her 14th became final at 23:00 UTC on the 16th.
@@ -23,6 +25,7 @@ use SmokeDetector\Tests\Unit\Application\LoggingUseCaseTestCase;
 final class AwardMilestonesTest extends LoggingUseCaseTestCase
 {
     private User $anna;
+    private int $logs = 0;
 
     protected function setUp(): void
     {
@@ -34,7 +37,7 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
     {
         $this->givenOnboarded($this->anna, '2026-11-14');
         // 13 hours before the end of the day.
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00', 3);
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 10:00:00');
 
         $this->clock->travelTo(TestData::time('2026-11-16 22:59:59'));
         $this->finalizeDays()->execute();
@@ -55,8 +58,8 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
         $this->givenOnboarded($this->anna, '2026-11-14');
         $this->givenOnboarded($bob, '2026-11-14');
         // Exactly 12 hours before the end of the day, and a second less.
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 11:00:00');
-        $this->givenLog($bob, 2, '2026-11-14', '2026-11-14 11:00:01');
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 11:00:00');
+        $this->givenChecked($bob, '2026-11-14', '2026-11-14 11:00:01');
 
         $this->clock->travelTo(TestData::time('2026-11-16 23:00:00'));
         $this->finalizeDays()->execute();
@@ -65,11 +68,12 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
         self::assertSame(['heart_rate'], array_column($this->milestonesOf($bob), 0));
     }
 
-    public function test_FR_GAME_09_a_day_without_a_session_counts_on_from_the_session_before(): void
+    public function test_FR_GAME_09_a_checked_in_day_without_a_session_counts_on_from_the_session_before(): void
     {
         $this->givenOnboarded($this->anna, '2026-11-14');
-        // Ten minutes before the end of the 14th. Nothing on the 15th.
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 22:50:00');
+        // Ten minutes before the end of the 14th. The 15th is checked in with no session.
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 22:50:00');
+        $this->givenChecked($this->anna, '2026-11-15');
 
         $this->clock->travelTo(TestData::time('2026-11-16 23:00:00'));
         $this->finalizeDays()->execute();
@@ -86,8 +90,7 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
 
     public function test_FR_GAME_09_two_weeks_without_a_session_are_reached_with_the_day_that_ends_after_them(): void
     {
-        $this->givenOnboarded($this->anna, '2026-11-01', '2026-11-14');
-        $this->givenLog($this->anna, 1, '2026-11-01', '2026-11-01 08:00:00');
+        $this->givenTwoWeeksFromTheFirst();
 
         // The 14th ends 13 days and 15 hours after the session.
         $this->finalizeDays()->execute();
@@ -103,12 +106,58 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
         );
     }
 
+    public function test_FR_LOG_03_a_day_without_a_check_in_is_not_a_day_without_a_session(): void
+    {
+        // As before, but the 10th has no check-in: nobody said that it was smoke-free.
+        $this->givenTwoWeeksFromTheFirst(missed: '2026-11-10');
+
+        $this->clock->travelTo(TestData::time('2026-11-17 23:00:00'));
+        $this->finalizeDays()->execute();
+
+        // The count begins again at the end of the 10th, 23:00 UTC: five days until the end of the 15th.
+        self::assertSame(
+            [['heart_rate', '2026-11-10 23:20:00'], ['carbon_monoxide', '2026-11-11 11:00:00']],
+            $this->milestonesOf($this->anna),
+        );
+    }
+
+    public function test_FR_GAME_09_a_final_day_without_a_check_in_stores_nothing(): void
+    {
+        $this->givenTwoWeeksFromTheFirst();
+        // The 14th was checked in, the 15th is not.
+        $this->givenDay($this->anna, '2026-11-15');
+        $this->finalizeDays()->execute();
+        $before = $this->milestonesOf($this->anna);
+
+        $this->clock->travelTo(TestData::time('2026-11-17 23:00:00'));
+        $this->finalizeDays()->execute();
+
+        // Two weeks are over by the clock, but the last of the days is not confirmed.
+        self::assertTrue($this->dayRecords->find($this->anna->id, self::date('2026-11-15'))?->isFinal());
+        self::assertSame($before, $this->milestonesOf($this->anna));
+        self::assertSame(['heart_rate', 'carbon_monoxide'], array_column($before, 0));
+    }
+
+    public function test_FR_GAME_09_an_account_that_is_not_used_reaches_nothing(): void
+    {
+        $this->givenOnboarded($this->anna, '2026-11-14');
+        // One session on the first day, and then the app is never opened again.
+        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00');
+
+        // Three weeks later the cron job has made every day final, as a missed day.
+        $this->clock->travelTo(TestData::time('2026-12-05 23:00:00'));
+        $this->finalizeDays()->execute();
+
+        self::assertTrue($this->dayRecords->find($this->anna->id, self::date('2026-12-03'))?->isFinal());
+        self::assertSame([], $this->milestoneRecords->all());
+    }
+
     public function test_FR_FRND_03_a_session_of_a_day_that_is_not_final_changes_nothing(): void
     {
         $this->givenOnboarded($this->anna, '2026-11-14');
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00');
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 10:00:00');
         // Yesterday, the 16th, is still open: its session is no business of the 14th.
-        $this->givenLog($this->anna, 2, '2026-11-16', '2026-11-16 09:00:00');
+        $this->givenChecked($this->anna, '2026-11-16', '2026-11-16 09:00:00');
 
         $this->finalizeDays()->execute();
 
@@ -118,12 +167,12 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
     public function test_FR_FRND_03_what_was_reached_once_stays_and_keeps_its_first_moment(): void
     {
         $this->givenOnboarded($this->anna, '2026-11-14');
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00');
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 10:00:00');
         $this->finalizeDays()->execute();
         $before = $this->milestonesOf($this->anna);
 
         // A session two hours before the end of the 15th: by the end of that day only 20 minutes are reached again.
-        $this->givenLog($this->anna, 2, '2026-11-15', '2026-11-15 21:00:00');
+        $this->givenChecked($this->anna, '2026-11-15', '2026-11-15 21:00:00');
         $this->clock->travelTo(TestData::time('2026-11-17 23:00:00'));
         $this->finalizeDays()->execute();
 
@@ -133,23 +182,25 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
 
     public function test_FR_GAME_09_without_a_logged_session_nothing_is_reached(): void
     {
-        $this->givenOnboarded($this->anna, '2026-11-01', '2026-11-14');
-        // Logged by mistake, and deleted again.
-        $this->givenLog($this->anna, 1, '2026-11-02', '2026-11-02 08:00:00', deletedAt: '2026-11-02 08:05:00');
+        $this->givenOnboarded($this->anna, '2026-11-14');
+        // Logged by mistake, and deleted again. The day is checked in.
+        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 08:00:00', deletedAt: '2026-11-14 08:05:00');
+        $this->givenChecked($this->anna, '2026-11-14');
 
         $this->finalizeDays()->execute();
 
-        self::assertNotNull($this->dayRecords->find($this->anna->id, self::date('2026-11-14'))?->result);
+        self::assertTrue($this->dayRecords->find($this->anna->id, self::date('2026-11-14'))?->isFinal());
         self::assertSame([], $this->milestoneRecords->all());
     }
 
-    public function test_FR_GAME_09_the_sessions_of_another_user_do_not_count(): void
+    public function test_FR_GAME_09_the_sessions_and_days_of_another_user_do_not_count(): void
     {
         $bob = $this->givenUser('bob@example.org');
         $this->givenOnboarded($this->anna, '2026-11-14');
         $this->givenOnboarded($bob, '2026-11-14');
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00');
-        $this->givenLog($bob, 2, '2026-11-14', '2026-11-14 22:55:00');
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 10:00:00');
+        // Bob's session is late, and his day has no check-in.
+        $this->givenLog($bob, 900, '2026-11-14', '2026-11-14 22:55:00');
 
         $this->finalizeDays()->execute();
 
@@ -160,8 +211,7 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
     public function test_a_day_that_could_not_be_finalized_leaves_no_milestone_behind(): void
     {
         $this->givenOnboarded($this->anna, '2026-11-14');
-        $this->givenLog($this->anna, 1, '2026-11-14', '2026-11-14 10:00:00');
-        $this->givenDay($this->anna, '2026-11-14', 1, '2026-11-14 21:00:00');
+        $this->givenChecked($this->anna, '2026-11-14', '2026-11-14 10:00:00');
         // The id the first XP event of the run will get is taken: storing it fails, and the step is
         // rolled back as a whole.
         $this->xpLedger->append(new XpEvent(SequentialIdGenerator::id(2), TestData::userId(99), self::date('2026-11-01'), XpSource::Reaction, 2, null, $this->now()));
@@ -170,5 +220,34 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
 
         self::assertSame(1, $report->failedUsers);
         self::assertSame([], $this->milestoneRecords->all());
+    }
+
+    /**
+     * A day of the user with a check-in in the evening and, if a time is given, one session at it.
+     */
+    private function givenChecked(User $user, string $date, ?string $smokedAt = null): void
+    {
+        if ($smokedAt !== null) {
+            $this->givenLog($user, ++$this->logs, $date, $smokedAt);
+        }
+        $this->givenDay($user, $date, $smokedAt === null ? 0 : 1, "{$date} 21:00:00");
+    }
+
+    /**
+     * Anna did the onboarding on the 1st and logged one session that day at 08:00 UTC. Every day up
+     * to the 15th is checked in, except the one that is named. The days up to the 13th are final.
+     */
+    private function givenTwoWeeksFromTheFirst(?string $missed = null): void
+    {
+        $this->givenOnboarded($this->anna, '2026-11-01', '2026-11-14');
+        $this->givenChecked($this->anna, '2026-11-01', '2026-11-01 08:00:00');
+        for ($day = 2; $day <= 15; $day++) {
+            $date = sprintf('2026-11-%02d', $day);
+            if ($date === $missed) {
+                $this->givenDay($this->anna, $date);
+            } else {
+                $this->givenChecked($this->anna, $date);
+            }
+        }
     }
 }

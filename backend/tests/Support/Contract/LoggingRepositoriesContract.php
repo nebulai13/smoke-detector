@@ -252,6 +252,32 @@ trait LoggingRepositoriesContract
         self::assertEquals(TestData::day(2, '2026-11-17', 9), $this->dayRecords()->find(TestData::userId(2), TestData::date('2026-11-17')));
     }
 
+    public function test_FR_GAME_09_the_last_day_without_a_check_in_up_to_a_day(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        // Stored in another order than the days have. The 15th and the 18th have no check-in.
+        $this->dayRecords()->save(TestData::day(1, '2026-11-18', 4));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-14', 0, '2026-11-14 21:00:00'));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-15', 0));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-16', 2, '2026-11-17 07:00:00'));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-17', 0, '2026-11-17 21:00:00'));
+        $this->dayRecords()->save(TestData::day(2, '2026-11-16', 0));
+
+        $last = fn (int $user, string $day): ?string => $this->dayRecords()->lastMissedUntil(TestData::userId($user), TestData::date($day))?->value;
+
+        self::assertNull($last(1, '2026-11-14'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-15'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-17'));
+        self::assertSame('2026-11-18', $last(1, '2026-11-18'));
+        self::assertSame('2026-11-18', $last(1, '2026-12-31'));
+        // The days of another user, and a user without a day.
+        self::assertSame('2026-11-16', $last(2, '2026-11-17'));
+        self::assertNull($last(3, '2026-11-17'));
+        // A day that is checked in later is not missed any more.
+        $this->dayRecords()->save(TestData::day(1, '2026-11-18', 4, '2026-11-19 08:00:00'));
+        self::assertSame('2026-11-15', $last(1, '2026-11-18'));
+    }
+
     public function test_the_days_between_two_dates_come_oldest_first_and_include_both_ends(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

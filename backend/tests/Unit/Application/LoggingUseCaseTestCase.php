@@ -110,7 +110,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
             $this->logger,
             new LeagueScores($this->leagueResults, $this->dayRecords),
             $this->awardBadges(),
-            new AwardMilestones($this->milestoneRecords, $this->smokeLogs),
+            new AwardMilestones($this->milestoneRecords, $this->smokeLogs, $this->dayRecords),
         );
     }
 
