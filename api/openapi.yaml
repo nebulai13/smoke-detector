@@ -2724,13 +2724,15 @@ components:
     FriendRequestRefused:
       description: >
         `own_invite` (the code is the user's own), `already_friends`, or `friend_limit_reached`: the user
-        has 50 friends and requests sent already (SRS FR-FRND-04).
+        has 50 friends and own open requests already (SRS FR-FRND-04).
       content:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
     FriendLimitReached:
-      description: "`friend_limit_reached`: one of the two has 50 friends already (SRS FR-FRND-04)."
+      description: >
+        `friend_limit_reached`: the user has 50 friends and own open requests already (SRS FR-FRND-04).
+        How many friends the other user has never decides.
       content:
         application/problem+json:
           schema:

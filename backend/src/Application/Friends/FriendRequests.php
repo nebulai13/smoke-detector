@@ -42,8 +42,7 @@ final readonly class FriendRequests
      * @throws InviteNotFound     Nobody has the code, or one of the two has blocked the other.
      * @throws OwnInvite          The code is the sender's own.
      * @throws AlreadyFriends     The two are friends already.
-     * @throws FriendLimitReached A new request: the sender's friends and own open requests are 50.
-     *                            An acceptance: one of the two has 50 friends.
+     * @throws FriendLimitReached The sender's friends and own open requests are 50 already.
      * @throws AccountNotFound    When the sender's account was deleted in the meantime.
      */
     public function send(UserId $sender, InviteCode $code): SentRequest
@@ -69,7 +68,7 @@ final readonly class FriendRequests
             $profile = PublicProfile::of($ownerAccount);
             $link = $this->links->between($sender, $owner);
             if ($link === null) {
-                $this->assertRoomToAsk($sender);
+                $this->assertRoom($sender);
                 $this->links->save(new Friendship($sender, $owner, $now));
 
                 return new SentRequest(false, $profile);
@@ -82,7 +81,7 @@ final readonly class FriendRequests
                 return new SentRequest(false, $profile);
             }
 
-            $this->assertRoomForFriendship($sender, $owner);
+            $this->assertRoom($sender);
             $this->links->save($link->acceptedAt($now));
 
             return new SentRequest(true, $profile);
@@ -95,7 +94,7 @@ final readonly class FriendRequests
      * @return FriendView The new friend, as $userId sees them from now on.
      *
      * @throws FriendRequestNotFound No open request of $requester to $userId.
-     * @throws FriendLimitReached    One of the two has 50 friends.
+     * @throws FriendLimitReached    The friends and own open requests of $userId are 50 already.
      * @throws AccountNotFound       When the account of $userId was deleted in the meantime.
      */
     public function accept(UserId $userId, UserId $requester): FriendView
@@ -104,7 +103,7 @@ final readonly class FriendRequests
 
         return $this->transactions->run(function () use ($userId, $requester, $now): FriendView {
             [$account, $request] = $this->openRequest($userId, $requester, $requester);
-            $this->assertRoomForFriendship($userId, $requester);
+            $this->assertRoom($userId);
             $this->links->save($request->acceptedAt($now));
 
             return FriendView::of($account, $now, $this->progress->find($requester));
@@ -161,30 +160,19 @@ final readonly class FriendRequests
     }
 
     /**
-     * A new request: the sender's friends and own open requests together stay below the limit.
-     * Requests of others to the sender do not count, or strangers with the code could fill the list.
+     * The limit (FR-FRND-04, HLD §4.7 "Limit"): the user's friends and own open requests together
+     * stay below 50, checked for the one who asks or accepts. Requests of others to the user do not
+     * count, or strangers with the code could fill the list; the other side's numbers are never
+     * looked at, so a refusal tells nothing about them.
      */
-    private function assertRoomToAsk(UserId $sender): void
+    private function assertRoom(UserId $user): void
     {
         $taken = array_filter(
-            $this->links->ofUser($sender),
-            static fn (Friendship $link): bool => $link->isAccepted() || $link->requester->equals($sender),
+            $this->links->ofUser($user),
+            static fn (Friendship $link): bool => $link->isAccepted() || $link->requester->equals($user),
         );
         if (count($taken) >= self::MAX_FRIENDS) {
             throw new FriendLimitReached();
-        }
-    }
-
-    /**
-     * An acceptance: neither of the two has the limit of friends already.
-     */
-    private function assertRoomForFriendship(UserId ...$users): void
-    {
-        foreach ($users as $user) {
-            $friends = array_filter($this->links->ofUser($user), static fn (Friendship $link): bool => $link->isAccepted());
-            if (count($friends) >= self::MAX_FRIENDS) {
-                throw new FriendLimitReached();
-            }
         }
     }
 }

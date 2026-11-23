@@ -577,10 +577,12 @@ about another user takes the user id in the body: `POST /friends/remove {userId}
 | Decline, withdraw | The request is deleted. The other one is not told, and can ask again |
 | Remove | Ends an accepted friendship for both. An open request is not removed this way |
 
-**Limit (FR-FRND-04).** A user has at most 50 friends. A new request is refused when the sender's friends
-and own open requests are 50 together. Requests from others do not count: otherwise strangers with the code
-could fill the list. An acceptance is refused when one of the two has 50 friends. A request is never refused
-because of the owner's count: the answer would tell a stranger how many friends somebody has.
+**Limit (FR-FRND-04).** For every user, friends and own open requests together are at most 50. A request
+that is sent takes its place among the sender's 50 at once, and keeps it when it is accepted. So a new
+request is refused when the sender is at 50, and an acceptance is refused when the one who accepts is at 50.
+Requests from others do not count: otherwise strangers with the code could fill the list. Nothing is ever
+refused because of the other user's count. That count is nobody else's business: a refusal would tell a
+stranger with the code, or somebody who was only asked, how many friends a user has.
 
 **Blocks (FR-FRND-02).** A user can block whom they can see: a friend, or somebody with an open request in
 either direction. Anybody else is answered `friend_not_found`, as a user id that does not exist is, so the
@@ -611,6 +613,13 @@ account deletes its code, every friendship and request it is part of, and every 
   code can send, be declined and send again without end. Blocking stops it. Belongs with the limits of step 11.
 - **An invite code does not expire.** It works until the user replaces it.
 - **A declined request leaves no trace**, so the sender does not learn it. A notification could tell (step 7).
+- **A block can be told from a decline.** After a decline the sender can ask again and gets `pending`. After
+  a block the code seems not to exist. That is the same answer as after a renewed code, so the sender cannot be
+  sure, but can guess.
+- **A replaced invite code is free again.** The generator could give it to another user (one chance in 2^50
+  per new code). Somebody who still has the old code would then ask that user.
+- **No test with two requests at the same moment.** The tests show that every change waits for both accounts
+  (with a second database connection) and that the limit holds one request after the other.
 
 ---
 
@@ -899,7 +908,7 @@ which count as caught. The run needs more memory than PHP's default (`make mutat
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
 | 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
 | 4 | Logging sync + check-in + finalization cron (§4.6) | Idempotent UUID upsert, 48 h grace. `days:finalize` is the second step of `cron:run`, after `mail:send` |
-| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league | Calendar-aligned leagues |
+| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in two parts: friends first (§4.7), then duels and leagues | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot. The core without screens (§6.1) was built ahead, after step 4 | React + Vite |
