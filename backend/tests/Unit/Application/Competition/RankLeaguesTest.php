@@ -265,7 +265,12 @@ final class RankLeaguesTest extends LeaguesUseCaseTestCase
 
         // The ghost would be first of three and earn XP, which cannot be booked without progress.
         self::assertSame([2, 0, 1], self::report($report));
-        self::assertEquals($damaged, $this->resultOf($ghost));
+        // Not ranked, and looked at again in 15 minutes: a result that fails every time must not be the
+        // first of every run, in front of the ones that can be ranked.
+        self::assertNull($this->resultOf($ghost)->award);
+        self::assertEquals($this->now()->modify('+15 minutes'), $this->resultOf($ghost)->checkAt);
+        self::assertSame([$damaged->actualTenths, $damaged->scoredAt], [$this->resultOf($ghost)->actualTenths, $this->resultOf($ghost)->scoredAt]);
+        self::assertSame([0, 0, 0], self::report($this->rankLeagues()->execute()));
         self::assertSame([], $this->xpLedger->ofUser($ghost->id));
         self::assertSame([[2, 3, 100], [3, 3, 50]], [$this->awardOf($anna), $this->awardOf($bob)]);
         self::assertCount(1, $this->logger->records);

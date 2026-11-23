@@ -6,6 +6,8 @@ namespace SmokeDetector\Tests\Integration\Http\Competition;
 
 use DateTimeImmutable;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Competition\DuelStanding;
+use SmokeDetector\Application\Competition\ShowLeague;
 use SmokeDetector\Application\Friends\FriendRequests;
 use SmokeDetector\Console\Console;
 use SmokeDetector\Domain\Xp\LeaguePeriod;
@@ -31,7 +33,7 @@ final class LeaguesTest extends HttpTestCase
 
     private int $logs = 0;
 
-    public function test_FR_COMP_06_a_running_week_shows_positions_and_the_own_percentage_only(): void
+    public function test_FR_COMP_06_a_running_week_shows_who_is_ahead_and_the_own_rank_and_percentage_only(): void
     {
         [$anna, $bob, $carol] = $this->threeFriends();
         // Today: Anna 6, checked in. Bob nothing, checked in. Carol has logged 4 and not checked in.
@@ -44,10 +46,11 @@ final class LeaguesTest extends HttpTestCase
             [
                 'type' => 'week', 'period' => '2026-W47', 'startsOn' => '2026-11-16', 'endsOn' => '2026-11-22', 'final' => false,
                 'entries' => [
-                    ['rank' => 1, 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 1, 'checkIns' => 1, 'countedDays' => 1],
-                    ['rank' => 2, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 1, 'countedDays' => 1],
+                    // Of a friend: ahead or behind, and no rank and no percentage.
+                    ['rank' => null, 'standing' => 'ahead', 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 1, 'checkIns' => 1, 'countedDays' => 1],
+                    ['rank' => 2, 'standing' => null, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 1, 'countedDays' => 1],
                     // Her today does not count before she has checked in.
-                    ['rank' => null, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => null, 'checkIns' => null, 'countedDays' => null],
+                    ['rank' => null, 'standing' => null, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => null, 'checkIns' => null, 'countedDays' => null],
                 ],
                 'award' => null,
             ],
@@ -91,13 +94,13 @@ final class LeaguesTest extends HttpTestCase
             $this->day($date, [[$anna, 6, true], [$bob, 0, true], [$carol, 12, true]]);
         }
 
-        // The week is over and its last day is not final: positions only, nothing is stored.
+        // The week is over and its last day is not final: who is ahead, and nothing is stored.
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-24 22:59:59 UTC'));
         self::assertStringContainsString('ranked 0 league results.', $this->cronRun());
         $waiting = $this->call('GET', '/leagues?type=week&period=2026-W47', headers: $this->authorization($anna))->json();
         self::assertSame(
-            [false, null, [[1, null], [2, 50], [3, null]]],
-            [$waiting['final'] ?? null, $waiting['award'] ?? null, array_map(static fn (mixed $entry): array => [self::at((array) $entry, 'rank'), self::at((array) $entry, 'reductionPercent')], (array) ($waiting['entries'] ?? null))],
+            [false, null, [[null, 'ahead', null], [2, null, 50], [null, 'behind', null]]],
+            [$waiting['final'] ?? null, $waiting['award'] ?? null, array_map(static fn (mixed $entry): array => [self::at((array) $entry, 'rank'), self::at((array) $entry, 'standing'), self::at((array) $entry, 'reductionPercent')], (array) ($waiting['entries'] ?? null))],
         );
         self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM league_results'));
 
@@ -142,14 +145,15 @@ final class LeaguesTest extends HttpTestCase
             $this->sql()->rows('SELECT user_id, xp_total AS xp FROM user_progress ORDER BY user_id'),
         );
 
-        // Now the league is final: everybody's percentage, and the reward.
+        // Now the league is final: everybody's rank, and the reward. A friend's percentage would be
+        // shown for a result over seven days or more. This first week had six, from the onboarding on.
         self::assertSame(
             [
                 'type' => 'week', 'period' => '2026-W47', 'startsOn' => '2026-11-16', 'endsOn' => '2026-11-22', 'final' => true,
                 'entries' => [
-                    ['rank' => 1, 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => 100, 'smokeFreeDays' => 6, 'checkIns' => 6, 'countedDays' => 6],
-                    ['rank' => 2, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 6, 'countedDays' => 6],
-                    ['rank' => 3, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => 0, 'smokeFreeDays' => 0, 'checkIns' => 6, 'countedDays' => 6],
+                    ['rank' => 1, 'standing' => null, 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 6, 'checkIns' => 6, 'countedDays' => 6],
+                    ['rank' => 2, 'standing' => null, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 6, 'countedDays' => 6],
+                    ['rank' => 3, 'standing' => null, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 0, 'checkIns' => 6, 'countedDays' => 6],
                 ],
                 'award' => ['rank' => 2, 'participants' => 3, 'xp' => 100],
             ],
@@ -158,6 +162,28 @@ final class LeaguesTest extends HttpTestCase
         // A second run ranks nothing twice.
         self::assertStringContainsString('ranked 0 league results.', $this->cronRun());
         self::assertSame(3, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'league'"));
+    }
+
+    public function test_FR_COMP_08_a_final_league_over_a_full_week_shows_the_percentage_of_every_friend(): void
+    {
+        [$anna, $bob, $carol] = $this->threeFriends();
+        // The week after the onboarding, Monday the 23rd to Sunday the 29th: seven days each.
+        foreach (['2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'] as $date) {
+            $this->day($date, [[$anna, 6, true], [$bob, 3, true], [$carol, 12, true]]);
+        }
+        $this->clock()->travelTo(new DateTimeImmutable('2026-12-01 23:00:00 UTC'));
+        $this->cronRun();
+
+        $league = $this->call('GET', '/leagues?type=week&period=2026-W48', headers: $this->authorization($carol))->json();
+
+        self::assertSame(
+            [true, [[1, 'Bob', 75], [2, 'Anna', 50], [3, 'Carol', 0]], ['rank' => 3, 'participants' => 3, 'xp' => 50]],
+            [
+                $league['final'] ?? null,
+                array_map(static fn (mixed $entry): array => [self::at((array) $entry, 'rank'), self::at((array) $entry, 'user', 'displayName'), self::at((array) $entry, 'reductionPercent')], (array) ($league['entries'] ?? null)),
+                $league['award'] ?? null,
+            ],
+        );
     }
 
     public function test_FR_COMP_07_the_weekly_xp_ranking_counts_what_became_final_in_the_users_week(): void
@@ -290,6 +316,8 @@ final class LeaguesTest extends HttpTestCase
         self::assertSame(FriendRequests::MAX_FRIENDS + 1, $schema('League', 'properties', 'entries', 'maxItems'));
         self::assertSame(FriendRequests::MAX_FRIENDS + 1, $schema('XpLeague', 'properties', 'entries', 'maxItems'));
         self::assertSame('integer', $schema('LeagueEntry', 'properties', 'reductionPercent', 'type'));
+        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('Standing', 'enum'));
+        self::assertSame(7, ShowLeague::MIN_DAYS_FOR_A_PERCENTAGE);
     }
 
     /**

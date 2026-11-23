@@ -42,15 +42,38 @@ trait LeagueResultsContract
         self::assertNull($this->leagueResults()->find(TestData::userId(1), CalendarPeriod::fromKey(LeaguePeriod::Month, '2026-11')));
     }
 
-    public function test_FR_COMP_08_saving_the_result_of_a_user_and_period_again_replaces_it(): void
+    public function test_FR_COMP_08_a_stored_result_takes_its_rank_and_its_next_look_and_nothing_else(): void
     {
         $this->givenUsers(TestData::userId(1));
         $this->leagueResults()->save(TestData::leagueResult(1));
 
-        $ranked = TestData::leagueResult(1, award: [2, 4, 100], checkAt: '2026-11-17 23:15:20');
+        // Looked at and told to wait: only the time of the next look changes.
+        $this->leagueResults()->save(TestData::leagueResult(1, checkAt: '2026-11-17 23:15:20'));
+        self::assertEquals([TestData::leagueResult(1, checkAt: '2026-11-17 23:15:20')], $this->leagueResults()->ofUser(TestData::userId(1)));
+
+        // Ranked.
+        $ranked = TestData::leagueResult(1, award: [2, 4, 100], checkAt: '2026-11-17 23:30:20');
+        $this->leagueResults()->save($ranked);
+        self::assertEquals([$ranked], $this->leagueResults()->ofUser(TestData::userId(1)));
+    }
+
+    public function test_NFR_04_what_was_scored_and_a_rank_that_was_decided_are_never_changed(): void
+    {
+        $this->givenUsers(TestData::userId(1));
+        $ranked = TestData::leagueResult(1, award: [2, 4, 100], rankedAt: '2026-11-18 23:01:05');
         $this->leagueResults()->save($ranked);
 
-        self::assertEquals([$ranked], $this->leagueResults()->ofUser(TestData::userId(1)));
+        // The same period scored again with other numbers, and without a rank.
+        $this->leagueResults()->save(TestData::leagueResult(1, LeaguePeriod::Week, '2026-W46', 60, 0, 420, 7, 7, 7, '2026-11-19 08:00:00', '2026-11-19 08:00:00', null, '2026-11-18 23:01:05', 'v2'));
+        // And ranked again, first this time.
+        $this->leagueResults()->save(TestData::leagueResult(1, award: [1, 9, 150], rankedAt: '2026-11-20 10:00:00', checkAt: '2026-11-20 10:00:00'));
+
+        // Everything is as it was, except the time of the last look. So no reward can be paid twice.
+        self::assertEquals(
+            TestData::leagueResult(1, award: [2, 4, 100], rankedAt: '2026-11-18 23:01:05', checkAt: '2026-11-20 10:00:00'),
+            $this->leagueResults()->find(TestData::userId(1), CalendarPeriod::fromKey(LeaguePeriod::Week, '2026-W46')),
+        );
+        self::assertSame([], $this->leagueResults()->unranked(TestData::time('2026-12-01 00:00:00'), 50));
     }
 
     public function test_FR_COMP_08_the_results_that_wait_for_their_rank_are_found_longest_waiting_first(): void

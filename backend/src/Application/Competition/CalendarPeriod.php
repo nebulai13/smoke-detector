@@ -20,6 +20,9 @@ final readonly class CalendarPeriod
 {
     private const string NO_PERIOD = 'There is no such period of this type.';
 
+    /** How many digits the year of a date has: the last day is 9999-12-31. */
+    private const int YEAR_DIGITS = 4;
+
     private function __construct(
         public LeaguePeriod $type,
         /** E.g. "2026-W47", "2026-11", "2026-Q4", "2026-H2". The year of a week is its ISO year. */
@@ -48,7 +51,8 @@ final readonly class CalendarPeriod
      * The period a key names.
      *
      * @throws InvalidValue invalid_format when the text is no key of this type; invalid_value when it
-     *                      looks like one and there is no such period (week 53 of a year with 52).
+     *                      looks like one and there is no such period (week 53 of a year with 52,
+     *                      or a period that ends after 9999-12-31).
      */
     public static function fromKey(LeaguePeriod $type, string $key): self
     {
@@ -57,10 +61,20 @@ final readonly class CalendarPeriod
         }
         $year = (int) $parts['year'];
         $number = (int) $parts['number'];
-        // A number past the end rolls over into another period, whose key is then another one.
-        $period = $type === LeaguePeriod::Week
-            ? self::containing($type, LocalDate::fromString((new DateTimeImmutable('@0'))->setISODate($year, $number)->format('Y-m-d')))
-            : self::ofNumber($type, $year, $number);
+        if ($type !== LeaguePeriod::Week) {
+            if ($number < 1 || $number > intdiv(12, self::months($type))) {
+                throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
+            }
+
+            return self::ofNumber($type, $year, $number);
+        }
+        // A week number past the end rolls over into the next year, whose key is then another one.
+        $first = (new DateTimeImmutable('@0'))->setISODate($year, $number);
+        // A date has four digits for the year, up to 9999-12-31: a week that reaches past it is none.
+        if (strlen($first->modify('+6 days')->format('Y')) > self::YEAR_DIGITS) {
+            throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
+        }
+        $period = self::containing($type, LocalDate::fromString($first->format('Y-m-d')));
         if ($period->key !== $key) {
             throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
         }
@@ -87,8 +101,7 @@ final readonly class CalendarPeriod
     }
 
     /**
-     * The period of a type other than the week by its number in the year. A number past the end
-     * rolls over into another year, and the key is the one of that period.
+     * The period of a type other than the week by its number in the year, which exists.
      */
     private static function ofNumber(LeaguePeriod $type, int $year, int $number): self
     {
@@ -97,7 +110,7 @@ final readonly class CalendarPeriod
 
         return new self(
             $type,
-            self::key($type, (int) $first->format('Y'), self::number((int) $first->format('n'), $months)),
+            self::key($type, $year, $number),
             LocalDate::fromString($first->format('Y-m-d')),
             LocalDate::fromString($first->modify("+{$months} months -1 day")->format('Y-m-d')),
         );

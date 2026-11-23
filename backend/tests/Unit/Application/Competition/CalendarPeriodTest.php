@@ -136,6 +136,11 @@ final class CalendarPeriodTest extends TestCase
             'quarter 5' => [LeaguePeriod::Quarter, '2026-Q5'],
             'half 0' => [LeaguePeriod::HalfYear, '2026-H0'],
             'half 3' => [LeaguePeriod::HalfYear, '2026-H3'],
+            // The last years a date can name: what would reach into the year 10000 is no period.
+            'the last week of the calendar' => [LeaguePeriod::Week, '9999-W52'],
+            'month 13 of the last year' => [LeaguePeriod::Month, '9999-13'],
+            'quarter 5 of the last year' => [LeaguePeriod::Quarter, '9999-Q5'],
+            'week 53 of the last year' => [LeaguePeriod::Week, '9999-W53'],
         ] as $name => [$type, $key]) {
             yield $name => [$type, $key, ErrorCode::InvalidValue];
         }
@@ -152,6 +157,14 @@ final class CalendarPeriodTest extends TestCase
             // The message does not repeat what was sent.
             self::assertSame('There is no such period of this type.', $refused->getMessage());
         }
+    }
+
+    public function test_FR_COMP_06_the_last_periods_of_the_calendar_are_periods(): void
+    {
+        self::assertSame('9999-12-31', CalendarPeriod::fromKey(LeaguePeriod::Month, '9999-12')->last()->value);
+        self::assertSame('9999-12-31', CalendarPeriod::fromKey(LeaguePeriod::Quarter, '9999-Q4')->last()->value);
+        self::assertSame('9999-12-31', CalendarPeriod::fromKey(LeaguePeriod::HalfYear, '9999-H2')->last()->value);
+        self::assertSame('9999-12-26', CalendarPeriod::fromKey(LeaguePeriod::Week, '9999-W51')->last()->value);
     }
 
     public function test_FR_COMP_06_week_53_exists_in_a_year_that_has_it(): void
