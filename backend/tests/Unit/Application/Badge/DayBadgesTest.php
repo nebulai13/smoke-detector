@@ -205,6 +205,33 @@ final class DayBadgesTest extends LoggingUseCaseTestCase
         );
     }
 
+    public function test_FR_GAME_08_a_plan_that_begins_at_its_target_has_not_reached_it(): void
+    {
+        // A baseline of 6, to reduce to 5: 80 % of 6 is 4, so the limit is the target from the first day.
+        $this->givenOnboarded($this->anna, '2026-11-14', startingBaseline: 6);
+        $this->givenChecked('2026-11-14', 5);
+
+        $this->finalizeDays()->execute();
+
+        self::assertSame(5, $this->limitOf('2026-11-14'));
+        self::assertSame(['first_check_in'], $this->badgeKeysOf($this->anna));
+    }
+
+    public function test_FR_GAME_08_a_target_that_is_set_above_the_limit_is_not_reached_by_setting_it(): void
+    {
+        // The limit is 9. The user changes the target to 10, valid from the 14th: the limit goes up to it.
+        $plan = $this->givenPlan($this->anna, 12, Goal::reduceTo(5), startDate: '2026-11-10');
+        $this->givenProgress($this->anna, '2026-11-14');
+        $this->plans->save(new Plan($this->anna->id, Goal::reduceTo(10), TaperSpeed::Normal, ProductType::Cigarette, $plan->startDate, 'v1'));
+        $this->planHistory->record(new PlanTerms($this->anna->id, self::date('2026-11-14'), Goal::reduceTo(10), TaperSpeed::Normal, 'v1'));
+        $this->givenChecked('2026-11-14', 10);
+
+        $this->finalizeDays()->execute();
+
+        self::assertSame(10, $this->limitOf('2026-11-14'));
+        self::assertSame(['first_check_in'], $this->badgeKeysOf($this->anna));
+    }
+
     public function test_FR_GAME_08_the_target_is_the_one_that_was_valid_on_the_day(): void
     {
         // Reduce to 5 until the 14th. The user has chosen 3 since, valid from the 15th.

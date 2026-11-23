@@ -78,7 +78,9 @@ final class BadgeEvaluator
                 $badges[] = Badge::LimitHalved;
             }
             // The limit itself must have arrived at the target: one good day on the way down is not it.
-            if ($day->limit === $target) {
+            // And it must have come down to it: a plan that began at the target, or a target set
+            // above the limit later, has reached nothing.
+            if ($day->limit === $target && $target < $firstLimit) {
                 $badges[] = Badge::TargetReached;
             }
         }

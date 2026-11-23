@@ -237,6 +237,41 @@ final class BadgeEvaluatorTest extends TestCase
         yield 'quit: limit 1, no session' => [DayOutcome::checkedIn(0, 1), 0, []];
     }
 
+    /**
+     * @param list<Badge> $expected
+     */
+    #[DataProvider('targetsAgainstTheFirstLimit')]
+    public function test_FR_GAME_08_a_target_is_reached_only_by_a_plan_that_began_above_it(
+        int $firstLimit,
+        int $target,
+        array $expected,
+    ): void {
+        // A kept day whose limit is the target. What decides is where the plan began.
+        $day = DayOutcome::checkedIn($target, $target);
+
+        self::assertSame(
+            $expected,
+            array_values(array_filter(
+                BadgeEvaluator::forDay($day, self::streaks(1, 0), $firstLimit, $target),
+                static fn (Badge $badge): bool => $badge === Badge::TargetReached,
+            )),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{int, int, list<Badge>}>
+     */
+    public static function targetsAgainstTheFirstLimit(): iterable
+    {
+        yield 'began one above the target' => [6, 5, [Badge::TargetReached]];
+        // The limit was the target from the first day on: nothing came down.
+        yield 'began at the target' => [5, 5, []];
+        // A target chosen later, above the limit of the first day: the limit went up to it.
+        yield 'began below the target' => [4, 5, []];
+        yield 'quit, began at 1' => [1, 0, [Badge::TargetReached]];
+        yield 'quit, began at 0' => [0, 0, []];
+    }
+
     public function test_FR_GAME_08_one_day_can_justify_many_badges_in_the_order_of_the_cases(): void
     {
         $streaks = new StreakState(30, 30, 30, 30, 2);
