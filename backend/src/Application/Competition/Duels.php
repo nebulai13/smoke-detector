@@ -37,8 +37,9 @@ interface Duels
     public function openOf(UserId $userId): array;
 
     /**
-     * How many decided duels the user won, on either side (SRS FR-GAME-08). A draw is no duel won,
-     * and neither is a cancelled or forfeited duel, which has no winner.
+     * How many decided duels the user won with a reduction above zero of the own side, on either
+     * side (SRS FR-GAME-08, HLD §4.8 "Score"). A draw is no duel won, and neither is a cancelled or
+     * forfeited duel, which has no winner, nor a win where the user's side saved nothing.
      */
     public function wonBy(UserId $userId): int;
 

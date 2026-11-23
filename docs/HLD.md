@@ -667,7 +667,9 @@ with its count. A day without one counts as the baseline, or as what was logged 
   smoke-free days, check-ins and XP, with the rules version (NFR-04). The winner comes from
   `CompetitionScoreComparator`: more reduction (compared exactly), then more smoke-free days, then more
   check-ins. Equal on all three is a draw.
-- XP by `XpCalculator::forDuel` (won 100, draw 50, lost 20 in v1). It goes to the ledger with the user's own
+- XP by `XpCalculator::forDuel` (won 100, draw 50, lost 20 in v1), paid to a side only for a reduction above
+  zero of its own (decided by the owner on 2026-11-24, as for the leagues, §4.9): two who both do nothing
+  draw, and would otherwise collect the XP of a draw week after week. The winner is stored all the same. It goes to the ledger with the user's own
   local date of the decision, and to `user_progress` with the level recalculated, in the transaction that
   decides the duel. A reward of 0 writes nothing.
 
@@ -762,8 +764,11 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
   (as in §4.6). The run fails visibly.
 - **Badges** for duels ("First duel won", "5 duels won") are awarded when a duel is decided, from the stored
   results (§4.10).
-- **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week. Accepted: a week of
-  real days is the price.
+- **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week, each with a
+  reduction above zero of their own. Accepted: a week of real days is the price.
+- **A reduction is measured against the baseline that counts,** which is at least 1.0 a day (FR-PLAN-07).
+  Somebody who smokes less than one session a day has a reduction by doing what they always do, and is
+  rewarded for it. The rule closes the case of doing nothing, not this one.
 
 ### 4.9 Leagues (step 5, third part)
 
@@ -891,7 +896,7 @@ badge is, so they are constants of the domain and not numbers of the versioned r
 | `under_limit_streak_7`, `_30` | the longest under-limit streak has that length |
 | `limit_halved` | a kept day (checked in, at or under the limit) whose limit is at most half the limit of the first day of the plan. A plan that began with a limit of 0 has nothing to halve |
 | `target_reached` | a kept day whose limit has arrived at the target that was valid on that day, in a plan whose first limit was above that target. For "quit" that is a limit of 0, which the weekly baseline reaches after about a month without a session. Not reached: a limit that was the target from the first day, and a target the user set above the limit later (the limit then goes up to it). An audit found both before the first push |
-| `first_duel_won`, `five_duels_won` | the number of decided duels the user won. A draw, a cancelled duel and a forfeit are not won |
+| `first_duel_won`, `five_duels_won` | the number of decided duels the user won with a reduction above zero (§4.8). A draw, a cancelled duel and a forfeit are not won |
 | `league_champion_week`, `_month`, `_quarter`, `_half_year` | rank 1 of a league period of that type among at least three (the minimum for the XP of a rank, from the rule table), with a reduction above zero (§4.9). A shared rank 1 makes both champions |
 | `cheerleader` | 50 reactions sent. Awarded from the second part of step 6 on, which brings the reactions |
 
