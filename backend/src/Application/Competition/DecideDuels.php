@@ -15,6 +15,7 @@ use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\Friends\LockedPair;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\Time\LocalDate;
@@ -58,9 +59,10 @@ final readonly class DecideDuels
         IdGenerator $ids,
         private LoggerInterface $logger,
         private AwardBadges $badges,
+        private PublishToFeed $feed,
     ) {
         $this->sides = new DuelSides($calendars, $records, $progress);
-        $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
+        $this->rewards = new CompetitionRewards($progress, $ledger, $ids, $feed);
     }
 
     public function execute(): DuelReport
@@ -95,6 +97,8 @@ final readonly class DecideDuels
                         $this->duels->delete($duel->id);
                     } else {
                         $this->duels->save($changed);
+                        // The win or the draw of a decided duel, for the feed (HLD §4.12).
+                        $this->feed->duelStored($changed);
                         // The badges of a decided duel (HLD §4.10), counted from what is stored now.
                         $this->badges->duelStored($changed);
                     }
