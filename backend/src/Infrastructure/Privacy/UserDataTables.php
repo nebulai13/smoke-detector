@@ -61,6 +61,9 @@ final readonly class UserDataTables
             new UserDataTable('league_results', 'leagueResults', new LeagueResultsExporter($this->sql), new RowsOfUser($this->sql, 'league_results')),
             // Badges (HLD §4.10). A badge belongs to its user alone.
             new UserDataTable('user_badges', 'badges', new BadgesExporter($this->sql), new RowsOfUser($this->sql, 'user_badges')),
+            // Health milestones for friends, and the settings (HLD §4.11). Each row belongs to its user alone.
+            new UserDataTable('user_milestones', 'healthMilestones', new HealthMilestonesExporter($this->sql), new RowsOfUser($this->sql, 'user_milestones')),
+            new UserDataTable('user_settings', 'settings', new SettingsExporter($this->sql), new RowsOfUser($this->sql, 'user_settings')),
         ]);
     }
 }
