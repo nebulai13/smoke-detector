@@ -27,3 +27,7 @@ claude.continue
 # Owner instructions and work reports: local only, never commit
 /instructions/
 /reports/
+
+# Instructions for coding assistants: local only, never commit
+/CLAUDE.md
+/AGENTS.md
