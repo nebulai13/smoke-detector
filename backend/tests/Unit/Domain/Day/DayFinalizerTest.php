@@ -587,12 +587,27 @@ final class DayFinalizerTest extends TestCase
         self::assertEquals($first, $second);
         // assertEquals compares loosely. The serialized form also pins every type and the order.
         self::assertSame(serialize($first), serialize($second));
+        // The end of the hand calculation of the thirty days (see the FR_GAME_01 test above), so
+        // that a finalizer that is wrong in the same way every time fails too.
+        self::assertSame([910, 3], [$first[29]->totalXp, $first[29]->levelAfter]);
+        self::assertEquals(new StreakState(12, 14, 2, 7, 0), $first[29]->streaks);
     }
 
     public function test_NFR_04_finalizing_the_same_day_twice_with_one_finalizer_gives_identical_results(): void
     {
         $before = new UserProgress(new StreakState(6, 6, 6, 6, 0), 260);
         $day = DayOutcome::checkedIn(count: 6, limit: 8);
+
+        $result = $this->finalizer->finalize($before, $day);
+        // Worked out by hand: day 7 of both streaks, the 7-day milestone (50 XP) and the first freeze;
+        // 260 + 10 + 20 + 50 = 340 XP crosses level 2 (300 XP).
+        self::assertEquals(new StreakState(7, 7, 7, 7, 1), $result->streaks);
+        self::assertSame([['check_in', 10, null], ['under_limit', 20, null], ['streak_milestone', 50, 7]], self::awards($result));
+        self::assertSame([340, 1, 2], [$result->totalXp, $result->levelBefore, $result->levelAfter]);
+        self::assertSame(
+            ['checked_in', 'under_limit_day:7', 'streak_extended:7', 'streak_milestone:7', 'freeze_earned:1', 'level_up:2'],
+            self::events($result),
+        );
 
         // No hidden state: the first call must not change what the second one returns.
         self::assertSame(

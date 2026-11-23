@@ -425,6 +425,26 @@ final class XpCalculatorTest extends TestCase
     public function test_NFR_04_same_inputs_and_same_rules_always_give_identical_awards(): void
     {
         $first = self::everyAward(new XpCalculator(new XpRules()));
+        // Worked out by hand from rule table v1, in the order of everyAward(), so that a calculator
+        // that is wrong in the same way every time fails too.
+        self::assertSame(
+            [
+                // Smoke-free day, over-limit day (a missed day earns nothing).
+                10, 20, 40, 10,
+                // Streak lengths 1, 7, 30, 100 and 365.
+                null, 50, 150, 500, 1500,
+                // Duel won, draw, lost, forfeited.
+                100, 50, 20, null,
+                // League ranks 1 to 4 of 6, per week, month, quarter and half year (× 1, 2, 3, 4).
+                150, 100, 50, null,
+                300, 200, 100, null,
+                450, 300, 150, null,
+                600, 400, 200, null,
+                // A reaction after 0, 8, 9 and 10 XP from reactions today (cap 10).
+                2, 2, 1, null,
+            ],
+            array_map(static fn (?XpAward $award): ?int => $award?->amount, $first),
+        );
 
         for ($run = 0; $run < 5; $run++) {
             self::assertEquals($first, self::everyAward($this->calculator));

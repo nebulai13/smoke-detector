@@ -1,9 +1,62 @@
 # Local development only. Production runs on IONOS shared hosting (see docs/HLD.md §8).
+#
+# Every value below is a throwaway local credential, written as a literal on purpose: Compose
+# substitutes ${...} from the git-ignored .env, which holds the real production database
+# credentials. Never add env_file or a ${DB_...} reference to this file.
 services:
   php:
     build:
       context: backend
       dockerfile: Dockerfile.dev
     volumes:
-      - .:/app
+      # Only the folders the backend and its tests read, never the repository root: .env and
+      # server.info lie there and hold production credentials. Nothing that runs in this container
+      # (the test suite, a Composer script, a dependency) must be able to read them.
+      - ./backend:/app/backend
+      - ./api:/app/api:ro
     working_dir: /app/backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_ENV: development
+      APP_RELEASE: dev
+      APP_URL: http://localhost:5173
+      LOG_FILE: php://stderr
+      DB_HOST: db
+      DB_PORT: "3306"
+      # The dev schema. The test suite always uses smoke_detector_test instead (backend/phpunit.xml).
+      DB_NAME: smoke_detector
+      DB_USER: smoke_detector
+      DB_PASSWORD: local-dev-only-password
+      JWT_SECRET: local-dev-only-jwt-secret-0123456789abcdef0123456789abcdef
+      MAIL_DSN: "null://null"
+      MAIL_FROM_ADDRESS: no-reply@smoke-detector.test
+      MAIL_FROM_NAME: Smoke Detector (dev)
+      CONSENT_VERSION_AGE18: dev
+      CONSENT_VERSION_ART9: dev
+      CONSENT_VERSION_PRIVACY: dev
+      # Only the integration tests use these, to drop and re-create their own schema.
+      TEST_DB_ADMIN_USER: root
+      TEST_DB_ADMIN_PASSWORD: local-dev-only-root-password
+
+  db:
+    # Same major version as the IONOS database (HLD AD-2). No port is published: only the php
+    # service talks to it, over the Compose network.
+    image: mariadb:11.8
+    environment:
+      MARIADB_ROOT_PASSWORD: local-dev-only-root-password
+      MARIADB_DATABASE: smoke_detector
+      MARIADB_USER: smoke_detector
+      MARIADB_PASSWORD: local-dev-only-password
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+
+volumes:
+  db-data:

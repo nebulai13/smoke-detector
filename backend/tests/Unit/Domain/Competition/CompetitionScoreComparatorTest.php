@@ -165,10 +165,12 @@ final class CompetitionScoreComparatorTest extends TestCase
         foreach ($scores as $i => $a) {
             self::assertSame(0, $this->comparator->compare($a, $a));
             foreach ($scores as $j => $b) {
-                self::assertSame($this->comparator->compare($a, $b), $this->comparator->compare($a, $b));
-                self::assertSame(-$this->comparator->compare($a, $b), $this->comparator->compare($b, $a));
                 // The list is written best first, so the order of the list is the order of the rule.
-                self::assertSame($j <=> $i, $this->comparator->compare($a, $b));
+                // Asked twice and mirrored: the same fixed answer each time, whatever was asked before.
+                self::assertSame(
+                    [$j <=> $i, $j <=> $i, $i <=> $j],
+                    [$this->comparator->compare($a, $b), $this->comparator->compare($a, $b), $this->comparator->compare($b, $a)],
+                );
             }
         }
     }
