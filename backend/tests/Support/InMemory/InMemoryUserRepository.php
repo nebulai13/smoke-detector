@@ -28,6 +28,9 @@ final class InMemoryUserRepository implements UserRepository, InMemoryState
     /** Runs once, the next time an account is locked, before it is read. */
     public ?Closure $beforeLock = null;
 
+    /** @var list<string> The ids of the accounts that were locked, in the order of the locks. */
+    public array $lockLog = [];
+
     public function __construct(private readonly ?InMemoryTransactionRunner $transactions = null)
     {
         $transactions?->enlist($this);
@@ -52,6 +55,7 @@ final class InMemoryUserRepository implements UserRepository, InMemoryState
     public function lock(UserId $id): ?User
     {
         $this->transactions?->lock('users', 'UserRepository::lock()');
+        $this->lockLog[] = $id->value;
         // Stands for what another request does while this one waits for the lock.
         $beforeLock = $this->beforeLock;
         $this->beforeLock = null;
