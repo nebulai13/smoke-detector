@@ -7,6 +7,7 @@ namespace SmokeDetector\Tests\Unit\Application;
 use DateTimeImmutable;
 use SmokeDetector\Application\Account\DisplayName;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Competition\EndDuels;
 use SmokeDetector\Application\Friends\Block;
 use SmokeDetector\Application\Friends\Blocking;
 use SmokeDetector\Application\Friends\FriendList;
@@ -19,6 +20,7 @@ use SmokeDetector\Application\Friends\PendingRequest;
 use SmokeDetector\Application\Friends\PublicProfile;
 use SmokeDetector\Tests\Support\Fake\SequenceInviteCodes;
 use SmokeDetector\Tests\Support\InMemory\InMemoryBlocks;
+use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
 use SmokeDetector\Tests\Support\InMemory\InMemoryFriendLinks;
 use SmokeDetector\Tests\Support\InMemory\InMemoryInviteCodes;
 
@@ -35,6 +37,7 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
     protected InMemoryFriendLinks $friendLinks;
     protected InMemoryBlocks $blocks;
     protected SequenceInviteCodes $codes;
+    protected InMemoryDuels $duels;
 
     protected function setUp(): void
     {
@@ -43,6 +46,7 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
         $this->friendLinks = new InMemoryFriendLinks($this->transactions);
         $this->blocks = new InMemoryBlocks($this->transactions);
         $this->codes = new SequenceInviteCodes();
+        $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 
     protected function invites(): Invites
@@ -57,12 +61,20 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
 
     protected function friendList(): FriendList
     {
-        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords);
+        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords, $this->endDuels());
     }
 
     protected function blocking(): Blocking
     {
-        return new Blocking($this->transactions, $this->clock, $this->users, $this->friendLinks, $this->blocks);
+        return new Blocking($this->transactions, $this->clock, $this->users, $this->friendLinks, $this->blocks, $this->endDuels());
+    }
+
+    /**
+     * What ends the duels of two users who stop being friends (HLD §4.8).
+     */
+    protected function endDuels(): EndDuels
+    {
+        return new EndDuels($this->duels);
     }
 
     /**
