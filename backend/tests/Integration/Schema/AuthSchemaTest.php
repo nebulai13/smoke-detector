@@ -152,8 +152,8 @@ final class AuthSchemaTest extends IntegrationTestCase
             . 'WHERE k.TABLE_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.TABLE_NAME, k.COLUMN_NAME',
         );
 
-        $row = static fn (string $table, string $column = 'user_id'): array => [
-            'tbl' => $table, 'col' => $column, 'parent' => 'users', 'parent_col' => 'id', 'on_delete' => 'CASCADE',
+        $row = static fn (string $table, string $column = 'user_id', string $onDelete = 'CASCADE'): array => [
+            'tbl' => $table, 'col' => $column, 'parent' => 'users', 'parent_col' => 'id', 'on_delete' => $onDelete,
         ];
         self::assertSame(
             [
@@ -161,6 +161,8 @@ final class AuthSchemaTest extends IntegrationTestCase
                 // A block goes with either of its two accounts, and so does a friendship.
                 $row('blocks', 'blocked_id'), $row('blocks', 'blocker_id'),
                 $row('consents'), $row('day_summaries'),
+                // A duel stays for the other user and stops pointing at the account that is gone.
+                $row('duels', 'challenger_id', 'SET NULL'), $row('duels', 'opponent_id', 'SET NULL'),
                 $row('friendships', 'user_a'), $row('friendships', 'user_b'),
                 $row('invite_codes'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".

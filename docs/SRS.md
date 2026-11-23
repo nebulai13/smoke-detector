@@ -91,7 +91,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-ACC-05 | M | Password reset via an emailed one-time link (valid 1 h). The request always answers the same way, whether or not the email has an account. A successful reset signs the user out on all devices at once: every session and every access token issued before stops working immediately. A reset mail that cannot be delivered within the hour is dropped. |
 | FR-ACC-06 | M | Onboarding collects the starting baseline (sessions/day, 1–80), the goal mode (**reduce** to a target > 0, or **quit** = target 0), the taper speed (gentle / normal / fast) and the usual product type. A reduce target must be **below the current baseline**, at onboarding and when the goal is changed later. |
 | FR-ACC-07 | M | The user can export all of their data as JSON (GDPR Art. 15/20), including the account mails that are still waiting to be sent (kind, time and failed tries). |
-| FR-ACC-08 | M | The user can delete their account after re-entering the password. All personal data is removed **immediately** (well inside the 30 days GDPR allows) and all sessions end. Active duels end as forfeits. |
+| FR-ACC-08 | M | The user can delete their account after re-entering the password. All personal data is removed **immediately** (well inside the 30 days GDPR allows) and all sessions end. Active duels end as forfeits: the other user keeps the duel in their list, without a winner and without XP. Proposed duels are deleted. |
 | FR-ACC-09 | S | The user can change display name, avatar, language, time zone, reminder time and notification preferences. |
 
 ### 3.2 Logging & check-in (LOG)
@@ -135,8 +135,8 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | ID | Pri | Requirement |
 |---|---|---|
 | FR-FRND-01 | M | Each user has a personal invite code/link. Opening it sends a friend request, and the other user must accept. The user can replace the code by a new one at any time, and the old one stops working at once. If both users have asked each other, they are friends without a further step. |
-| FR-FRND-02 | M | Users can list, remove and block friends. Somebody with an open friend request can be blocked too. Blocking hides both users from each other everywhere. Only the user who set a block sees it and can lift it, and lifting it does not bring the friendship back. |
-| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period, streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps. |
+| FR-FRND-02 | M | Users can list, remove and block friends. Somebody with an open friend request can be blocked too. Blocking hides both users from each other everywhere. Only the user who set a block sees it and can lift it, and lifting it does not bring the friendship back. Removing or blocking a friend ends a running duel of the two without a winner and deletes a proposed one. |
+| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period (in whole percent), streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps, counts, limits or the baseline, and nothing precise enough to calculate these. |
 | FR-FRND-04 | M | Maximum 50 friends per user. A user's own open requests count towards the 50, when sending a request and when accepting one. Requests from others do not count, and the other user's number of friends never decides (it must not be revealed). |
 
 ### 3.6 Competitions (COMP)
@@ -146,11 +146,11 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-COMP-02 | M | An accepted duel starts on the next local day and runs for exactly the period length (7 / 30 / 90 / 180 days). |
 | FR-COMP-03 | M | **Duel winner** = higher reduction % over the duel days. A day without a check-in counts as the frozen baseline B₀ (0 % reduction), **or as the sessions logged that day if that is higher**, so skipping the check-in never scores better than checking in. Reductions are compared exactly (as fractions, never as rounded percentages). Tie-breakers in order: more smoke-free days, more check-ins, otherwise a draw. |
 | FR-COMP-04 | M | The duel result is decided after the last day of **both** users is finalized. Both users are notified. |
-| FR-COMP-05 | M | A user may have at most 1 active duel per friend and 5 active duels in total. |
+| FR-COMP-05 | M | A user may have at most 1 open duel per friend (proposed or running, whoever proposed it) and 5 open duels in total. Running duels and own proposals count. Proposals from others count once they are accepted. |
 | FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. A participant with no rated day yet is listed without a rank. |
 | FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). |
-| FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. |
-| FR-COMP-09 | S | Duel detail screen: day-by-day comparison chart (reduction per day, not timestamps). |
+| FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. While a duel or a period runs, other users' standings are shown as positions (who is ahead), not as percentages: a percentage that moves every day could be calculated back to daily counts. Percentages of others are shown once the result is final. |
+| FR-COMP-09 | S | Duel detail screen: day-by-day comparison in four levels per day (smoke-free, well under the baseline, under, not under). Not percentages per day and not timestamps: an exact daily percentage could be calculated back to the baseline and the count. |
 
 ### 3.7 Social reactions (SOC)
 | ID | Pri | Requirement |

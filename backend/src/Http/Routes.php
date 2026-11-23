@@ -15,6 +15,12 @@ use SmokeDetector\Http\Action\Auth\RegisterAction;
 use SmokeDetector\Http\Action\Auth\RequestPasswordResetAction;
 use SmokeDetector\Http\Action\Auth\ResendVerificationAction;
 use SmokeDetector\Http\Action\Auth\VerifyEmailAction;
+use SmokeDetector\Http\Action\Competition\AcceptDuelAction;
+use SmokeDetector\Http\Action\Competition\CancelDuelAction;
+use SmokeDetector\Http\Action\Competition\DeclineDuelAction;
+use SmokeDetector\Http\Action\Competition\ListDuelsAction;
+use SmokeDetector\Http\Action\Competition\ProposeDuelAction;
+use SmokeDetector\Http\Action\Competition\ShowDuelAction;
 use SmokeDetector\Http\Action\Friends\AcceptFriendRequestAction;
 use SmokeDetector\Http\Action\Friends\BlockUserAction;
 use SmokeDetector\Http\Action\Friends\DeclineFriendRequestAction;
@@ -128,5 +134,13 @@ final readonly class Routes
         $routes->post('/friends/block', BlockUserAction::class);
         $routes->post('/friends/unblock', UnblockUserAction::class);
         $routes->get('/friends/blocked', ListBlockedUsersAction::class);
+
+        // Duels (HLD §4.8). The duel id and the friend's id are in the body, never in the path.
+        $routes->get('/duels', ListDuelsAction::class);
+        $routes->post('/duels', ProposeDuelAction::class);
+        $routes->post('/duels/show', ShowDuelAction::class);
+        $routes->post('/duels/accept', AcceptDuelAction::class);
+        $routes->post('/duels/decline', DeclineDuelAction::class);
+        $routes->post('/duels/cancel', CancelDuelAction::class);
     }
 }

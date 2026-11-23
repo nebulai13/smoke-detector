@@ -128,6 +128,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         self::assertSame(
             'mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
             . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
+            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | '
             . "housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.\n",
             $stdout,
         );
@@ -163,6 +164,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         self::assertSame(
             'cron:run: mail:send: Sent 0 mails, kept 0 mails for another try, gave up 0 mails. | '
             . 'days:finalize: Finalized 0 days, calculated 0 baselines. | '
+            . 'competitions:finalize: Expired 0 duel proposals, decided 0 duels. | '
             . 'housekeeping:purge: Deleted 0 unconfirmed registrations, 0 mail link tokens, 0 sessions, 0 rate limit counters and 0 queued mails.',
             $entries[0]['message'],
         );
@@ -210,6 +212,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         self::assertSame(
             'cron:run: mail:send: FAILED (SmokeDetector\\Infrastructure\\Database\\DatabaseConnectionFailed) | '
             . 'days:finalize: FAILED (SmokeDetector\\Infrastructure\\Database\\DatabaseConnectionFailed) | '
+            . 'competitions:finalize: FAILED (SmokeDetector\\Infrastructure\\Database\\DatabaseConnectionFailed) | '
             . 'housekeeping:purge: FAILED (SmokeDetector\\Infrastructure\\Database\\DatabaseConnectionFailed)',
             $entries[0]['message'],
         );
@@ -261,7 +264,7 @@ final class ConsoleScriptTest extends IntegrationTestCase
         [$exitCode, $stdout] = $this->console([]);
 
         self::assertSame(0, $exitCode);
-        foreach (['cron:run', 'days:finalize', 'housekeeping:purge', 'mail:send', 'migrate'] as $command) {
+        foreach (['competitions:finalize', 'cron:run', 'days:finalize', 'housekeeping:purge', 'mail:send', 'migrate'] as $command) {
             self::assertStringContainsString("  {$command} ", $stdout);
         }
     }

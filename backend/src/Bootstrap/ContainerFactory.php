@@ -22,6 +22,7 @@ use SmokeDetector\Application\Auth\RefreshTokenRepository;
 use SmokeDetector\Application\Auth\TokenGenerator;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
+use SmokeDetector\Application\Competition\Duels;
 use SmokeDetector\Application\Day\XpLedger;
 use SmokeDetector\Application\Friends\Blocks;
 use SmokeDetector\Application\Friends\FriendLinks;
@@ -52,6 +53,7 @@ use SmokeDetector\Config\Settings;
 use SmokeDetector\Console\Command;
 use SmokeDetector\Console\Console;
 use SmokeDetector\Console\CronRunCommand;
+use SmokeDetector\Console\FinalizeCompetitionsCommand;
 use SmokeDetector\Console\FinalizeDaysCommand;
 use SmokeDetector\Console\MailSendCommand;
 use SmokeDetector\Console\MigrateCommand;
@@ -84,6 +86,7 @@ use SmokeDetector\Infrastructure\Repository\PdoBaselineHistory;
 use SmokeDetector\Infrastructure\Repository\PdoBlocks;
 use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
 use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
+use SmokeDetector\Infrastructure\Repository\PdoDuels;
 use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
 use SmokeDetector\Infrastructure\Repository\PdoInviteCodes;
 use SmokeDetector\Infrastructure\Repository\PdoMailOutbox;
@@ -212,6 +215,9 @@ final readonly class ContainerFactory
             // The invite link is the address of the web app with the code behind a "#".
             FriendsResponder::class => autowire()->constructorParameter('appUrl', $settings->appUrl),
 
+            // Duels (HLD §4.8)
+            Duels::class => autowire(PdoDuels::class),
+
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),
 
@@ -242,12 +248,14 @@ final readonly class ContainerFactory
             Console::class => static function (ContainerInterface $container): Console {
                 $mailSend = self::command($container, MailSendCommand::class);
                 $finalizeDays = self::command($container, FinalizeDaysCommand::class);
+                $finalizeCompetitions = self::command($container, FinalizeCompetitionsCommand::class);
                 $purge = self::command($container, PurgeCommand::class);
 
                 return new Console(
                     self::command($container, MigrateCommand::class),
                     $mailSend,
                     $finalizeDays,
+                    $finalizeCompetitions,
                     $purge,
                     // What the cron job runs every minute, in this order (HLD §5.2, §8).
                     new CronRunCommand(
@@ -255,6 +263,7 @@ final readonly class ContainerFactory
                         self::service($container, ClockInterface::class),
                         $mailSend,
                         $finalizeDays,
+                        $finalizeCompetitions,
                         $purge,
                     ),
                 );

@@ -139,6 +139,15 @@ final readonly class UserDataFixture
         $this->insert('friendships', [...self::pair($user, $asking->value), $asking->value, '2026-11-15 10:00:00', null]);
         $this->insert('blocks', [$user, $blocked->value, '2026-11-16 09:00:00']);
         $this->insert('blocks', [$blocked->value, $user, '2026-11-16 09:30:00']);
+        // A duel the user proposed and won against the friend, and one the user declined.
+        $this->insert('duels', [
+            TestData::uuid($number * 1000 + 20), $user, $friend->value, 7, 'completed', '2026-10-20 08:00:00', '2026-10-23 08:00:00', '2026-10-20 09:00:00',
+            '2026-10-21', '2026-10-22', '2026-10-30 23:00:40', 'challenger', 120, 630, 840, 1, 7, 100, 95, 665, 665, 0, 5, 20, 'v1',
+        ]);
+        $this->insert('duels', [
+            TestData::uuid($number * 1000 + 21), $asking->value, $user, 30, 'declined', '2026-11-14 08:00:00', '2026-11-17 08:00:00', '2026-11-14 10:00:00',
+            ...array_fill(0, 17, null),
+        ]);
     }
 
     /**

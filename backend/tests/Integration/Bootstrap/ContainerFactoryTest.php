@@ -270,9 +270,9 @@ final class ContainerFactoryTest extends IntegrationTestCase
             $commands[$command->name()] = $command->description();
         }
 
-        self::assertSame(['cron:run', 'days:finalize', 'housekeeping:purge', 'mail:send', 'migrate'], array_keys($commands));
+        self::assertSame(['competitions:finalize', 'cron:run', 'days:finalize', 'housekeeping:purge', 'mail:send', 'migrate'], array_keys($commands));
         // In this order: mail first (a link must not wait for anything), the cleanup last (HLD §5.2).
-        self::assertSame('Runs what the cron job runs every minute: mail:send, days:finalize, housekeeping:purge.', $commands['cron:run']);
+        self::assertSame('Runs what the cron job runs every minute: mail:send, days:finalize, competitions:finalize, housekeeping:purge.', $commands['cron:run']);
     }
 
     public function test_mail_settings_that_cannot_work_do_not_keep_the_other_commands_from_running(): void
