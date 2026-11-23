@@ -80,11 +80,13 @@ final readonly class PdoMailOutbox implements MailOutbox
             return [];
         }
 
-        // By primary key: exactly the rows that are locked above, nothing around them.
-        $this->sql->execute(
-            'UPDATE mail_outbox SET not_before = ? WHERE id IN (' . self::placeholders(count($mails)) . ')',
-            [Row::sqlTime($leaseUntil), ...array_map(static fn (QueuedMail $mail): string => $mail->id, $mails)],
-        );
+        // One statement per mail, by primary key equality: it touches only the row locked above.
+        // A single `WHERE id IN (…)` is not safe: on a small table MariaDB runs it as a scan over
+        // the primary key, which waits at every row another run holds, and two runs then deadlock.
+        $leaseUntilSql = Row::sqlTime($leaseUntil);
+        foreach ($mails as $mail) {
+            $this->sql->execute('UPDATE mail_outbox SET not_before = ? WHERE id = ?', [$leaseUntilSql, $mail->id]);
+        }
 
         return $mails;
     }
