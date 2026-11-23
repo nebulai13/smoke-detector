@@ -20,7 +20,6 @@ use SmokeDetector\Application\Friends\PendingRequest;
 use SmokeDetector\Application\Friends\PublicProfile;
 use SmokeDetector\Tests\Support\Fake\SequenceInviteCodes;
 use SmokeDetector\Tests\Support\InMemory\InMemoryBlocks;
-use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
 use SmokeDetector\Tests\Support\InMemory\InMemoryFriendLinks;
 use SmokeDetector\Tests\Support\InMemory\InMemoryInviteCodes;
 
@@ -37,7 +36,6 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
     protected InMemoryFriendLinks $friendLinks;
     protected InMemoryBlocks $blocks;
     protected SequenceInviteCodes $codes;
-    protected InMemoryDuels $duels;
 
     protected function setUp(): void
     {
@@ -46,7 +44,6 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
         $this->friendLinks = new InMemoryFriendLinks($this->transactions);
         $this->blocks = new InMemoryBlocks($this->transactions);
         $this->codes = new SequenceInviteCodes();
-        $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 
     protected function invites(): Invites
@@ -56,12 +53,12 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
 
     protected function friendRequests(): FriendRequests
     {
-        return new FriendRequests($this->transactions, $this->clock, $this->users, $this->inviteCodes, $this->friendLinks, $this->blocks, $this->progressRecords);
+        return new FriendRequests($this->transactions, $this->clock, $this->users, $this->inviteCodes, $this->friendLinks, $this->blocks, $this->progressRecords, $this->badgeRecords);
     }
 
     protected function friendList(): FriendList
     {
-        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords, $this->endDuels());
+        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords, $this->endDuels(), $this->badgeRecords);
     }
 
     protected function blocking(): Blocking
