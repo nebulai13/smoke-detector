@@ -216,6 +216,51 @@ final readonly class Problem
     }
 
     /**
+     * Nobody the user can ask has this invite code: it does not exist (any more), or one of the two
+     * has blocked the other. On purpose not told apart (HLD §4.7).
+     */
+    public static function inviteNotFound(): self
+    {
+        return new self('invite_not_found', 'Invite not found', 404, 'Nobody with this invite code can be asked.');
+    }
+
+    public static function ownInvite(): self
+    {
+        return new self('own_invite', 'Own invite', 409, 'This is the user\'s own invite code.');
+    }
+
+    public static function alreadyFriends(): self
+    {
+        return new self('already_friends', 'Already friends', 409, 'The two are friends already.');
+    }
+
+    /**
+     * FR-FRND-04: at most 50 friends. Without a number of anybody's friends in it.
+     */
+    public static function friendLimitReached(): self
+    {
+        return new self('friend_limit_reached', 'Friend limit reached', 409, 'The limit of friends is reached.');
+    }
+
+    public static function friendRequestNotFound(): self
+    {
+        return new self('friend_request_not_found', 'Friend request not found', 404, 'There is no open friend request between the two in this direction.');
+    }
+
+    /**
+     * The same for a user id that does not exist: the answer does not tell whether it does.
+     */
+    public static function friendNotFound(): self
+    {
+        return new self('friend_not_found', 'Friend not found', 404, 'There is no such friend.');
+    }
+
+    public static function blockNotFound(): self
+    {
+        return new self('block_not_found', 'Block not found', 404, 'The user has not blocked this user.');
+    }
+
+    /**
      * @param string|null $detail Only ever given outside production: it describes the exception.
      */
     public static function internalError(?string $detail = null): self
