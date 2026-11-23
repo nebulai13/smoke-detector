@@ -54,8 +54,7 @@ final readonly class FriendList
             }
             usort(
                 $friends,
-                static fn (FriendView $a, FriendView $b): int => strcmp(mb_strtolower($a->user->displayName->value), mb_strtolower($b->user->displayName->value))
-                    ?: strcmp($a->user->userId->value, $b->user->userId->value),
+                static fn (FriendView $a, FriendView $b): int => PublicProfile::compareByName($a->user, $b->user),
             );
 
             return new FriendOverview($friends, $incoming, $outgoing);

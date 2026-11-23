@@ -12,9 +12,7 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
-use SmokeDetector\Application\Day\ProgressRecord;
 use SmokeDetector\Application\Day\ProgressRecords;
-use SmokeDetector\Application\Day\XpEvent;
 use SmokeDetector\Application\Day\XpLedger;
 use SmokeDetector\Application\Friends\LockedPair;
 use SmokeDetector\Application\IdGenerator;
@@ -22,8 +20,6 @@ use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Domain\Competition\CompetitionScore;
 use SmokeDetector\Domain\Competition\CompetitionScoreComparator;
-use SmokeDetector\Domain\Day\UserProgress;
-use SmokeDetector\Domain\Level\LevelCalculator;
 use SmokeDetector\Domain\Xp\DuelResult;
 use SmokeDetector\Domain\Xp\XpCalculator;
 use Throwable;
@@ -47,6 +43,8 @@ final readonly class DecideDuels
 
     private DuelSides $sides;
 
+    private CompetitionRewards $rewards;
+
     public function __construct(
         private TransactionRunner $transactions,
         private ClockInterface $clock,
@@ -54,12 +52,13 @@ final readonly class DecideDuels
         private Duels $duels,
         Calendars $calendars,
         DayRecords $records,
-        private ProgressRecords $progress,
-        private XpLedger $ledger,
-        private IdGenerator $ids,
+        ProgressRecords $progress,
+        XpLedger $ledger,
+        IdGenerator $ids,
         private LoggerInterface $logger,
     ) {
         $this->sides = new DuelSides($calendars, $records);
+        $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
     }
 
     public function execute(): DuelReport
@@ -179,30 +178,13 @@ final readonly class DecideDuels
     }
 
     /**
-     * Pays the XP of one side: to the ledger with the user's own local date of now, and to the
-     * progress with the level calculated again. A reward of 0 writes nothing.
+     * Pays the XP of one side (CompetitionRewards).
      *
      * @return SideResult The side as it is stored.
      */
     private function settle(UserId $userId, SideDays $side, DuelResult $result, DateTimeImmutable $now): SideResult
     {
-        $rules = $side->calendar->rules;
-        $award = (new XpCalculator($rules->xp))->forDuel($result);
-        if ($award !== null) {
-            $this->ledger->append(new XpEvent($this->ids->next(), $userId, $side->calendar->today($now), $award->source, $award->amount, $award->detail, $now));
-            $stored = $this->progress->find($userId);
-            // The onboarding writes the plan and the progress in one transaction.
-            \assert($stored !== null);
-            $totalXp = $stored->progress->totalXp + $award->amount;
-            $this->progress->save(new ProgressRecord(
-                $userId,
-                new UserProgress($stored->progress->streaks, $totalXp),
-                (new LevelCalculator($rules->level))->levelFor($totalXp),
-                $stored->nextDay,
-                $stored->finalizeDueAt,
-                $stored->baselineDueAt,
-            ));
-        }
+        $xp = $this->rewards->pay($userId, $side->calendar, (new XpCalculator($side->calendar->rules->xp))->forDuel($result), $now);
         $score = self::scoreOf($side);
 
         return new SideResult(
@@ -211,7 +193,7 @@ final readonly class DecideDuels
             $score->reduction->expectedTenths,
             $score->smokeFreeDays,
             $score->checkIns,
-            $award->amount ?? 0,
+            $xp,
         );
     }
 
