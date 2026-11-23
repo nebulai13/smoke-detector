@@ -312,6 +312,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/badges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The badges the user holds (SRS FR-GAME-08)
+         * @description A badge is awarded when what justifies it is final: a day 48 hours after it ended, a duel when it is decided, a league when the rank is stored. A badge is awarded once and never taken back. A client celebrates a badge it has not shown yet (SRS FR-GAME-06).
+         */
+        get: operations["listBadges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/health-milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Health milestones by the time since the last logged session (SRS FR-GAME-09)
+         * @description Worked out from the user's last log that is not deleted, at the moment of the request, and stored nowhere. For the user alone. The texts, their sources and the disclaimer are in the apps (SRS LEG-04): this is information, not medical advice.
+         */
+        get: operations["listHealthMilestones"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/logs/sync": {
         parameters: {
             query?: never;
@@ -1014,6 +1054,8 @@ export interface components {
             duels: components["schemas"]["ExportedDuel"][];
             /** @description The user's final results of the league periods, oldest first. */
             leagueResults: components["schemas"]["ExportedLeagueResult"][];
+            /** @description The badges of the user, in the order of `BadgeKey`. */
+            badges: components["schemas"]["Badge"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1342,6 +1384,49 @@ export interface components {
             xp: number;
             checkInStreak: components["schemas"]["Streak"];
             underLimitStreak: components["schemas"]["Streak"];
+            /** @description The badges the friend holds, in the order of `BadgeKey`. Which ones, and never when they were earned: the day of a first smoke-free day would be a day with a known count. */
+            badges: components["schemas"]["BadgeKey"][];
+        };
+        /**
+         * @description A badge (SRS Appendix B). `limit_halved`: a day kept at half the limit of the first day of the plan, or less. `target_reached`: a day kept at a limit that has arrived at the target of the plan. `league_champion_*`: rank 1 among at least three. The apps have a picture and a text for each. A later version of the API may add keys.
+         * @enum {string}
+         */
+        BadgeKey: "first_check_in" | "first_smoke_free_day" | "check_in_streak_7" | "check_in_streak_30" | "check_in_streak_100" | "check_in_streak_365" | "under_limit_streak_7" | "under_limit_streak_30" | "limit_halved" | "target_reached" | "first_duel_won" | "five_duels_won" | "league_champion_week" | "league_champion_month" | "league_champion_quarter" | "league_champion_half_year" | "cheerleader";
+        Badge: {
+            key: components["schemas"]["BadgeKey"];
+            /**
+             * Format: date-time
+             * @description When the badge was stored, which is when the day, the duel or the rank became final.
+             */
+            awardedAt: string;
+        };
+        Badges: {
+            badges: components["schemas"]["Badge"][];
+        };
+        /**
+         * @description A health milestone (SRS Appendix C), by the time since the last session: `heart_rate` 20 minutes, `carbon_monoxide` 12 hours, `circulation` 2 weeks, `breathing` 30 days, `heart_disease_halved` 1 year, `stroke` 5 years, `lung_cancer_halved` 10 years, `heart_disease_gone` 15 years. A year counts as 365 days.
+         * @enum {string}
+         */
+        HealthMilestoneKey: "heart_rate" | "carbon_monoxide" | "circulation" | "breathing" | "heart_disease_halved" | "stroke" | "lung_cancer_halved" | "heart_disease_gone";
+        HealthMilestone: {
+            key: components["schemas"]["HealthMilestoneKey"];
+            /**
+             * Format: date-time
+             * @description The moment the milestone is reached, or was, if no session is logged before it.
+             */
+            reachedAt: string;
+            reached: boolean;
+        };
+        HealthMilestones: {
+            /**
+             * Format: date-time
+             * @description The user's last logged session. Null when no session is logged.
+             */
+            since: string | null;
+            /** @description True when every logged session was vaping (without a log: when the plan names vaping). The milestones are written for smoking, and the apps then say that the evidence differs. */
+            vapingOnly: boolean;
+            /** @description Every milestone in the order of `HealthMilestoneKey`. Empty when `since` is null. */
+            milestones: components["schemas"]["HealthMilestone"][];
         };
         FriendRequest: {
             user: components["schemas"]["PublicUser"];
@@ -2425,6 +2510,53 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listBadges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The badges, in the order of `BadgeKey`. Empty before the first one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Badges"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listHealthMilestones: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Where the user stands. Without a logged session there is nothing to count from. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthMilestones"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["PlanRequired"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
