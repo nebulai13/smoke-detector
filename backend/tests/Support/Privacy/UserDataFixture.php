@@ -125,6 +125,39 @@ final readonly class UserDataFixture
     }
 
     /**
+     * The tables of step 5, in which a row belongs to two users: rows between the user and three
+     * other accounts, which must exist. $friend is a friend the user has asked, $asking has asked the
+     * user and waits for the answer, and $blocked and the user have blocked each other.
+     *
+     * Use other accounts for every user of a test: then no row of one user mentions another one.
+     */
+    public function fillShared(UserId $userId, int $number, UserId $friend, UserId $asking, UserId $blocked): void
+    {
+        $user = $userId->value;
+        $this->insert('invite_codes', [$user, self::inviteCode($number), '2026-11-12 08:00:00']);
+        $this->insert('friendships', [...self::pair($user, $friend->value), $user, '2026-11-10 10:00:00', '2026-11-11 09:00:00']);
+        $this->insert('friendships', [...self::pair($user, $asking->value), $asking->value, '2026-11-15 10:00:00', null]);
+        $this->insert('blocks', [$user, $blocked->value, '2026-11-16 09:00:00']);
+        $this->insert('blocks', [$blocked->value, $user, '2026-11-16 09:30:00']);
+    }
+
+    /**
+     * The invite code fillShared() gives the user with this number (1 to 8).
+     */
+    public static function inviteCode(int $number): string
+    {
+        return 'K7M2QX9RT' . '23456789'[$number - 1];
+    }
+
+    /**
+     * @return array{string, string} The two ids as `friendships` stores them: the smaller one first.
+     */
+    private static function pair(string $one, string $other): array
+    {
+        return $one < $other ? [$one, $other] : [$other, $one];
+    }
+
+    /**
      * @param list<int|string|null> $values One for every column of the table, in the order of the table.
      */
     private function insert(string $table, array $values): void
