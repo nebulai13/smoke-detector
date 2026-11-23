@@ -24,8 +24,9 @@ use SmokeDetector\Tests\Unit\Application\LeaguesUseCaseTestCase;
  * what a friend smoked. Once it is final, everybody has a rank, and the stored results are shown in
  * whole percent.
  *
- * Today is Tuesday the 17th, the second day of the week 2026-W47. Yesterday counts for everybody,
- * today for those who have checked in.
+ * Today is Tuesday the 17th, the second day of the week 2026-W47. For the user's own entry yesterday
+ * counts, and today once it is checked in. Of a friend only final days count, here the days before
+ * today, and who is ahead is decided over the final days of both.
  */
 final class ShowLeagueTest extends LeaguesUseCaseTestCase
 {
@@ -53,13 +54,14 @@ final class ShowLeagueTest extends LeaguesUseCaseTestCase
         $view = $this->showLeague()->show($this->anna->id, LeaguePeriod::Week, 'current');
 
         self::assertSame([LeaguePeriod::Week, '2026-W47', '2026-11-16', '2026-11-22', false, null], [$view->period->type, $view->period->key, $view->period->first()->value, $view->period->last()->value, $view->final, $view->award]);
-        // Bob: 3 of 24 over two days. Anna: 6 of 12. Carol: 12 of 12, her today does not count yet.
+        // Anna: 6 of 12. Of Bob and Carol she sees yesterday, which is final: nothing and 12. Not that
+        // Bob has checked in today.
         self::assertSame(
-            [['ahead', 'Bob', null, 1, 2, 2], [2, 'Anna (you)', 50, 0, 1, 1], ['behind', 'Carol', null, 0, 1, 1]],
+            [['ahead', 'Bob', null, 1, 1, 1], [2, 'Anna (you)', 50, 0, 1, 1], ['behind', 'Carol', null, 0, 1, 1]],
             self::entries($view),
         );
         self::assertSame([$this->bob->id->value, 'Bob', 'avatar-07'], self::profile($view->entries[0]->user));
-        // The same league seen by Bob: he is not Carol's friend, so she is not in his.
+        // The same league seen by Bob, with his own today: he is not Carol's friend, so she is not in his.
         self::assertSame(
             [[1, 'Bob (you)', 88, 1, 2, 2], ['behind', 'Anna', null, 0, 1, 1]],
             self::entries($this->showLeague()->show($this->bob->id, LeaguePeriod::Week, 'current')),
@@ -122,6 +124,9 @@ final class ShowLeagueTest extends LeaguesUseCaseTestCase
     {
         // Monday the 16th of November at one o'clock at night in Vienna: nothing of the week counts yet.
         $this->clock->travelTo(TestData::time('2026-11-16 00:00:00'));
+        foreach ([$this->anna, $this->bob, $this->carol] as $user) {
+            $this->givenProgress($user, '2026-11-16');
+        }
 
         $view = $this->showLeague()->show($this->anna->id, LeaguePeriod::Week, 'current');
 
@@ -175,6 +180,46 @@ final class ShowLeagueTest extends LeaguesUseCaseTestCase
             self::assertSame($entry->you, $entry->rank !== null);
             self::assertSame($entry->you, $entry->standing === null);
         }
+    }
+
+    public function test_FR_FRND_03_of_a_friend_only_final_days_count_and_the_own_open_days_do_not_move_the_comparison(): void
+    {
+        // Last week is over. For Anna its first five days are final, the weekend she can still change.
+        // For Bob all of it is final. For Carol the first two days.
+        $this->givenProgress($this->anna, '2026-11-14');
+        $this->givenProgress($this->carol, '2026-11-11');
+        $this->givenDays($this->bob, '2026-11-09', [9, 9, 9, 9, 9, 9, 9]);
+        $this->givenDays($this->carol, '2026-11-09', [0, 0, 0, 0, 0, 0, 0]);
+        $seen = [];
+        // She tries her weekend from nothing to as much as can be logged.
+        foreach ([[0, 0], [12, 12], [300, 300]] as $weekend) {
+            $this->givenDays($this->anna, '2026-11-09', [6, 6, 6, 6, 6, ...$weekend]);
+            $seen[] = self::entries($this->showLeague()->show($this->anna->id, LeaguePeriod::Week, '2026-W46'));
+        }
+
+        // Her own percentage follows what she logs. What she sees of the others does not move: Carol
+        // ahead over her two final days, Bob behind, compared with Anna's five final days (50 %).
+        self::assertSame(
+            [
+                [['ahead', 'Carol', null, 2, 2, 2], [2, 'Anna (you)', 64, 2, 7, 7], ['behind', 'Bob', null, 0, 7, 7]],
+                [['ahead', 'Carol', null, 2, 2, 2], [2, 'Anna (you)', 36, 0, 7, 7], ['behind', 'Bob', null, 0, 7, 7]],
+                [['ahead', 'Carol', null, 2, 2, 2], [2, 'Anna (you)', -650, 0, 7, 7], ['behind', 'Bob', null, 0, 7, 7]],
+            ],
+            $seen,
+        );
+    }
+
+    public function test_FR_COMP_08_a_user_without_a_final_day_has_the_own_figures_and_no_rank(): void
+    {
+        // Anna has checked in yesterday and today, and none of it is final yet. Bob's yesterday is.
+        $this->givenProgress($this->anna, '2026-11-16');
+        $this->givenDays($this->anna, '2026-11-16', [6, 6]);
+        $this->givenDays($this->bob, '2026-11-16', [0]);
+
+        $entries = self::entries($this->showLeague()->show($this->anna->id, LeaguePeriod::Week, 'current'));
+
+        // Friends with a final day first, by name, with what is shown of them. Nobody is compared.
+        self::assertSame([[null, 'Bob', null, 1, 1, 1], [null, 'Carol', null, 0, 0, 1], [null, 'Anna (you)', 50, 0, 2, 2]], $entries);
     }
 
     public function test_FR_COMP_08_before_the_user_has_a_day_that_counts_nobody_is_ahead_or_behind(): void
@@ -246,11 +291,11 @@ final class ShowLeagueTest extends LeaguesUseCaseTestCase
         $view = $this->showLeague()->show($this->anna->id, LeaguePeriod::Week, '2026-W46');
 
         self::assertSame([false, null], [$view->final, $view->award]);
-        // Carol's week as it stands: six smoke-free days and a day without a check-in, 12 of 84.
-        self::assertSame([['ahead', 'Carol', null, 6, 6, 7], [2, 'Anna (you)', 50, 0, 7, 7], ['behind', 'Bob', null, 0, 7, 7]], self::entries($view));
+        // Carol's week as far as it is final: six smoke-free days. Her Sunday is not final and not shown.
+        self::assertSame([['ahead', 'Carol', null, 6, 6, 6], [2, 'Anna (you)', 50, 0, 7, 7], ['behind', 'Bob', null, 0, 7, 7]], self::entries($view));
     }
 
-    public function test_FR_COMP_08_in_a_final_league_a_friend_without_a_stored_result_has_a_position_and_no_percentage(): void
+    public function test_FR_COMP_08_in_a_final_league_only_stored_results_are_ranked(): void
     {
         // Anna was ranked after the seven days of waiting, without Carol, whose days are still not final.
         $this->givenResult($this->anna, 42, award: new LeagueAward(1, 2, 0, TestData::time('2026-11-17 11:05:00')));
@@ -260,9 +305,10 @@ final class ShowLeagueTest extends LeaguesUseCaseTestCase
 
         $view = $this->showLeague()->show($this->anna->id, LeaguePeriod::Week, '2026-W46');
 
-        // The list is ranked as things stand today. The reward is the one that was decided.
+        // A final league is made of final results. Carol has none yet: she is listed without a rank,
+        // whatever her days look like so far. The reward is the one that was decided.
         self::assertTrue($view->final);
-        self::assertSame([[1, 'Carol', null, 7, 7, 7], [2, 'Anna (you)', 50, 0, 7, 7], [3, 'Bob', 29, 0, 7, 7]], self::entries($view));
+        self::assertSame([[1, 'Anna (you)', 50, 0, 7, 7], [2, 'Bob', 29, 0, 7, 7], [null, 'Carol', null, null, null, null]], self::entries($view));
         self::assertSame([1, 2, 0], [$view->award?->rank, $view->award?->participants, $view->award?->xp]);
     }
 

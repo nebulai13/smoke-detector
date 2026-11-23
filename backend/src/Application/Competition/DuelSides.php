@@ -10,6 +10,7 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Day\Calendar;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
+use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Competition\FrozenBaseline;
 use SmokeDetector\Domain\Plan\Baseline;
@@ -21,12 +22,17 @@ use SmokeDetector\Domain\Plan\Baseline;
  * A day with a check-in counts with its count. A day without one counts as missed: as the
  * baseline, or as what was logged when that is more. A day without a row is a day without a
  * check-in and without a log.
+ *
+ * Three ways to bound the days: all of them (whole), the days that count so far for the user's own
+ * view (soFar, live), and the final days only (final), the only days ever shown of or compared with
+ * another user (HLD §4.8 "Of the other side, final days only").
  */
 final readonly class DuelSides
 {
     public function __construct(
         private Calendars $calendars,
         private DayRecords $records,
+        private ProgressRecords $progress,
     ) {
     }
 
@@ -50,12 +56,42 @@ final readonly class DuelSides
         return $this->side($userId, $start, $periodDays, null, $now);
     }
 
+    /**
+     * The days of a running duel that are final for the side's user, and no other: what the other
+     * one of the two may see of the side, and what who is ahead is decided on.
+     */
+    public function final(UserId $userId, LocalDate $start, int $periodDays): SideDays
+    {
+        return self::readFinal($this->records, $this->progress, $this->calendarOf($userId), $start, self::lastDay($start, $periodDays));
+    }
+
     private function side(UserId $userId, LocalDate $start, int $periodDays, ?int $b0Tenths, ?DateTimeImmutable $now): SideDays
     {
-        // Proposing and accepting need a plan, and a plan is deleted with its account only.
-        $calendar = $this->calendars->of($userId) ?? throw new LogicException('A side of a duel has no plan.');
+        return self::read($this->records, $this->calendarOf($userId), $start, self::lastDay($start, $periodDays), $b0Tenths, $now);
+    }
 
-        return self::read($this->records, $calendar, $start, $start->plusDays($periodDays - 1), $b0Tenths, $now);
+    private static function lastDay(LocalDate $start, int $periodDays): LocalDate
+    {
+        return $start->plusDays($periodDays - 1);
+    }
+
+    private function calendarOf(UserId $userId): Calendar
+    {
+        // Proposing and accepting need a plan, and a plan is deleted with its account only.
+        return $this->calendars->of($userId) ?? throw new LogicException('A side of a duel has no plan.');
+    }
+
+    /**
+     * The final days from $start to $last of the user whose calendar it is, against the baseline
+     * entry valid on $start. The one place that knows what final means: a day before the user's next
+     * day to finalize (ProgressRecord::$nextDay). A user without a progress record has no final day.
+     * Days that are not final are not even read.
+     */
+    public static function readFinal(DayRecords $records, ProgressRecords $progress, Calendar $calendar, LocalDate $start, LocalDate $last): SideDays
+    {
+        $lastFinal = ($progress->find($calendar->plan->userId)->nextDay ?? $start)->plusDays(-1);
+
+        return self::read($records, $calendar, $start, $lastFinal->isBefore($last) ? $lastFinal : $last, null, null);
     }
 
     /**

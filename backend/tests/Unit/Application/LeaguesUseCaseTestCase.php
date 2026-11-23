@@ -23,6 +23,9 @@ use SmokeDetector\Tests\Support\TestData;
  * It is noon UTC on Tuesday, 17 November 2026: the second day of the week 2026-W47 for users in
  * Vienna. The week before, 2026-W46, ran from Monday the 9th to Sunday the 15th. A result of that
  * week against a baseline of 12.0 has an expected total of 84.
+ *
+ * Of a friend only final days are ever shown or compared (HLD §4.8, §4.9): a user can still change
+ * the own open days, and could find out a friend's result by trying.
  */
 abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
 {
@@ -44,7 +47,7 @@ abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
 
     protected function showLeague(): ShowLeague
     {
-        return new ShowLeague($this->transactions, $this->clock, $this->users, $this->friendLinks, $this->calendars(), $this->dayRecords, $this->leagueResults);
+        return new ShowLeague($this->transactions, $this->clock, $this->users, $this->friendLinks, $this->calendars(), $this->dayRecords, $this->progressRecords, $this->leagueResults);
     }
 
     protected function showXpLeague(): ShowXpLeague
@@ -54,12 +57,13 @@ abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
 
     /**
      * A user with this name who did the onboarding on $startDate with a baseline of 12. Every day
-     * before the 16th is final.
+     * before today, the 17th, is final. (In the app a day is final two days after it ended. What
+     * matters here is that final days and open days are told apart, and where the line is.)
      */
     protected function givenPlayer(string $name, string $startDate = '2026-10-01'): User
     {
         $user = $this->givenNamed($name);
-        $this->givenOnboarded($user, $startDate, max($startDate, '2026-11-16'));
+        $this->givenOnboarded($user, $startDate, max($startDate, '2026-11-17'));
 
         return $user;
     }

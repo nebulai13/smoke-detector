@@ -681,7 +681,13 @@ baseline). The user's own percentage is shown to the user all the time. A day is
 | `under` | checked in below the baseline |
 | `not_under` | at or over the baseline, or not checked in |
 
-The figures are coarse on purpose, after two audit findings:
+**Of the other side, final days only.** The user's own side follows the logs at once: the days up to
+yesterday, and today once it is checked in. Everything about the opponent (smoke-free days, check-ins, counted
+days, day levels) covers the opponent's final days only, and who is ahead is decided over the final days of
+both sides, once both have one. A final day is two days old and cannot be changed by anybody. The price: the
+standing lags two days, and a 7-day duel shows its first one on its fourth day.
+
+The figures are coarse and late on purpose, after three audit findings:
 
 - The first version showed every day in percent with one decimal. That gives everything away: two days that
   differ by one session differ by exactly 100 ÷ baseline percent, so a friend could calculate the baseline
@@ -689,6 +695,11 @@ The figures are coarse on purpose, after two audit findings:
 - A whole percentage of a running duel still moves every day. A friend who notes it daily can take the
   differences: on the first day the total is that day's reduction, and each later change is about that day's
   share of the baseline. The owner chose: while a duel runs, only who is ahead.
+- "Who is ahead", computed live, could be found out by trying. A user can change the own logs for 48 hours:
+  set a total, read the standing, change one log, read again. The standing flips where the own reduction
+  passes the opponent's. About seven tries give the opponent's reduction of a week to one or two percentage
+  points, on the same day. The owner chose: final days only. A user's final days cannot be changed, so each
+  of the user's days is one fixed comparison and no more.
 
 The user's own days are shown as levels too; the exact numbers of one's own days are in `GET /days`. The
 server keeps the exact totals and decides the winner with them, so two sides can show the same whole percent
@@ -726,8 +737,9 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
   narrows the possible baselines without fixing one (an audit counted hundreds of candidates for a 7-day
   duel) and gives a lower bound for the baseline. A side at exactly 100 % had no session. Accepted: a result
   needs a figure.
-- **Who is ahead, day by day,** tells how the opponent's reduction compares with one's own, which one knows
-  exactly: one comparison a day. Accepted.
+- **Who is ahead, day by day,** tells how the opponent's reduction over the final days compares with one's
+  own: one comparison for each day that becomes final. A user can choose what to log on a day before it is
+  final, and so place one threshold a day. Accepted: the standing has to mean something.
 - **Shown days use today's rule table.** A completed duel's days are worked out again from the stored days
   and the stored baseline. After a new rule version the levels could disagree with the stored totals. To be
   settled when rule versions become selectable (§4.6).
@@ -790,8 +802,9 @@ not hold up everybody else for ever.
 | A friend's entry | ahead of the user, level, or behind. No rank and no percentage | rank, and the percent of a stored result over at least 7 counted days |
 | Always | name, avatar, smoke-free days, check-ins, counted days | |
 
-- While a period runs, the days that count are the ones of §4.8: up to yesterday, and today once it is
-  checked in. Who is ahead comes from the exact comparison.
+- The user's own entry follows the logs at once, as in §4.8: the days up to yesterday, and today once it is
+  checked in. Of a friend only final days are shown and compared, and the comparison uses the user's own
+  final days (§4.8 says why). The user's own rank needs a final day of the user.
 - **Friends are not ranked against each other while the result is not final.** An audit showed why: somebody
   can add accounts of their own as friends, give each a result they choose, and read every day where a real
   friend stands among them. With 48 such accounts that is the friend's reduction to two percentage points,
@@ -801,11 +814,12 @@ not hold up everybody else for ever.
 - **A friend's final percentage needs 7 counted days.** Somebody who joined on the last days of a period has
   a result over one to three days, and its percentage would be nearly the figure of a single day. Such a
   friend has a rank and no percentage. The user's own percentage is always shown to the user.
-- A participant without a counted day (no plan, a plan that starts later, the first day not checked in yet)
-  is listed last, without figures. While the user has no counted day, nobody is ahead or behind.
-- For a period that is over, a friend's stored result is used where there is one, also before the user's own
-  rank is stored. The list shown later is ranked among the friends of today. The stored reward is the one of
-  the moment it was decided, and the two can differ when friendships changed.
+- A friend without a final day in the period (no plan, a plan that starts later, nothing final yet) is listed
+  last, without figures. While the user has no final day in the period, nobody is ahead or behind: friends
+  with a final day are listed by name, with their figures.
+- A final league is made of stored results: a friend without one is listed without a rank. The list is
+  ranked among the friends of today. The stored reward is the one of the moment it was decided, and the two
+  can differ when friendships changed.
 - A period that has not begun for the user is answered `league_not_found`. A user who has not done the
   onboarding has no calendar yet and is answered `plan_required`, here and for the XP ranking.
 

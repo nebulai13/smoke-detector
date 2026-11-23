@@ -33,12 +33,29 @@ final class LeaguesTest extends HttpTestCase
 
     private int $logs = 0;
 
-    public function test_FR_COMP_06_a_running_week_shows_who_is_ahead_and_the_own_rank_and_percentage_only(): void
+    public function test_FR_COMP_06_a_running_week_shows_the_own_figures_live_and_of_friends_the_final_days_and_who_is_ahead(): void
     {
         [$anna, $bob, $carol] = $this->threeFriends();
-        // Today: Anna 6, checked in. Bob nothing, checked in. Carol has logged 4 and not checked in.
+        // Tuesday: Anna 6, Bob nothing, both checked in. Carol logs 4 and never checks in.
         $this->day('2026-11-17', [[$anna, 6, true], [$bob, 0, true], [$carol, 4, false]]);
+        $this->day('2026-11-18', [[$anna, 6, true], [$bob, 0, true], [$carol, 12, true]]);
+        $this->day('2026-11-19', [[$anna, 6, true], [$bob, 0, true], [$carol, 12, true]]);
 
+        // Before any day is final: her own figures, and nothing about the others.
+        $early = $this->call('GET', '/leagues?type=week&period=current', headers: $this->authorization($anna))->json();
+        self::assertSame(
+            [
+                ['rank' => null, 'standing' => null, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
+                ['rank' => null, 'standing' => null, 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => null, 'checkIns' => null, 'countedDays' => null],
+                ['rank' => null, 'standing' => null, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => null, 'checkIns' => null, 'countedDays' => null],
+            ],
+            $early['entries'] ?? null,
+        );
+
+        // In the night to Friday the cron job makes Tuesday final.
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-19 23:00:00 UTC'));
+        $this->cronRun();
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-20 12:00:00 UTC'));
         $response = $this->call('GET', '/leagues?type=week&period=current', headers: $this->authorization($anna));
 
         self::assertSame(200, $response->status());
@@ -46,11 +63,13 @@ final class LeaguesTest extends HttpTestCase
             [
                 'type' => 'week', 'period' => '2026-W47', 'startsOn' => '2026-11-16', 'endsOn' => '2026-11-22', 'final' => false,
                 'entries' => [
-                    // Of a friend: ahead or behind, and no rank and no percentage.
+                    // Of a friend: the final days (here Tuesday), and ahead or behind over the final days
+                    // of both. No rank and no percentage.
                     ['rank' => null, 'standing' => 'ahead', 'user' => self::publicUser($bob, 'Bob'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 1, 'checkIns' => 1, 'countedDays' => 1],
-                    ['rank' => 2, 'standing' => null, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 1, 'countedDays' => 1],
-                    // Her today does not count before she has checked in.
-                    ['rank' => null, 'standing' => null, 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => null, 'checkIns' => null, 'countedDays' => null],
+                    // Her own three days, live.
+                    ['rank' => 2, 'standing' => null, 'user' => self::publicUser($anna, 'Anna'), 'you' => true, 'reductionPercent' => 50, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
+                    // The day Carol never checked in counts as her baseline.
+                    ['rank' => null, 'standing' => 'behind', 'user' => self::publicUser($carol, 'Carol'), 'you' => false, 'reductionPercent' => null, 'smokeFreeDays' => 0, 'checkIns' => 0, 'countedDays' => 1],
                 ],
                 'award' => null,
             ],
