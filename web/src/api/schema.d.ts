@@ -1602,7 +1602,7 @@ export interface components {
              * @enum {string|null}
              */
             outcome: "won" | "draw" | "lost" | null;
-            /** @description What the user earned with a completed duel. */
+            /** @description What the user earned with a completed duel. 0 without a reduction above zero of the user's own side, also for a duel that was won: an app does not celebrate a reward then. */
             xp: number | null;
             /** @description `true` while the duel runs: the sides count the days up to yesterday, and today once it is checked in, and can still change. `false` for a completed duel. */
             provisional: boolean;
