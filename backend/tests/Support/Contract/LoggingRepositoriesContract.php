@@ -151,6 +151,36 @@ trait LoggingRepositoriesContract
         self::assertNull($this->smokeLogs()->lastSessionAt(TestData::userId(1)));
     }
 
+    public function test_FR_GAME_09_the_last_session_up_to_a_day_leaves_out_the_days_after_it(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-14', '2026-11-14 10:00:00'));
+        // A session after midnight UTC that belongs to the 15th of the user, and one that is deleted.
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-15', '2026-11-15 22:30:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(12, 1, '2026-11-15', '2026-11-15 22:45:00', deletedAt: '2026-11-16 08:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(13, 1, '2026-11-17', '2026-11-17 07:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(14, 2, '2026-11-14', '2026-11-14 23:59:59'));
+
+        self::assertNull($this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-13')));
+        self::assertEquals(TestData::time('2026-11-14 10:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-14')));
+        self::assertEquals(TestData::time('2026-11-15 22:30:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-15')));
+        // A day without a session has the session before it.
+        self::assertEquals(TestData::time('2026-11-15 22:30:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-16')));
+        self::assertEquals(TestData::time('2026-11-17 07:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-30')));
+        self::assertNull($this->smokeLogs()->lastSessionUntil(TestData::userId(3), TestData::date('2026-11-30')));
+    }
+
+    public function test_FR_GAME_09_the_last_session_up_to_a_day_is_the_latest_by_time_also_when_it_was_logged_for_an_earlier_day(): void
+    {
+        $this->givenUsers(TestData::userId(1));
+        // After a move west a later moment can belong to an earlier day of the user.
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-15', '2026-11-15 08:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-14', '2026-11-15 09:00:00'));
+
+        self::assertEquals(TestData::time('2026-11-15 09:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-15')));
+        self::assertEquals(TestData::time('2026-11-15 09:00:00'), $this->smokeLogs()->lastSessionUntil(TestData::userId(1), TestData::date('2026-11-14')));
+    }
+
     public function test_FR_GAME_09_the_products_of_a_user_are_those_of_the_logs_that_are_not_deleted_each_once(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
