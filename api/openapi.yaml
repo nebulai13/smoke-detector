@@ -3122,7 +3122,9 @@ components:
           type: integer
           minimum: 0
           nullable: true
-          description: What the user earned with a completed duel.
+          description: >
+            What the user earned with a completed duel. 0 without a reduction above zero of the user's own
+            side, also for a duel that was won: an app does not celebrate a reward then.
         provisional:
           type: boolean
           description: >

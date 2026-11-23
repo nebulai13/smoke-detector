@@ -764,8 +764,11 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
   (as in §4.6). The run fails visibly.
 - **Badges** for duels ("First duel won", "5 duels won") are awarded when a duel is decided, from the stored
   results (§4.10).
-- **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week. Accepted: a week of
-  real days is the price.
+- **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week, each with a
+  reduction above zero of their own. Accepted: a week of real days is the price.
+- **A reduction is measured against the baseline that counts,** which is at least 1.0 a day (FR-PLAN-07).
+  Somebody who smokes less than one session a day has a reduction by doing what they always do, and is
+  rewarded for it. The rule closes the case of doing nothing, not this one.
 
 ### 4.9 Leagues (step 5, third part)
 

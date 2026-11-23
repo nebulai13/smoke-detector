@@ -89,13 +89,15 @@ trait DuelRepositoryContract
             // User 2 won with a tenth of a session saved, from each side.
             TestData::duel(3, 2, 1, 7, DuelStatus::Completed, '2026-10-03 08:00:00', '2026-10-04 09:00:00', '2026-10-05', '2026-10-05', TestData::decision(DuelWinner::Challenger, $least, $none)),
             TestData::duel(4, 1, 2, 7, DuelStatus::Completed, '2026-10-04 08:00:00', '2026-10-05 09:00:00', '2026-10-06', '2026-10-06', TestData::decision(DuelWinner::Opponent, $none, $least)),
+            // What counts is the reduction, not the XP that was paid: a rule table can set the XP of a win to 0.
+            TestData::duel(5, 2, 1, 7, DuelStatus::Completed, '2026-10-05 08:00:00', '2026-10-06 09:00:00', '2026-10-07', '2026-10-07', TestData::decision(DuelWinner::Challenger, new SideResult(120, 839, 840, 0, 7, 0), $none)),
         ];
         foreach ($duels as $duel) {
             $this->duels()->save($duel);
         }
 
         self::assertSame(0, $this->duels()->wonBy(TestData::userId(1)));
-        self::assertSame(2, $this->duels()->wonBy(TestData::userId(2)));
+        self::assertSame(3, $this->duels()->wonBy(TestData::userId(2)));
     }
 
     public function test_FR_GAME_08_the_duels_a_user_won_are_counted_from_both_sides(): void
