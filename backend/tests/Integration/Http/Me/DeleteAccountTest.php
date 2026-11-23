@@ -156,6 +156,12 @@ final class DeleteAccountTest extends HttpTestCase
             'POST /friends/block' => ['userId' => TestData::uuid(2)],
             'POST /friends/unblock' => ['userId' => TestData::uuid(2)],
             'GET /friends/blocked' => null,
+            'GET /duels' => null,
+            'POST /duels' => ['opponentId' => TestData::uuid(2), 'periodDays' => 7],
+            'POST /duels/show' => ['duelId' => TestData::uuid(3)],
+            'POST /duels/accept' => ['duelId' => TestData::uuid(3)],
+            'POST /duels/decline' => ['duelId' => TestData::uuid(3)],
+            'POST /duels/cancel' => ['duelId' => TestData::uuid(3)],
         ];
         // Where the path of the contract is a pattern or needs a query string: what is really called.
         $paths = ['GET /days' => '/days?from=2026-11-17&to=2026-11-17', 'POST /days/{date}/check-in' => '/days/2026-11-17/check-in'];

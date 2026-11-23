@@ -56,7 +56,7 @@ final class UserDataGuardTest extends IntegrationTestCase
 
         self::assertSame(
             [
-                'baseline_history', 'blocks', 'consents', 'day_summaries', 'friendships', 'invite_codes', 'mail_outbox', 'one_time_tokens',
+                'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'friendships', 'invite_codes', 'mail_outbox', 'one_time_tokens',
                 'plan_history', 'plans', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_progress', 'xp_events',
             ],
             $registered,
@@ -178,11 +178,11 @@ final class UserDataGuardTest extends IntegrationTestCase
 
         // In the order of the database, which sorts "s" before "_".
         $tables = [
-            'baseline_history', 'blocks', 'consents', 'day_summaries', 'friendships', 'invite_codes', 'mail_outbox', 'one_time_tokens', 'plans',
+            'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'friendships', 'invite_codes', 'mail_outbox', 'one_time_tokens', 'plans',
             'plan_history', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_progress', 'xp_events',
         ];
         // The tables two users share have no column "user_id": they name both users.
-        $shared = ['blocks' => 'blocked_id', 'friendships' => 'user_a'];
+        $shared = ['blocks' => 'blocked_id', 'duels' => 'challenger_id', 'friendships' => 'user_a'];
         self::assertCount(count($tables), $violations);
         foreach ($tables as $index => $table) {
             self::assertStringStartsWith("Table `{$table}` is neither registered", $violations[$index]);

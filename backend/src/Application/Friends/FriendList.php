@@ -7,6 +7,7 @@ namespace SmokeDetector\Application\Friends;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Competition\EndDuels;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\TransactionRunner;
 
@@ -21,6 +22,7 @@ final readonly class FriendList
         private UserRepository $users,
         private FriendLinks $links,
         private ProgressRecords $progress,
+        private EndDuels $endDuels,
     ) {
     }
 
@@ -62,7 +64,8 @@ final readonly class FriendList
 
     /**
      * Ends the friendship for both. An open request is not removed this way: it is declined or
-     * taken back.
+     * taken back. The proposal between the two is deleted and their running duel cancelled
+     * (HLD §4.8 "Friends").
      *
      * @throws FriendNotFound  The two are not friends, or the other account does not exist (any more).
      * @throws AccountNotFound When the account of $userId was deleted in the meantime.
@@ -75,6 +78,7 @@ final readonly class FriendList
                 throw new FriendNotFound();
             }
             $this->links->delete($userId, $friend);
+            $this->endDuels->between($userId, $friend);
         });
     }
 }

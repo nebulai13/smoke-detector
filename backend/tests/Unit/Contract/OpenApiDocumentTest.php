@@ -185,6 +185,9 @@ final class OpenApiDocumentTest extends TestCase
                 'FriendRequestNotFound',
                 'FriendNotFound',
                 'BlockNotFound',
+                'DuelNotFound',
+                'DuelNotOpen',
+                'DuelRefused',
             ],
             array_keys($responses),
         );

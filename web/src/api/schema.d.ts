@@ -584,6 +584,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/duels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The duels of the user, newest first (SRS FR-COMP-01)
+         * @description Proposals in both directions, running duels and the ones that are over, at most 100. Of the opponent the user sees name and avatar, smoke-free days and check-ins, in a running duel who is ahead, and in a completed duel the reduction in whole percent. Never counts, limits or the baseline. When the two are not friends any more, the opponent and the opponent's side are `null`.
+         */
+        get: operations["listDuels"];
+        put?: never;
+        /**
+         * Challenge a friend to a duel (SRS FR-COMP-01, FR-COMP-05)
+         * @description The friend has 72 hours to accept. A user has at most one open duel with the same friend and at most 5 open duels in all: own proposals and running duels count, proposals from others do not.
+         */
+        post: operations["proposeDuel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/duels/show": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * One duel with its days (SRS FR-COMP-09)
+         * @description The duel as in the list, and for every day of the duel that counts already how it went for both sides, as one of four levels. Days are numbered from 1, because the two users have calendars of their own.
+         */
+        post: operations["showDuel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/duels/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a proposed duel (SRS FR-COMP-02)
+         * @description Only the friend who was challenged, within 72 hours. The duel starts for each of the two on their own next local day and runs for exactly the number of days.
+         */
+        post: operations["acceptDuel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/duels/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a proposed duel
+         * @description Only the friend who was challenged. The duel stays in both lists as declined.
+         */
+        post: operations["declineDuel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/duels/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take a proposal back
+         * @description Only the challenger, and only while the proposal is open. It is deleted. A running duel cannot be given up.
+         */
+        post: operations["cancelDuel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -864,6 +968,8 @@ export interface components {
             friends: components["schemas"]["ExportedFriend"][];
             /** @description The users this user has blocked, oldest block first. Not who has blocked this user. */
             blockedUsers: components["schemas"]["ExportedBlock"][];
+            /** @description The duels of the user, oldest first. */
+            duels: components["schemas"]["ExportedDuel"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1258,6 +1364,141 @@ export interface components {
             /** Format: date-time */
             blockedAt: string;
         };
+        DuelReference: {
+            /** Format: uuid */
+            duelId: string;
+        };
+        DuelProposal: {
+            /**
+             * Format: uuid
+             * @description A friend.
+             */
+            opponentId: string;
+            periodDays: components["schemas"]["DuelPeriod"];
+        };
+        /**
+         * @description One week, one month, three months or six months (SRS FR-COMP-01).
+         * @enum {integer}
+         */
+        DuelPeriod: 7 | 30 | 90 | 180;
+        /**
+         * @description `proposed`: waits for the friend. `active`: accepted, running or waiting for its last days to become final. `declined`, `expired` (72 hours without an answer). `cancelled`: the two stopped being friends while it ran. `completed`: decided. `forfeited`: the account of the opponent was deleted while it ran. Only `completed` has a result and XP.
+         * @enum {string}
+         */
+        DuelStatus: "proposed" | "active" | "declined" | "expired" | "cancelled" | "completed" | "forfeited";
+        /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
+        DuelSide: {
+            /** @description `null` for the opponent while the duel runs: then only `standing` says who is ahead. A figure that moves every day could be calculated back, day by day. For the user's own side, and for both sides once the duel is decided: in whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
+            reductionPercent: number | null;
+            smokeFreeDays: number;
+            checkIns: number;
+            countedDays: number;
+        };
+        Duel: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["DuelStatus"];
+            periodDays: components["schemas"]["DuelPeriod"];
+            /** @description `true` when the user proposed the duel. */
+            challenger: boolean;
+            /** @description `null` when the two are not friends any more, or the account is gone. */
+            opponent: components["schemas"]["PublicUser"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description Until when a proposal can be accepted.
+             */
+            expiresAt: string;
+            /**
+             * Format: date
+             * @description The first day of the duel in the user's own calendar. `null` before the duel is accepted.
+             */
+            startsOn: string | null;
+            /**
+             * Format: date
+             * @description The last day of the duel in the user's own calendar.
+             */
+            endsOn: string | null;
+            /** @description `null` while no day counts yet, and for a duel that never ran or ended without a result. */
+            mine: components["schemas"]["DuelSide"] | null;
+            /** @description As `mine`, and `null` whenever `opponent` is. */
+            theirs: components["schemas"]["DuelSide"] | null;
+            /** @description Where the user stands in a running duel, once both sides have a day that counts. `null` before that, for every duel that is not running, and whenever `opponent` is. */
+            standing: components["schemas"]["DuelStanding"] | null;
+            /**
+             * @description Of a completed duel. More reduction wins, then more smoke-free days, then more check-ins.
+             * @enum {string|null}
+             */
+            outcome: "won" | "draw" | "lost" | null;
+            /** @description What the user earned with a completed duel. */
+            xp: number | null;
+            /** @description `true` while the duel runs: the sides count the days up to yesterday, and today once it is checked in, and can still change. `false` for a completed duel. */
+            provisional: boolean;
+        };
+        DuelList: {
+            duels: components["schemas"]["Duel"][];
+        };
+        DuelDetail: {
+            duel: components["schemas"]["Duel"];
+            /** @description One entry per day of a running or completed duel, in order. Empty for every other duel. */
+            days: {
+                day: number;
+                /** @description The level of that day. `null` while the day does not count yet. */
+                mine: components["schemas"]["DuelDayLevel"] | null;
+                /** @description As `mine`, and `null` whenever `opponent` is. */
+                theirs: components["schemas"]["DuelDayLevel"] | null;
+            }[];
+        };
+        /**
+         * @description The user against the opponent over the days that count so far: more reduction is ahead (compared exactly, not as rounded percent), then more smoke-free days, then more check-ins. `level` when all three are equal.
+         * @enum {string}
+         */
+        DuelStanding: "ahead" | "level" | "behind";
+        /**
+         * @description How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in below the baseline. `not_under`: at or over the baseline, or not checked in.
+         * @enum {string}
+         */
+        DuelDayLevel: "smoke_free" | "well_under" | "under" | "not_under";
+        /** @description A duel of the user with the user's own side. Of the opponent the export holds the id and nothing else. */
+        ExportedDuel: {
+            /** Format: uuid */
+            id: string;
+            status: components["schemas"]["DuelStatus"];
+            periodDays: components["schemas"]["DuelPeriod"];
+            /** @enum {string} */
+            role: "challenger" | "opponent";
+            /**
+             * Format: uuid
+             * @description `null` when that account was deleted.
+             */
+            opponentId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            answeredAt: string | null;
+            /** Format: date */
+            startsOn: string | null;
+            /** Format: date-time */
+            decidedAt: string | null;
+            /** @enum {string|null} */
+            outcome: "won" | "draw" | "lost" | null;
+            /** @description The user's own side of a completed duel, as it was scored. */
+            result: {
+                /** @description The frozen baseline of the duel, sessions per day. */
+                baseline: number;
+                /** @description The sessions that counted over the duel. */
+                actual: number;
+                /** @description Baseline times days. */
+                expected: number;
+                smokeFreeDays: number;
+                checkIns: number;
+                xp: number;
+            } | null;
+            rulesVersion: string | null;
+        };
         /** @description RFC 9457 problem details */
         Problem: {
             /**
@@ -1528,6 +1769,33 @@ export interface components {
         };
         /** @description `block_not_found`: the user has not blocked this user. */
         BlockNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `duel_not_found`: the user has no duel with this id. The answer for an id that does not exist is the same. */
+        DuelNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `duel_not_open`: the duel is not a proposal any more (answered, expired or taken back), or this is not for the user to do: only the one who was challenged answers, only the challenger takes back. For an acceptance also `plan_required` (the onboarding is not done) and `duel_limit_reached` (the user has 5 open duels already). */
+        DuelNotOpen: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `plan_required`: the user has not done the onboarding. `duel_exists`: there is an open duel with this friend already, whoever proposed it. `duel_limit_reached`: the user has 5 open duels already (SRS FR-COMP-05). */
+        DuelRefused: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2420,6 +2688,184 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listDuels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The duels. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuelList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    proposeDuel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuelProposal"];
+            };
+        };
+        responses: {
+            /** @description The proposal waits for the friend. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendNotFound"];
+            409: components["responses"]["DuelRefused"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showDuel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuelReference"];
+            };
+        };
+        responses: {
+            /** @description The duel. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DuelDetail"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["DuelNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    acceptDuel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuelReference"];
+            };
+        };
+        responses: {
+            /** @description The duel is on. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Duel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["DuelNotFound"];
+            409: components["responses"]["DuelNotOpen"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    declineDuel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuelReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["DuelNotFound"];
+            409: components["responses"]["DuelNotOpen"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    cancelDuel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DuelReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["DuelNotFound"];
+            409: components["responses"]["DuelNotOpen"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

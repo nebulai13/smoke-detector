@@ -12,6 +12,10 @@ use Slim\Exception\HttpMethodNotAllowedException;
 use Slim\Interfaces\ErrorHandlerInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Day\DayNotOpen;
+use SmokeDetector\Application\Competition\DuelExists;
+use SmokeDetector\Application\Competition\DuelLimitReached;
+use SmokeDetector\Application\Competition\DuelNotFound;
+use SmokeDetector\Application\Competition\DuelNotOpen;
 use SmokeDetector\Application\Friends\AlreadyFriends;
 use SmokeDetector\Application\Friends\BlockNotFound;
 use SmokeDetector\Application\Friends\FriendLimitReached;
@@ -46,6 +50,8 @@ use Throwable;
  * - DayNotOpen: 409 day_finalized, day_in_future or day_before_start, by its reason.
  * - The refusals of the friends operations: 404 invite_not_found, friend_request_not_found,
  *   friend_not_found and block_not_found; 409 own_invite, already_friends and friend_limit_reached.
+ * - The refusals of the duel operations: 404 duel_not_found; 409 duel_not_open, duel_exists and
+ *   duel_limit_reached.
  * - The framework's "no such route" and "wrong method": 404 and 405.
  * - Anything else is a bug or an outage: 500 internal_error, logged, and described in the response
  *   only outside production.
@@ -148,7 +154,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
     }
 
     /**
-     * The refusals of the friends operations (HLD §4.7), or null for any other exception.
+     * The refusals of the friends and duel operations (HLD §4.7, §4.8), or null for any other exception.
      */
     private static function friendsProblem(Throwable $exception): ?Problem
     {
@@ -160,6 +166,10 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
             $exception instanceof FriendRequestNotFound => Problem::friendRequestNotFound(),
             $exception instanceof FriendNotFound => Problem::friendNotFound(),
             $exception instanceof BlockNotFound => Problem::blockNotFound(),
+            $exception instanceof DuelNotFound => Problem::duelNotFound(),
+            $exception instanceof DuelNotOpen => Problem::duelNotOpen(),
+            $exception instanceof DuelExists => Problem::duelExists(),
+            $exception instanceof DuelLimitReached => Problem::duelLimitReached(),
             default => null,
         };
     }

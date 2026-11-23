@@ -54,6 +54,9 @@ final readonly class UserDataTables
             new UserDataTable('invite_codes', 'inviteCode', new InviteCodeExporter($this->sql), new RowsOfUser($this->sql, 'invite_codes')),
             new UserDataTable('friendships', 'friends', new FriendsExporter($this->sql), new RowsOfEitherUser($this->sql, 'friendships', 'user_a', 'user_b')),
             new UserDataTable('blocks', 'blockedUsers', new BlockedUsersExporter($this->sql), new RowsOfEitherUser($this->sql, 'blocks', 'blocker_id', 'blocked_id')),
+            // Duels (HLD §4.8). A duel stays for the other user: the eraser empties the side of the
+            // deleted user, deletes the proposals and turns running duels into forfeits.
+            new UserDataTable('duels', 'duels', new DuelsExporter($this->sql), new DuelsOfUser($this->sql)),
         ]);
     }
 }
