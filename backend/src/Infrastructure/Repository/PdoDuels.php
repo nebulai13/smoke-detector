@@ -93,6 +93,18 @@ final readonly class PdoDuels implements Duels
         return $this->ofEitherSide($userId, "AND status IN ('proposed', 'active')", 'ORDER BY created_at, id');
     }
 
+    public function wonBy(UserId $userId): int
+    {
+        // One count on each index, as ofEitherSide reads, instead of one OR.
+        $won = $this->sql->value(
+            "SELECT (SELECT COUNT(*) FROM duels WHERE challenger_id = ? AND winner = 'challenger') "
+            . "+ (SELECT COUNT(*) FROM duels WHERE opponent_id = ? AND winner = 'opponent')",
+            [$userId->value, $userId->value],
+        );
+
+        return (new Row(['won' => $won]))->int('won');
+    }
+
     public function expired(DateTimeImmutable $now, int $limit): array
     {
         return $this->duels($this->sql->rows(

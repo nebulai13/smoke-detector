@@ -166,7 +166,7 @@ final class AuthSchemaTest extends IntegrationTestCase
                 $row('friendships', 'user_a'), $row('friendships', 'user_b'),
                 $row('invite_codes'), $row('league_results'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".
-                $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_progress'), $row('xp_events'),
+                $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_badges'), $row('user_progress'), $row('xp_events'),
             ],
             $references,
         );

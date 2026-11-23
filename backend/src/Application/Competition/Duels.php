@@ -37,6 +37,12 @@ interface Duels
     public function openOf(UserId $userId): array;
 
     /**
+     * How many decided duels the user won, on either side (SRS FR-GAME-08). A draw is no duel won,
+     * and neither is a cancelled or forfeited duel, which has no winner.
+     */
+    public function wonBy(UserId $userId): int;
+
+    /**
      * @return list<Duel> The proposals whose time is over at $now, the one that is over longest
      *                    first, then by id. At most $limit.
      */

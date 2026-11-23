@@ -9,6 +9,7 @@ use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\BadgeRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\TransactionRunner;
 
@@ -32,6 +33,7 @@ final readonly class FriendRequests
         private FriendLinks $links,
         private Blocks $blocks,
         private ProgressRecords $progress,
+        private BadgeRecords $badges,
     ) {
     }
 
@@ -106,7 +108,10 @@ final readonly class FriendRequests
             $this->assertRoom($userId);
             $this->links->save($request->acceptedAt($now));
 
-            return FriendView::of($account, $now, $this->progress->find($requester));
+            // The badges the new friend holds, as GET /friends shows them (FriendList, FR-FRND-03).
+            $badges = $this->badges->heldBy([$requester]);
+
+            return FriendView::of($account, $now, $this->progress->find($requester), $badges[$requester->value] ?? []);
         });
     }
 

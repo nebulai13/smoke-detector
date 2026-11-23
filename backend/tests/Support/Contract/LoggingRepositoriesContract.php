@@ -131,6 +131,42 @@ trait LoggingRepositoriesContract
         self::assertSame(0, $this->smokeLogs()->sessionsOn(TestData::userId(1), TestData::date('2026-11-17')));
     }
 
+    public function test_FR_GAME_09_the_last_session_is_the_latest_log_that_is_not_deleted_whenever_it_was_stored(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
+        // Stored in another order than the sessions happened. The latest of all is deleted.
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-16', '2026-11-16 21:40:07'));
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-15', '2026-11-15 08:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(12, 1, '2026-11-17', '2026-11-17 07:00:00', deletedAt: '2026-11-17 09:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(13, 2, '2026-11-17', '2026-11-17 11:00:00'));
+
+        self::assertEquals(TestData::time('2026-11-16 21:40:07'), $this->smokeLogs()->lastSessionAt(TestData::userId(1)));
+        self::assertEquals(TestData::time('2026-11-17 11:00:00'), $this->smokeLogs()->lastSessionAt(TestData::userId(2)));
+        self::assertNull($this->smokeLogs()->lastSessionAt(TestData::userId(3)));
+
+        // A log that is deleted later is not the last session any more, and one that is brought back is.
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, '2026-11-16', '2026-11-16 21:40:07', deletedAt: '2026-11-17 12:00:00'));
+        self::assertEquals(TestData::time('2026-11-15 08:00:00'), $this->smokeLogs()->lastSessionAt(TestData::userId(1)));
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, '2026-11-15', '2026-11-15 08:00:00', deletedAt: '2026-11-17 12:01:00'));
+        self::assertNull($this->smokeLogs()->lastSessionAt(TestData::userId(1)));
+    }
+
+    public function test_FR_GAME_09_the_products_of_a_user_are_those_of_the_logs_that_are_not_deleted_each_once(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
+        $this->smokeLogs()->save(TestData::smokeLog(10, 1, productType: ProductType::Vape));
+        $this->smokeLogs()->save(TestData::smokeLog(11, 1, productType: ProductType::Cigarette));
+        $this->smokeLogs()->save(TestData::smokeLog(12, 1, productType: ProductType::Vape));
+        $this->smokeLogs()->save(TestData::smokeLog(13, 1, productType: ProductType::Shisha, deletedAt: '2026-11-17 13:00:00'));
+        $this->smokeLogs()->save(TestData::smokeLog(14, 2, productType: ProductType::Vape));
+        $this->smokeLogs()->save(TestData::smokeLog(15, 2, productType: ProductType::Other, deletedAt: '2026-11-17 13:00:00'));
+
+        // In the order of the product types, not of the logs.
+        self::assertSame([ProductType::Cigarette, ProductType::Vape], $this->smokeLogs()->productsOf(TestData::userId(1)));
+        self::assertSame([ProductType::Vape], $this->smokeLogs()->productsOf(TestData::userId(2)));
+        self::assertSame([], $this->smokeLogs()->productsOf(TestData::userId(3)));
+    }
+
     public function test_FR_LOG_04_a_saved_day_is_found_with_every_value(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

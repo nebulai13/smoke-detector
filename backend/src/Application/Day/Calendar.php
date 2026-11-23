@@ -80,6 +80,15 @@ final readonly class Calendar
     }
 
     /**
+     * The daily limit the plan valid on the date ends at (0 to quit). Not the goal of $plan, which
+     * may count from tomorrow only.
+     */
+    public function targetOn(LocalDate $date): int
+    {
+        return $this->termsOn($date)->goal->target;
+    }
+
+    /**
      * Sessions allowed on the date (FR-PLAN-01).
      */
     public function limitOn(LocalDate $date): int
