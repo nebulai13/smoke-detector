@@ -688,6 +688,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leagues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The league of the user and their friends for one period (SRS FR-COMP-06, FR-COMP-08)
+         * @description The user and their friends of today, ranked by reduction over a calendar period: more reduction, then more smoke-free days, then more check-ins; equal on all three share a rank. Somebody without a day that counts is listed last, without a rank.
+         *
+         *     While the user's rank for the period is not stored yet (`final` is `false`), a friend is shown as ahead of the user, level or behind, without a rank and without a percentage: figures that move every day could be calculated back to daily counts. Of a friend only final days are shown and compared (two days old, not to be changed any more), and the comparison uses the user's own final days. The user's own figures follow the logs at once. The user's own rank and percentage are always there. Once `final` is `true`, everybody has a rank, and a friend with a final result over at least 7 days has a percentage.
+         */
+        get: operations["showLeague"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leagues/xp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user and their friends by the XP of this week (SRS FR-COMP-07)
+         * @description The XP that became final in the current ISO week of the user, for the user and every friend. The XP of a day counts when the day is final, two days after it. There is no reward for this ranking.
+         */
+        get: operations["showXpLeague"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -970,6 +1012,8 @@ export interface components {
             blockedUsers: components["schemas"]["ExportedBlock"][];
             /** @description The duels of the user, oldest first. */
             duels: components["schemas"]["ExportedDuel"][];
+            /** @description The user's final results of the league periods, oldest first. */
+            leagueResults: components["schemas"]["ExportedLeagueResult"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1386,7 +1430,7 @@ export interface components {
          * @enum {string}
          */
         DuelStatus: "proposed" | "active" | "declined" | "expired" | "cancelled" | "completed" | "forfeited";
-        /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
+        /** @description One side of a duel. The user's own side counts the days up to yesterday, and today once it is checked in. The opponent's side counts FINAL days only (two days old, and not to be changed by anybody any more). Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
         DuelSide: {
             /** @description `null` for the opponent while the duel runs: then only `standing` says who is ahead. A figure that moves every day could be calculated back, day by day. For the user's own side, and for both sides once the duel is decided: in whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
             reductionPercent: number | null;
@@ -1424,8 +1468,8 @@ export interface components {
             mine: components["schemas"]["DuelSide"] | null;
             /** @description As `mine`, and `null` whenever `opponent` is. */
             theirs: components["schemas"]["DuelSide"] | null;
-            /** @description Where the user stands in a running duel, once both sides have a day that counts. `null` before that, for every duel that is not running, and whenever `opponent` is. */
-            standing: components["schemas"]["DuelStanding"] | null;
+            /** @description Where the user stands in a running duel, over the final days of both sides, once both have one. A user can still change the own open days, so they do not count here: otherwise the answer could be found out by trying. `null` before that, for every duel that is not running, and whenever `opponent` is. */
+            standing: components["schemas"]["Standing"] | null;
             /**
              * @description Of a completed duel. More reduction wins, then more smoke-free days, then more check-ins.
              * @enum {string|null}
@@ -1446,7 +1490,7 @@ export interface components {
                 day: number;
                 /** @description The level of that day. `null` while the day does not count yet. */
                 mine: components["schemas"]["DuelDayLevel"] | null;
-                /** @description As `mine`, and `null` whenever `opponent` is. */
+                /** @description As `mine`, for final days only, and `null` whenever `opponent` is. */
                 theirs: components["schemas"]["DuelDayLevel"] | null;
             }[];
         };
@@ -1454,7 +1498,7 @@ export interface components {
          * @description The user against the opponent over the days that count so far: more reduction is ahead (compared exactly, not as rounded percent), then more smoke-free days, then more check-ins. `level` when all three are equal.
          * @enum {string}
          */
-        DuelStanding: "ahead" | "level" | "behind";
+        Standing: "ahead" | "level" | "behind";
         /**
          * @description How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in below the baseline. `not_under`: at or over the baseline, or not checked in.
          * @enum {string}
@@ -1498,6 +1542,79 @@ export interface components {
                 xp: number;
             } | null;
             rulesVersion: string | null;
+        };
+        /** @enum {string} */
+        LeaguePeriodType: "week" | "month" | "quarter" | "half_year";
+        League: {
+            type: components["schemas"]["LeaguePeriodType"];
+            /** @description The key of the period, e.g. `2026-W47`. */
+            period: string;
+            /** Format: date */
+            startsOn: string;
+            /** Format: date */
+            endsOn: string;
+            /** @description `true` once the user's own rank for the period is stored. */
+            final: boolean;
+            /** @description The user and their friends. Once `final`: in ranking order. Before: the friends who are ahead, the user, the friends who are level, the friends who are behind, each group by name. Those without a day that counts come last, by name. */
+            entries: components["schemas"]["LeagueEntry"][];
+            /** @description The user's stored rank and reward. `null` until `final`. */
+            award: components["schemas"]["LeagueAward"] | null;
+        };
+        LeagueEntry: {
+            /** @description While the league is not `final`: only the user's own entry has a rank, one more than the number of friends who are ahead, once the user has a final day. Once it is `final`: everybody with a final result. `null` otherwise. */
+            rank: number | null;
+            /** @description Of a friend while the league is not `final`: where the friend stands against the user. Friends are not ranked against each other then: a rank among chosen friends could be turned back into a percentage. `null` for the user's own entry, once the league is `final`, and while one of the two has no day that counts. */
+            standing: components["schemas"]["Standing"] | null;
+            user: components["schemas"]["PublicUser"];
+            /** @description `true` for the user's own entry. */
+            you: boolean;
+            /** @description In whole percent. For a friend only once the league is `final` and the friend has a final result over at least 7 counted days; `null` otherwise. The user's own is always there when a day counts. */
+            reductionPercent: number | null;
+            smokeFreeDays: number | null;
+            checkIns: number | null;
+            countedDays: number | null;
+        };
+        /** @description As it was decided, among the friends of that moment. It is not recalculated. */
+        LeagueAward: {
+            rank: number;
+            /** @description The user and the friends who had a result. */
+            participants: number;
+            /** @description Rank 1 to 3 among at least three participants earns XP. */
+            xp: number;
+        };
+        XpLeague: {
+            /** @description The key of the user's current ISO week, e.g. `2026-W47`. */
+            period: string;
+            /** Format: date */
+            startsOn: string;
+            /** Format: date */
+            endsOn: string;
+            entries: {
+                rank: number;
+                user: components["schemas"]["PublicUser"];
+                you: boolean;
+                xp: number;
+            }[];
+        };
+        /** @description The user's own final result of a period, as it was scored, and the rank once it is decided. */
+        ExportedLeagueResult: {
+            type: components["schemas"]["LeaguePeriodType"];
+            period: string;
+            /** @description The frozen baseline of the period, sessions per day. */
+            baseline: number;
+            actual: number;
+            expected: number;
+            smokeFreeDays: number;
+            checkIns: number;
+            countedDays: number;
+            rulesVersion: string;
+            /** Format: date-time */
+            scoredAt: string;
+            rank: number | null;
+            participants: number | null;
+            xp: number | null;
+            /** Format: date-time */
+            rankedAt: string | null;
         };
         /** @description RFC 9457 problem details */
         Problem: {
@@ -1796,6 +1913,15 @@ export interface components {
         };
         /** @description `plan_required`: the user has not done the onboarding. `duel_exists`: there is an open duel with this friend already, whoever proposed it. `duel_limit_reached`: the user has 5 open duels already (SRS FR-COMP-05). */
         DuelRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `league_not_found`: the period has not begun for the user. */
+        LeagueNotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2866,6 +2992,61 @@ export interface operations {
             409: components["responses"]["DuelNotOpen"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showLeague: {
+        parameters: {
+            query: {
+                /** @description The kind of period. */
+                type: components["schemas"]["LeaguePeriodType"];
+                /** @description `current`, or the key of a period that has begun: `2026-W47` (ISO week), `2026-11` (month), `2026-Q4` (quarter), `2026-H2` (half-year). */
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The league. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["League"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["LeagueNotFound"];
+            409: components["responses"]["PlanRequired"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showXpLeague: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ranking, most XP first. The same XP shares a rank. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XpLeague"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["PlanRequired"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

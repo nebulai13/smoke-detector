@@ -92,57 +92,68 @@ final class DuelsTest extends HttpTestCase
         );
     }
 
-    public function test_FR_COMP_03_a_running_duel_shows_both_sides_in_percent_and_nothing_about_the_smoking(): void
+    public function test_FR_COMP_03_a_running_duel_shows_the_own_side_live_and_of_the_other_the_final_days_and_who_is_ahead(): void
     {
         [$anna, $bob] = $this->twoFriends();
         $id = $this->proposed($anna, $bob, 7);
         $this->post($bob, '/duels/accept', ['duelId' => $id]);
         $this->day('2026-11-18', [[$anna, 6, true], [$bob, 0, true]]);
         $this->day('2026-11-19', [[$anna, 6, true], [$bob, 12, true]]);
-        // Today: Anna has checked in, Bob has logged 4 and not checked in yet.
+        // On the 20th Bob logs 4 and never checks in.
         $this->day('2026-11-20', [[$anna, 3, true], [$bob, 4, false]]);
+        $this->day('2026-11-21', [[$anna, 6, true], [$bob, 0, true]]);
+        // In the night to the 22nd the cron job makes the 18th and the 19th final.
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-21 23:00:00 UTC'));
+        $this->cronRun();
+        $this->clock()->travelTo(new DateTimeImmutable('2026-11-22 12:00:00 UTC'));
 
         $list = $this->call('GET', '/duels', headers: $this->authorization($anna));
         $detail = $this->post($anna, '/duels/show', ['duelId' => $id]);
 
-        // Anna: 15 of 36, 58.3 %, shown as 58. Bob: 12 of 24, his today does not count yet. While the
-        // duel runs she sees that she is ahead, and no percentage of his.
+        // Her own side follows her logs: four days, 21 of 48, 56 %. Of Bob she sees the two final days:
+        // one smoke-free, two check-ins. Over the final days of both they are equal in reduction (12 of
+        // 24 each), and his smoke-free day puts him ahead. No percentage of his while the duel runs.
         $duel = [
             'id' => $id, 'status' => 'active', 'periodDays' => 7, 'challenger' => true, 'opponent' => self::publicUser($bob, 'Bob'),
             'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
-            'mine' => ['reductionPercent' => 58, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
+            'mine' => ['reductionPercent' => 56, 'smokeFreeDays' => 0, 'checkIns' => 4, 'countedDays' => 4],
             'theirs' => ['reductionPercent' => null, 'smokeFreeDays' => 1, 'checkIns' => 2, 'countedDays' => 2],
-            'standing' => 'ahead', 'outcome' => null, 'xp' => null, 'provisional' => true,
+            'standing' => 'behind', 'outcome' => null, 'xp' => null, 'provisional' => true,
         ];
         self::assertSame(['duels' => [$duel]], $list->json());
         self::assertSame(200, $detail->status());
-        // Bob sees his own percentage, and that he is behind.
-        $bobs = $this->call('GET', '/duels', headers: $this->authorization($bob))->json();
-        self::assertSame(
-            [50, null, 'behind'],
-            [self::at($bobs, 'duels', '0', 'mine', 'reductionPercent'), self::at($bobs, 'duels', '0', 'theirs', 'reductionPercent'), self::at($bobs, 'duels', '0', 'standing')],
-        );
-        // A day is a level and never a number: exact figures would give the baseline and the counts away.
+        // A day is a level and never a number. Of his days only the final ones.
         self::assertSame(
             [
                 'duel' => $duel,
                 'days' => [
                     ['day' => 1, 'mine' => 'well_under', 'theirs' => 'smoke_free'], ['day' => 2, 'mine' => 'well_under', 'theirs' => 'not_under'],
-                    ['day' => 3, 'mine' => 'well_under', 'theirs' => null],
-                    ['day' => 4, 'mine' => null, 'theirs' => null], ['day' => 5, 'mine' => null, 'theirs' => null],
-                    ['day' => 6, 'mine' => null, 'theirs' => null], ['day' => 7, 'mine' => null, 'theirs' => null],
+                    ['day' => 3, 'mine' => 'well_under', 'theirs' => null], ['day' => 4, 'mine' => 'well_under', 'theirs' => null],
+                    ['day' => 5, 'mine' => null, 'theirs' => null], ['day' => 6, 'mine' => null, 'theirs' => null], ['day' => 7, 'mine' => null, 'theirs' => null],
                 ],
             ],
             $detail->json(),
         );
+        // Bob sees his own percentage (24 of 48 with the day he never checked in), and that he is ahead.
+        $bobs = $this->call('GET', '/duels', headers: $this->authorization($bob))->json();
+        self::assertSame(
+            [50, null, 'ahead'],
+            [self::at($bobs, 'duels', '0', 'mine', 'reductionPercent'), self::at($bobs, 'duels', '0', 'theirs', 'reductionPercent'), self::at($bobs, 'duels', '0', 'standing')],
+        );
+        // What Anna logs today, or changes in the days she can still change, does not move the answer about Bob.
+        $this->day('2026-11-22', [[$anna, 40, true]]);
+        self::assertSame(
+            ['behind', $duel['theirs']],
+            [self::at($this->call('GET', '/duels', headers: $this->authorization($anna))->json(), 'duels', '0', 'standing'), self::at($this->call('GET', '/duels', headers: $this->authorization($anna))->json(), 'duels', '0', 'theirs')],
+        );
         // Nothing else: no count, no limit, no baseline, no time of a log, no address.
+        // (No word here is made of the characters 0-9 and a-f alone: the ids in the answer are random.)
         foreach ([$list, $detail] as $response) {
-            // (No word here is made of the characters 0-9 and a-f alone: the ids in the answer are random.)
             foreach (['count"', 'limit', 'baseline', 'tenths', 'actual', 'expected', 'smokedAt', '10:00', 'email', 'example.org', 'timeZone'] as $private) {
                 self::assertStringNotContainsStringIgnoringCase($private, $response->body());
             }
             // And no number with a decimal point anywhere.
-            self::assertDoesNotMatchRegularExpression('/[0-9]\\.[0-9]/', $response->body());
+            self::assertDoesNotMatchRegularExpression('/[0-9]\.[0-9]/', $response->body());
         }
     }
 
@@ -162,9 +173,9 @@ final class DuelsTest extends HttpTestCase
 
         // The 24th ended at 23:00 UTC and is final 48 hours later. A second earlier nothing is decided.
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 22:59:59 UTC'));
-        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 0 duels, ranked ', $this->cronRun());
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 23:00:00 UTC'));
-        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel, ranked ', $this->cronRun());
 
         // Anna: 39 of 84 (53.6 %). Bob: 36 of 84 (57.1 %) with four smoke-free days. Bob wins. Now that
         // the duel is decided, both percentages are shown.
@@ -213,7 +224,7 @@ final class DuelsTest extends HttpTestCase
             $this->sql()->rows('SELECT user_id, xp_total AS xp FROM user_progress ORDER BY user_id'),
         );
         // A second run decides nothing twice.
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(2, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
@@ -231,7 +242,7 @@ final class DuelsTest extends HttpTestCase
         self::assertProblem(409, 'duel_not_open', $this->post($anna, '/duels/cancel', ['duelId' => $id]));
         self::assertSame('proposed', $this->sql()->value('SELECT status FROM duels'));
 
-        self::assertStringContainsString('competitions:finalize: Expired 1 duel proposal, decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('competitions:finalize: Expired 1 duel proposal, decided 0 duels, ranked ', $this->cronRun());
         self::assertSame('expired', $this->sql()->value('SELECT status FROM duels'));
         // And a new one can be proposed.
         self::assertSame(201, $this->post($bob, '/duels', ['opponentId' => $anna->id->value, 'periodDays' => 7])->status());
@@ -336,7 +347,7 @@ final class DuelsTest extends HttpTestCase
         );
         // Long after its last day: nothing is decided, nobody earns anything.
         $this->clock()->travelTo(new DateTimeImmutable('2026-12-01 12:00:00 UTC'));
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(0, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
@@ -366,7 +377,7 @@ final class DuelsTest extends HttpTestCase
         self::assertSame(['duels' => []], $this->call('GET', '/duels', headers: $this->authorization($carol))->json());
         // And the cron job never decides it.
         $this->clock()->travelTo(new DateTimeImmutable('2027-01-15 12:00:00 UTC'));
-        self::assertStringContainsString('decided 0 duels.', $this->cronRun());
+        self::assertStringContainsString('decided 0 duels, ranked ', $this->cronRun());
         self::assertSame(0, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'duel'"));
     }
 
@@ -493,7 +504,7 @@ final class DuelsTest extends HttpTestCase
         self::assertSame(array_map(static fn (DayLevel $level): string => $level->value, DayLevel::cases()), $schema('DuelDayLevel', 'enum'));
         // Whole percent for a duel, a level for a day: nothing with a decimal that could be calculated back.
         self::assertSame(['integer', true], [$schema('DuelSide', 'properties', 'reductionPercent', 'type'), $schema('DuelSide', 'properties', 'reductionPercent', 'nullable')]);
-        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('DuelStanding', 'enum'));
+        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('Standing', 'enum'));
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'items', 'properties', 'day', 'maximum'));
         self::assertSame([72, 5], [Duel::OPEN_FOR_HOURS, DuelInvitations::MAX_OPEN]);
         $notes = self::at($document, 'paths', '/duels', 'post', 'description');

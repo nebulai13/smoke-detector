@@ -162,9 +162,14 @@ final class DeleteAccountTest extends HttpTestCase
             'POST /duels/accept' => ['duelId' => TestData::uuid(3)],
             'POST /duels/decline' => ['duelId' => TestData::uuid(3)],
             'POST /duels/cancel' => ['duelId' => TestData::uuid(3)],
+            'GET /leagues' => null,
+            'GET /leagues/xp' => null,
         ];
         // Where the path of the contract is a pattern or needs a query string: what is really called.
-        $paths = ['GET /days' => '/days?from=2026-11-17&to=2026-11-17', 'POST /days/{date}/check-in' => '/days/2026-11-17/check-in'];
+        $paths = [
+            'GET /days' => '/days?from=2026-11-17&to=2026-11-17', 'POST /days/{date}/check-in' => '/days/2026-11-17/check-in',
+            'GET /leagues' => '/leagues?type=week&period=current',
+        ];
         self::assertSame(self::operationsThatNeedAToken(), array_keys($bodies), 'A new operation needs a body here.');
         foreach ($bodies as $operation => $body) {
             [$method, $path] = explode(' ', $operation);

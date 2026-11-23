@@ -293,6 +293,14 @@ final readonly class Problem
     }
 
     /**
+     * The period of the league has not begun for the user (HLD §4.9).
+     */
+    public static function leagueNotFound(): self
+    {
+        return new self('league_not_found', 'League not found', 404, 'The period has not begun for this user.');
+    }
+
+    /**
      * @param string|null $detail Only ever given outside production: it describes the exception.
      */
     public static function internalError(?string $detail = null): self

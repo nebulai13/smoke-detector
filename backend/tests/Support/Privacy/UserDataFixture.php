@@ -122,6 +122,16 @@ final readonly class UserDataFixture
         $this->insert('user_progress', [$user, 3, 5, 1, 4, 1, 250, 2, '2026-11-15', '2026-11-17 23:00:00', '2026-11-22 23:00:00']);
         $this->insert('xp_events', [$id(10), $user, '2026-11-10', 'check_in', 10, null, '2026-11-12 23:00:20']);
         $this->insert('xp_events', [$id(11), $user, '2026-11-10', 'streak_milestone', 50, 7, '2026-11-12 23:00:20']);
+        $this->fillLeagueResults($user);
+    }
+
+    /**
+     * The league results of step 5: a week that is ranked, and a month that waits for its rank.
+     */
+    private function fillLeagueResults(string $user): void
+    {
+        $this->insert('league_results', [$user, 'week', '2026-W45', 120, 630, 840, 1, 6, 7, 'v1', '2026-11-10 23:00:20', '2026-11-10 23:00:20', 2, 4, 100, '2026-11-11 23:01:05']);
+        $this->insert('league_results', [$user, 'month', '2026-10', 95, 28500, 29450, 0, 30, 31, 'v1', '2026-11-02 23:00:20', '2026-11-02 23:15:20', null, null, null, null]);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Infrastructure\Repository;
 
+use DateTimeImmutable;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Day\XpEvent;
 use SmokeDetector\Application\Day\XpLedger;
@@ -58,5 +59,16 @@ final readonly class PdoXpLedger implements XpLedger
         }
 
         return $events;
+    }
+
+    public function earnedBetween(UserId $userId, DateTimeImmutable $from, DateTimeImmutable $until): int
+    {
+        // Read on the index (user_id, local_date) by its first column: a user's ledger is short.
+        $xp = $this->sql->value(
+            'SELECT CAST(COALESCE(SUM(amount), 0) AS UNSIGNED) FROM xp_events WHERE user_id = ? AND created_at >= ? AND created_at < ?',
+            [$userId->value, Row::sqlTime($from), Row::sqlTime($until)],
+        );
+
+        return (new Row(['xp' => $xp]))->int('xp');
     }
 }
