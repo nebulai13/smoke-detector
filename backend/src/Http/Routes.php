@@ -40,6 +40,8 @@ use SmokeDetector\Http\Action\Logging\CheckInAction;
 use SmokeDetector\Http\Action\Logging\ListDaysAction;
 use SmokeDetector\Http\Action\Logging\ShowBaselineHistoryAction;
 use SmokeDetector\Http\Action\Logging\ShowDashboardAction;
+use SmokeDetector\Http\Action\Progress\ListBadgesAction;
+use SmokeDetector\Http\Action\Progress\ListHealthMilestonesAction;
 use SmokeDetector\Http\Action\Logging\SyncLogsAction;
 use SmokeDetector\Http\Action\Me\DeleteMeAction;
 use SmokeDetector\Http\Action\Me\ExportMeAction;
@@ -148,5 +150,9 @@ final readonly class Routes
         // Leagues (HLD §4.9). The kind of period and the period are in the query: they say nothing about a person.
         $routes->get('/leagues', ShowLeagueAction::class);
         $routes->get('/leagues/xp', ShowXpLeagueAction::class);
+
+        // Badges and health milestones (HLD §4.10): the user's own.
+        $routes->get('/me/badges', ListBadgesAction::class);
+        $routes->get('/me/health-milestones', ListHealthMilestonesAction::class);
     }
 }

@@ -158,6 +158,8 @@ final class UserDataTablesTest extends IntegrationTestCase
         'league_results.participants' => 'leagueResults.*.participants',
         'league_results.xp' => 'leagueResults.*.xp',
         'league_results.ranked_at' => 'leagueResults.*.rankedAt',
+        'user_badges.badge_key' => 'badges.*.key',
+        'user_badges.awarded_at' => 'badges.*.awardedAt',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -193,6 +195,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         'invite_codes.user_id' => 'The user\'s own id, which is profile.id.',
         'league_results.user_id' => 'The user\'s own id, which is profile.id.',
         'league_results.check_at' => 'When the cron job looks at the result next, to rank it: its schedule, which says nothing about the user.',
+        'user_badges.user_id' => 'The user\'s own id, which is profile.id.',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
@@ -338,6 +341,11 @@ final class UserDataTablesTest extends IntegrationTestCase
                         'countedDays' => 7, 'rulesVersion' => 'v1', 'scoredAt' => '2026-11-10T23:00:20Z', 'rank' => 2, 'participants' => 4, 'xp' => 100, 'rankedAt' => '2026-11-11T23:01:05Z',
                     ],
                 ],
+                // The user's badges with their time, in the order of the badge cases.
+                'badges' => [
+                    ['key' => 'first_check_in', 'awardedAt' => '2026-11-04T23:00:20Z'],
+                    ['key' => 'check_in_streak_7', 'awardedAt' => '2026-11-12T23:00:20Z'],
+                ],
             ],
             $export,
         );
@@ -357,7 +365,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         self::assertSame(
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
-                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [],
+                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [], 'badges' => [],
             ],
             $export,
         );
