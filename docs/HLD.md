@@ -320,7 +320,9 @@ cleanup uses one transaction per table. A new one-time token replaces the old on
 `INSERT … ON DUPLICATE KEY UPDATE`. A use case queues its mail last, in the same transaction as the token:
 if the mail cannot be queued, the token is rolled back too. The mail sender takes its batch in a short
 transaction of its own (`SELECT … FOR UPDATE SKIP LOCKED`, touching only `mail_outbox`) and talks to the
-mail server outside any transaction. It does not lock the account. Deleting a sent mail and deleting its
+mail server outside any transaction. It marks each taken row with its own `UPDATE … WHERE id = ?`. One
+`UPDATE … WHERE id IN (…)` for the whole batch is not safe: MariaDB may run it as a scan of the table, which
+waits at the rows another run holds, and two runs then deadlock. It does not lock the account. Deleting a sent mail and deleting its
 account at the same instant take their locks in opposite order and can deadlock: the sender then leaves
 the row held (at worst a duplicate mail 10 minutes later), or the deletion is answered 503. Taking a
 batch locks the table for a few milliseconds, and a request that queues a mail at that moment waits.

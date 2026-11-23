@@ -419,6 +419,45 @@ final class PdoRepositoriesTest extends IntegrationTestCase
         self::assertSame([TestData::uuid(11), TestData::uuid(12), TestData::uuid(13), TestData::uuid(14)], $all);
     }
 
+    public function test_a_run_never_waits_for_a_mail_that_another_run_holds_and_it_did_not_take_itself(): void
+    {
+        // Found on CI: of three runs at the same moment one failed with a deadlock. Two runs whose
+        // looks overlap hold different mails each. Marking the own mails as taken must then touch
+        // the own mails only. On a small table the database otherwise walks over every row to find
+        // them, waits at the mails of the other run, and the other run waits for it.
+        $this->givenUsers(TestData::userId(1));
+        $this->transaction(function (): void {
+            for ($i = 1; $i <= 12; $i++) {
+                $this->outbox()->add(TestData::queuedMail(10 + $i, createdAt: sprintf('2026-11-17 11:%02d:00', $i)));
+            }
+        });
+        $now = TestData::time('2026-11-17 12:00:00');
+        $lease = TestData::time('2026-11-17 12:10:00');
+        // A second run that gives up after a second instead of waiting 50 for a lock.
+        $second = $this->newDatabase();
+        $second->pdo()->exec('SET SESSION innodb_lock_wait_timeout = 1');
+        $secondOutbox = new PdoMailOutbox(new Sql($second));
+
+        $taken = [];
+        $this->transaction(function () use (&$taken, $second, $secondOutbox, $now, $lease): void {
+            // Another run holds the newest mail and has not finished.
+            (new Sql($this->database))->rows('SELECT id FROM mail_outbox WHERE id = ? FOR UPDATE', [TestData::uuid(22)]);
+
+            $taken = (new PdoTransactionRunner($second))->run(static fn (): array => $secondOutbox->claimDue($now, 10, $lease));
+        });
+
+        /** @var list<QueuedMail> $taken */
+        self::assertSame(
+            array_map(static fn (int $number): string => TestData::uuid($number), range(11, 20)),
+            array_map(static fn (QueuedMail $mail): string => $mail->id, $taken),
+        );
+        // The ten are held until the lease ends. The two others are as they were.
+        self::assertSame(
+            [['not_before' => '2026-11-17 11:11:00', 'mails' => 1], ['not_before' => '2026-11-17 11:12:00', 'mails' => 1], ['not_before' => '2026-11-17 12:10:00', 'mails' => 10]],
+            $this->sql()->rows('SELECT not_before, COUNT(*) AS mails FROM mail_outbox GROUP BY not_before ORDER BY not_before'),
+        );
+    }
+
     public function test_a_mail_whose_template_or_language_this_release_does_not_know_is_left_alone(): void
     {
         // After a rollback to an older release: the mails of the newer one (a new kind of mail, a
