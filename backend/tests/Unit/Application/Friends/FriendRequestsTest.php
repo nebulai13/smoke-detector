@@ -150,37 +150,37 @@ final class FriendRequestsTest extends FriendsUseCaseTestCase
         self::assertFalse($this->friendRequests()->send($this->anna->id, $this->bobsCode)->accepted);
     }
 
-    public function test_FR_FRND_04_agreeing_by_code_is_an_acceptance_and_counts_friends_only(): void
+    public function test_FR_FRND_04_agreeing_by_code_needs_room_like_every_acceptance(): void
     {
         $this->givenRequest($this->bob, $this->anna);
-        // 49 friends and requests of her own on top: accepting is still possible.
-        $this->givenFriendsMore($this->anna, 49);
+        // 44 friends and 5 requests of her own: 49, so there is room for Bob.
+        $this->givenFriendsMore($this->anna, 44);
         $this->givenOutgoingMore($this->anna, 5);
 
         self::assertTrue($this->friendRequests()->send($this->anna->id, $this->bobsCode)->accepted);
     }
 
-    public function test_FR_FRND_04_agreeing_by_code_is_refused_when_one_of_the_two_has_fifty_friends(): void
+    public function test_FR_FRND_04_agreeing_by_code_is_refused_when_the_one_who_agrees_is_full_and_only_then(): void
     {
         $carol = $this->givenNamed('Carol');
         $carolsCode = $this->givenCode($carol, 'ZZZZZZZZZZ');
         $this->givenRequest($this->bob, $this->anna);
         $this->givenRequest($carol, $this->anna);
-        $this->givenFriendsMore($this->bob, 50);
-        $links = $this->friendLinks->all();
+        // Bob is as full as one can be: 49 friends and his request to Anna. That does not stop her.
+        $this->givenFriendsMore($this->bob, 49);
+        $this->givenFriendsMore($this->anna, 44);
+        $this->givenOutgoingMore($this->anna, 5);
 
-        // Bob is full.
+        self::assertTrue($this->friendRequests()->send($this->anna->id, $this->bobsCode)->accepted);
+
+        // Now Anna has 45 friends and 5 requests of her own: full.
+        $links = $this->friendLinks->all();
         try {
-            $this->friendRequests()->send($this->anna->id, $this->bobsCode);
+            $this->friendRequests()->send($this->anna->id, $carolsCode);
             self::fail('Should have been refused.');
         } catch (FriendLimitReached) {
             self::assertEquals($links, $this->friendLinks->all());
         }
-
-        // Then Anna is.
-        $this->givenFriendsMore($this->anna, 50);
-        $this->expectException(FriendLimitReached::class);
-        $this->friendRequests()->send($this->anna->id, $carolsCode);
     }
 
     public function test_FR_FRND_01_a_code_that_is_renewed_while_the_request_waits_leads_nowhere(): void
@@ -286,36 +286,46 @@ final class FriendRequestsTest extends FriendsUseCaseTestCase
         self::assertEquals([$friendship], $this->friendLinks->all());
     }
 
-    public function test_FR_FRND_04_a_request_cannot_be_accepted_when_one_of_the_two_has_fifty_friends(): void
+    public function test_FR_FRND_04_a_request_is_accepted_against_the_room_of_the_one_who_accepts(): void
     {
         $carol = $this->givenNamed('Carol');
         $this->givenRequest($this->bob, $this->anna);
         $this->givenRequest($carol, $this->anna);
+        // 30 friends and 19 requests of her own: 49. Requests from others do not count.
+        $this->givenFriendsMore($this->anna, 30);
+        $this->givenOutgoingMore($this->anna, 19);
+        $this->givenIncomingMore($this->anna, 3);
 
-        // Anna has 48 friends and Bob 49, and both have requests on top that do not count: fine.
-        $this->givenFriendsMore($this->anna, 48);
-        $this->givenFriendsMore($this->bob, 49);
-        $this->givenOutgoingMore($this->anna, 3);
-        $this->givenOutgoingMore($this->bob, 3);
         $this->friendRequests()->accept($this->anna->id, $this->bob->id);
 
-        // Bob has 50 now and Anna 49. Dave asks Bob: Bob is full.
-        $dave = $this->givenNamed('Dave');
-        $this->givenRequest($dave, $this->bob);
+        // 31 friends and 19 requests: full. Her own open requests keep their places.
         $links = $this->friendLinks->all();
         try {
-            $this->friendRequests()->accept($this->bob->id, $dave->id);
+            $this->friendRequests()->accept($this->anna->id, $carol->id);
             self::fail('Should have been refused.');
         } catch (FriendLimitReached) {
             self::assertEquals($links, $this->friendLinks->all());
         }
 
-        // Anna accepts Carol and has 50. Erin, who has no friend yet, cannot accept Anna's request.
-        $this->friendRequests()->accept($this->anna->id, $carol->id);
-        $erin = $this->givenNamed('Erin');
-        $this->givenRequest($this->anna, $erin);
-        $this->expectException(FriendLimitReached::class);
-        $this->friendRequests()->accept($erin->id, $this->anna->id);
+        // One request taken back, and there is room for Carol.
+        $asked = $this->friendList()->show($this->anna->id)->outgoing[0]->user->userId;
+        $this->friendRequests()->withdraw($this->anna->id, $asked);
+        self::assertSame('Carol', $this->friendRequests()->accept($this->anna->id, $carol->id)->user->displayName->value);
+    }
+
+    public function test_FR_FRND_03_whether_a_request_can_be_accepted_never_depends_on_the_sender(): void
+    {
+        // Otherwise the refusal would tell the one who was asked how many friends the sender has.
+        // A sender's request has its place among the sender's 50 from the moment it is sent, so
+        // accepting it changes nothing for the sender. Here the sender even has 50 friends on top,
+        // which the rules do not let happen: the answer is the same all the same.
+        $this->givenRequest($this->bob, $this->anna);
+        $this->givenFriendsMore($this->bob, 50);
+        $this->givenOutgoingMore($this->bob, 5);
+
+        $friend = $this->friendRequests()->accept($this->anna->id, $this->bob->id);
+
+        self::assertSame('Bob', $friend->user->displayName->value);
     }
 
     public function test_FR_ACC_08_a_request_of_an_account_that_was_deleted_in_the_meantime_cannot_be_accepted(): void

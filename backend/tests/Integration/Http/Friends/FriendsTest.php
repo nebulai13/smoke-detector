@@ -7,12 +7,14 @@ namespace SmokeDetector\Tests\Integration\Http\Friends;
 use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Friends\FriendRequests;
 use SmokeDetector\Application\Friends\InviteCode;
+use SmokeDetector\Infrastructure\Database\Database;
 use SmokeDetector\Tests\Support\Http\ApiResponse;
 use SmokeDetector\Tests\Support\HttpTestCase;
 use SmokeDetector\Tests\Support\Paths;
 use SmokeDetector\Tests\Support\Privacy\DatabaseContents;
 use SmokeDetector\Tests\Support\TestAccounts;
 use SmokeDetector\Tests\Support\TestData;
+use SmokeDetector\Tests\Support\TestDatabase;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -260,8 +262,10 @@ final class FriendsTest extends HttpTestCase
             [['blocker_id' => $anna->id->value, 'blocked_id' => $bob->id->value, 'created_at' => '2026-11-17 12:01:00']],
             $this->sql()->rows('SELECT * FROM blocks'),
         );
-        // For both, the code of the other one seems not to exist.
-        self::assertProblem(404, 'invite_not_found', $this->post($bob, '/friends/requests', ['code' => $this->codeOf($anna)]));
+        // For both, the code of the other one seems not to exist: the answer is the very same as for a code nobody has.
+        $blocked = $this->post($bob, '/friends/requests', ['code' => $this->codeOf($anna)]);
+        self::assertProblem(404, 'invite_not_found', $blocked);
+        self::assertSame($this->post($bob, '/friends/requests', ['code' => $this->codeNobodyHas()])->body(), $blocked->body());
         self::assertProblem(404, 'invite_not_found', $this->post($anna, '/friends/requests', ['code' => $this->codeOf($bob)]));
         // Anna sees whom she has blocked. Bob does not see that he is blocked.
         self::assertSame(
@@ -311,6 +315,58 @@ final class FriendsTest extends HttpTestCase
         // They are not friends again by that, but can ask.
         self::assertSame([], $this->friendsOf($anna)['friends']);
         self::assertSame('pending', $this->ask($bob, $anna)->json()['status'] ?? null);
+    }
+
+    public function test_FR_FRND_01_a_user_id_in_capitals_is_the_same_user(): void
+    {
+        $anna = $this->named('Anna');
+        $bob = $this->named('Bob');
+        $this->ask($anna, $bob);
+
+        $response = $this->post($bob, '/friends/requests/accept', ['userId' => strtoupper($anna->id->value)]);
+
+        self::assertSame(200, $response->status());
+        self::assertSame($anna->id->value, self::at($response->json(), 'user', 'userId'));
+        self::assertSame(204, $this->post($bob, '/friends/remove', ['userId' => strtoupper($anna->id->value)])->status());
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM friendships'));
+    }
+
+    public function test_NFR_01_every_change_waits_for_the_account_of_the_other_user_too(): void
+    {
+        // Two acceptances at the same moment must not pass the limit together, and a block must not
+        // cross a request. So a change takes both accounts. Here somebody else holds the account of
+        // the OTHER user, and the application gives up after a second instead of waiting 50.
+        $anna = $this->named('Anna');
+        [$bob, $carol, $dave, $erin] = [$this->named('Bob'), $this->named('Carol'), $this->named('Dave'), $this->named('Erin')];
+        $this->ask($bob, $anna);
+        $this->ask($anna, $carol);
+        $this->befriend($anna, $dave);
+        $erinsCode = $this->codeOf($erin);
+        $this->service(Database::class)->pdo()->exec('SET SESSION innodb_lock_wait_timeout = 1');
+        $changes = [
+            [$erin, '/friends/requests', ['code' => $erinsCode]],
+            [$bob, '/friends/requests/accept', ['userId' => $bob->id->value]],
+            [$bob, '/friends/requests/decline', ['userId' => $bob->id->value]],
+            [$carol, '/friends/requests/withdraw', ['userId' => $carol->id->value]],
+            [$dave, '/friends/remove', ['userId' => $dave->id->value]],
+            [$dave, '/friends/block', ['userId' => $dave->id->value]],
+        ];
+        $before = [$this->sql()->rows('SELECT * FROM friendships ORDER BY user_a, user_b'), $this->sql()->rows('SELECT * FROM blocks')];
+
+        foreach ($changes as [$other, $path, $body]) {
+            $held = TestDatabase::database()->pdo();
+            $held->beginTransaction();
+            try {
+                $this->sql()->rows('SELECT id FROM users WHERE id = ? FOR UPDATE', [$other->id->value]);
+
+                $response = $this->post($anna, $path, $body);
+            } finally {
+                $held->rollBack();
+            }
+
+            self::assertProblem(503, 'service_unavailable', $response);
+        }
+        self::assertSame($before, [$this->sql()->rows('SELECT * FROM friendships ORDER BY user_a, user_b'), $this->sql()->rows('SELECT * FROM blocks')]);
     }
 
     public function test_FR_FRND_02_nobody_is_their_own_friend_request_or_block(): void
