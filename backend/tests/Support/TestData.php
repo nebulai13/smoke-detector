@@ -21,6 +21,8 @@ use SmokeDetector\Application\Day\DayRecord;
 use SmokeDetector\Application\Day\DayResult;
 use SmokeDetector\Application\Day\ProgressRecord;
 use SmokeDetector\Application\Day\XpEvent;
+use SmokeDetector\Application\Friends\Block;
+use SmokeDetector\Application\Friends\Friendship;
 use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Mail\MailKind;
 use SmokeDetector\Application\Mail\QueuedMail;
@@ -325,5 +327,23 @@ final class TestData
     public static function zoneChange(string $validFrom, string $zone = 'Europe/Berlin'): ZoneChange
     {
         return new ZoneChange(self::date($validFrom), TimeZone::fromInput($zone));
+    }
+
+    /**
+     * A friend request of one user to another, or their friendship when $acceptedAt is given.
+     */
+    public static function friendship(int $requester, int $recipient, string $requestedAt = '2026-11-15 10:00:00', ?string $acceptedAt = null): Friendship
+    {
+        return new Friendship(
+            self::userId($requester),
+            self::userId($recipient),
+            self::time($requestedAt),
+            $acceptedAt === null ? null : self::time($acceptedAt),
+        );
+    }
+
+    public static function block(int $blocker, int $blocked, string $blockedAt = '2026-11-16 09:00:00'): Block
+    {
+        return new Block(self::userId($blocker), self::userId($blocked), self::time($blockedAt));
     }
 }

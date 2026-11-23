@@ -125,6 +125,10 @@ tags:
     description: >
       Registration (confirm first), login, token refresh, logout and password reset (HLD §4.5). All of
       them are public: they are how a client gets a token in the first place.
+  - name: Friends
+    description: >
+      Invite code, friend requests, friends and blocks (HLD §4.7). Friends see aggregates of each other
+      and nothing else (SRS FR-FRND-03).
   - name: Me
     description: >
       The account of the logged-in user: profile, reduction plan, data export and deletion (HLD §4.5
@@ -872,6 +876,314 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /me/invite:
+    get:
+      operationId: showInvite
+      tags: [Friends]
+      summary: The personal invite code of the user (SRS FR-FRND-01)
+      description: >
+        Whoever has the code can send the user a friend request, and nothing else: the user still has to
+        accept. The first call makes the code.
+      responses:
+        "200":
+          description: The invite code and the link that carries it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    post:
+      operationId: renewInvite
+      tags: [Friends]
+      summary: Replace the invite code by a new one
+      description: >
+        The old code stops working at once. Requests that were sent with it stay. The request has no body.
+      responses:
+        "200":
+          description: The new invite code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends:
+    get:
+      operationId: listFriends
+      tags: [Friends]
+      summary: Friends and open friend requests (SRS FR-FRND-02, FR-FRND-03)
+      description: >
+        Of a friend the user sees the name, the avatar and aggregates as they were stored when the
+        friend's last day became final: level, XP and the two streaks. Never counts, limits, the baseline
+        or the time of a log. Of somebody who has only asked, or was only asked: name and avatar.
+      responses:
+        "200":
+          description: Friends by name, requests oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendOverview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/requests:
+    post:
+      operationId: sendFriendRequest
+      tags: [Friends]
+      summary: Ask the owner of an invite code to be friends (SRS FR-FRND-01)
+      description: >
+        The owner has to accept. Sending the same request again changes nothing. If the owner has already
+        asked the user, both have agreed and they are friends at once (`status` is `accepted`).
+
+
+        A code of somebody who has blocked the user, or whom the user has blocked, is answered like a code
+        that does not exist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FriendRequestRequest"
+      responses:
+        "200":
+          description: The request waits for an answer, or the two are friends now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FriendRequestSent"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/InviteNotFound"
+        "409":
+          $ref: "#/components/responses/FriendRequestRefused"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/requests/accept:
+    post:
+      operationId: acceptFriendRequest
+      tags: [Friends]
+      summary: Accept a friend request (SRS FR-FRND-01, FR-FRND-04)
+      description: >
+        `userId` is the user who asked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "200":
+          description: The two are friends.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Friend"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendRequestNotFound"
+        "409":
+          $ref: "#/components/responses/FriendLimitReached"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/requests/decline:
+    post:
+      operationId: declineFriendRequest
+      tags: [Friends]
+      summary: Decline a friend request
+      description: >
+        `userId` is the user who asked. The request is deleted. The one who asked is not told, and can ask again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendRequestNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/requests/withdraw:
+    post:
+      operationId: withdrawFriendRequest
+      tags: [Friends]
+      summary: Take back a friend request the user has sent
+      description: >
+        `userId` is the user who was asked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendRequestNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/remove:
+    post:
+      operationId: removeFriend
+      tags: [Friends]
+      summary: End a friendship (SRS FR-FRND-02)
+      description: >
+        Ends it for both. The other one is not told.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/block:
+    post:
+      operationId: blockUser
+      tags: [Friends]
+      summary: Block a friend, or somebody with an open friend request (SRS FR-FRND-02)
+      description: >
+        Ends the friendship or deletes the request, and hides the two from each other everywhere: neither can send the other a friend request, and each other's invite code seems not to exist. `userId` is a friend, somebody who has asked the user, or somebody the user has asked. Blocking somebody who is blocked already changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/unblock:
+    post:
+      operationId: unblockUser
+      tags: [Friends]
+      summary: Lift a block
+      description: >
+        The two are not friends again by this. Each can ask the other anew.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Done.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BlockNotFound"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /friends/blocked:
+    get:
+      operationId: listBlockedUsers
+      tags: [Friends]
+      summary: The users this user has blocked
+      description: Nobody can see who has blocked them.
+      responses:
+        "200":
+          description: Oldest block first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlockedUserList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -1328,13 +1640,15 @@ components:
         - smokeLogs
         - days
         - xpEvents
+        - friends
+        - blockedUsers
         - sessions
         - mailLinks
         - queuedMails
       description: >
         Everything the server stores about the user. Every table with user data has its member here, and
         a later version of the API adds members. Times are UTC. `plan` and `progress` are absent before
-        the onboarding.
+        the onboarding, `inviteCode` before the first `GET /me/invite`.
       properties:
         formatVersion:
           type: integer
@@ -1406,6 +1720,18 @@ components:
             They go to the address of the profile.
           items:
             $ref: "#/components/schemas/ExportedQueuedMail"
+        inviteCode:
+          $ref: "#/components/schemas/ExportedInvite"
+        friends:
+          type: array
+          description: Friendships and open friend requests, oldest request first.
+          items:
+            $ref: "#/components/schemas/ExportedFriend"
+        blockedUsers:
+          type: array
+          description: The users this user has blocked, oldest block first. Not who has blocked this user.
+          items:
+            $ref: "#/components/schemas/ExportedBlock"
     ExportedProfile:
       type: object
       additionalProperties: false
@@ -1948,6 +2274,184 @@ components:
           type: integer
           minimum: 0
           description: How often the mail server did not take the mail so far. After the fifth time the mail is dropped.
+    InviteCode:
+      type: string
+      pattern: "^[2-9A-HJ-NP-Za-hj-np-z]{10}$"
+      description: >
+        Ten characters out of `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no 0, 1, I or O, which are easily
+        mixed up). The server answers in capitals and takes small letters too.
+      example: K7M2QX9RTB
+    Invite:
+      type: object
+      additionalProperties: false
+      required: [code, url]
+      properties:
+        code:
+          type: string
+          pattern: "^[2-9A-HJ-NP-Z]{10}$"
+        url:
+          type: string
+          format: uri
+          description: >
+            The link to share: the address of the app with the code after a `#`, which a browser never
+            sends to a server. It opens the app, which sends the friend request with the code.
+    PublicUser:
+      type: object
+      additionalProperties: false
+      required: [userId, displayName, avatar]
+      description: What one user sees of another before they are friends, and never more than this.
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        avatar:
+          $ref: "#/components/schemas/AvatarKey"
+    Friend:
+      type: object
+      additionalProperties: false
+      required: [user, since, level, xp, checkInStreak, underLimitStreak]
+      description: >
+        A friend and the aggregates friends see of each other (SRS FR-FRND-03), as stored when the
+        friend's last day became final. All zero for a friend who has not done the onboarding.
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        since:
+          type: string
+          format: date-time
+          description: When the request was accepted.
+        level:
+          type: integer
+          minimum: 0
+        xp:
+          type: integer
+          minimum: 0
+        checkInStreak:
+          $ref: "#/components/schemas/Streak"
+        underLimitStreak:
+          $ref: "#/components/schemas/Streak"
+    FriendRequest:
+      type: object
+      additionalProperties: false
+      required: [user, requestedAt]
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        requestedAt:
+          type: string
+          format: date-time
+    FriendOverview:
+      type: object
+      additionalProperties: false
+      required: [friends, incoming, outgoing]
+      properties:
+        friends:
+          type: array
+          maxItems: 50
+          description: By name, without regard to capitals.
+          items:
+            $ref: "#/components/schemas/Friend"
+        incoming:
+          type: array
+          description: Requests the user can accept or decline, oldest first. `user` is who asked.
+          items:
+            $ref: "#/components/schemas/FriendRequest"
+        outgoing:
+          type: array
+          maxItems: 50
+          description: Requests the user has sent and can take back, oldest first. `user` is who was asked.
+          items:
+            $ref: "#/components/schemas/FriendRequest"
+    FriendRequestRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          $ref: "#/components/schemas/InviteCode"
+    FriendRequestSent:
+      type: object
+      additionalProperties: false
+      required: [status, user]
+      properties:
+        status:
+          type: string
+          enum: [pending, accepted]
+          description: "`accepted` when the owner of the code had asked the user before."
+        user:
+          $ref: "#/components/schemas/PublicUser"
+    UserReference:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      description: Names another user. The id is sent in the body, never in a URL (URLs end up in server logs).
+      properties:
+        userId:
+          type: string
+          format: uuid
+    BlockedUserList:
+      type: object
+      additionalProperties: false
+      required: [blocked]
+      properties:
+        blocked:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [user, blockedAt]
+            properties:
+              user:
+                $ref: "#/components/schemas/PublicUser"
+              blockedAt:
+                type: string
+                format: date-time
+    ExportedInvite:
+      type: object
+      additionalProperties: false
+      required: [code, createdAt]
+      properties:
+        code:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ExportedFriend:
+      type: object
+      additionalProperties: false
+      required: [userId, status, requestedByMe, requestedAt, acceptedAt]
+      description: A friendship or an open friend request. Of the other user the export holds the id only.
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: The other user.
+        status:
+          type: string
+          enum: [pending, accepted]
+        requestedByMe:
+          type: boolean
+        requestedAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ExportedBlock:
+      type: object
+      additionalProperties: false
+      required: [userId, blockedAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: The user who was blocked.
+        blockedAt:
+          type: string
+          format: date-time
     Problem:
       description: RFC 9457 problem details
       type: object
@@ -2205,6 +2709,50 @@ components:
           schema:
             type: string
             enum: [Bearer]
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    InviteNotFound:
+      description: >
+        `invite_not_found`: nobody the user can ask has this invite code. Either it does not exist (any
+        more), or one of the two has blocked the other.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    FriendRequestRefused:
+      description: >
+        `own_invite` (the code is the user's own), `already_friends`, or `friend_limit_reached`: the user
+        has 50 friends and own open requests already (SRS FR-FRND-04).
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    FriendLimitReached:
+      description: >
+        `friend_limit_reached`: the user has 50 friends and own open requests already (SRS FR-FRND-04).
+        How many friends the other user has never decides.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    FriendRequestNotFound:
+      description: "`friend_request_not_found`: there is no open friend request between the two in this direction."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    FriendNotFound:
+      description: >
+        `friend_not_found`: the user is not a friend (and, for a block, has no open request with this
+        user either). The answer for a user id that does not exist is the same.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    BlockNotFound:
+      description: "`block_not_found`: the user has not blocked this user."
       content:
         application/problem+json:
           schema:

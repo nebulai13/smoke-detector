@@ -158,7 +158,9 @@ erDiagram
 | `plan_history` | user_id, valid_from (local date), goal_mode, target, taper_speed, rules_version. Primary key (user_id, valid_from). Starts with the onboarding. An entry that is in force is never changed; a second change on the same day replaces the entry for tomorrow. `plans` keeps what the user chose last |
 | `timezone_history` | user_id, valid_from (local date), timezone. Primary key (user_id, valid_from). Starts with the onboarding, and is replaced in the same way. `users.timezone` keeps what the user chose last |
 | `xp_events` | id (UUIDv7), user_id, local_date, source (the domain's `XpSource`), amount, detail (the streak length of a milestone; NULL otherwise), created_at. Append-only ledger, written at finalization; `user_progress.xp_total` is its sum, kept for speed and checked by a test. Index (user_id, local_date) |
-| `friendships` | user_a < user_b, status (pending/accepted/blocked), requested_by |
+| `invite_codes` | user_id (one row per user, made at the first look), code (10 characters, unique), created_at |
+| `friendships` | user_a, user_b (the two users, the one with the smaller id as text first: one row per pair, primary key), requested_by, requested_at, accepted_at (NULL while the request waits). There is no status column that could contradict it. A declined or withdrawn request and an ended friendship are deleted. CHECK constraints: the two users differ, and `requested_by` is one of them |
+| `blocks` | blocker_id, blocked_id (primary key together), created_at. A table of its own and not a status of the friendship: a block has a direction, and each of two users can block the other. A CHECK constraint: nobody blocks themselves |
 | `duels` | id, challenger_id, opponent_id, period_days, start_date, status, winner_id, result_json (per user: frozen B₀, exact actual/expected totals in tenths, smoke-free days, check-ins, rules_version) |
 | `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
 | `user_badges` | user_id, badge_key, awarded_at |
@@ -178,7 +180,7 @@ erDiagram
 | Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/export`, `DELETE /me`. `GET /me/baseline-history` comes with the weekly update in step 4 |
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
-| Friends | `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{id}/{accept,decline}`, `DELETE /friends/{id}`, `POST /friends/{id}/block` |
+| Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `POST /duels`, `POST /duels/{id}/{accept,decline,cancel}`, `GET /duels`, `GET /duels/{id}`, `GET /leagues/{type}/{periodKey}`, `GET /leagues/xp/current` |
 | Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
@@ -553,6 +555,72 @@ recreated.
 **Left for later steps:** duels and leagues read final days (step 5); badges, health milestones and the feed
 read the stored events (step 6); the reminder that a day is still open (step 7).
 
+### 4.7 Friends (step 5, first part)
+
+**Invite code (FR-FRND-01).** Every user has one code: 10 characters out of `23456789ABCDEFGHJKLMNPQRSTUVWXYZ`
+(no 0, 1, I or O), made by a secure random generator at the first `GET /me/invite`. That is 50 bits: a code
+cannot be guessed. Input in small letters is accepted. `POST /me/invite` replaces the code, and the old one
+stops working at once. A code that is taken already is not given out again: after 5 tries in a row the request
+fails, because that does not happen by chance. The link is `<app address>/invite#<code>`. The code is behind
+a `#`, which a browser never sends to a server, so it is in no access log.
+
+**No id of a person in a URL.** A path ends up in server logs like a query string (§4.4). So every operation
+about another user takes the user id in the body: `POST /friends/remove {userId}` and not `DELETE /friends/{id}`.
+
+**Requests.** Whoever has the code can ask its owner, and nothing else: the owner accepts or declines.
+
+| Action | Rule |
+|---|---|
+| Send (`POST /friends/requests {code}`) | Stores a request. The answer shows name and avatar of the owner, so the sender knows whom they asked. Sent again, nothing changes. If the owner had asked the sender before, both have agreed: the request is accepted at once |
+| Refused | `invite_not_found` (404): nobody has the code, or one of the two has blocked the other. `own_invite`, `already_friends`, `friend_limit_reached` (409) |
+| Accept | Only by the one who was asked. The friendship keeps who asked and when |
+| Decline, withdraw | The request is deleted. The other one is not told, and can ask again |
+| Remove | Ends an accepted friendship for both. An open request is not removed this way |
+
+**Limit (FR-FRND-04).** For every user, friends and own open requests together are at most 50. A request
+that is sent takes its place among the sender's 50 at once, and keeps it when it is accepted. So a new
+request is refused when the sender is at 50, and an acceptance is refused when the one who accepts is at 50.
+Requests from others do not count: otherwise strangers with the code could fill the list. Nothing is ever
+refused because of the other user's count. That count is nobody else's business: a refusal would tell a
+stranger with the code, or somebody who was only asked, how many friends a user has.
+
+**Blocks (FR-FRND-02).** A user can block whom they can see: a friend, or somebody with an open request in
+either direction. Anybody else is answered `friend_not_found`, as a user id that does not exist is, so the
+answer does not tell whether an id exists. A block deletes the friendship or request and hides the two from
+each other: for both, the other one's invite code seems not to exist. Blocking again changes nothing. Only the
+blocker sees the block (`GET /friends/blocked`) and can lift it. Lifting does not bring the friendship back.
+Nobody learns who has blocked them, not even from their own data export.
+
+**What friends see (FR-FRND-03).** Name, avatar, level, XP, the two streaks (current and longest), and since
+when they are friends. The values are the stored ones, as they were when the friend's last day became final.
+A friend's open days stay the friend's own business (§4.6 shows them to the user alone). A friend never
+sees counts, limits, the baseline, streak freezes, the time zone or the time of a log. Somebody with an open
+request sees name and avatar only. Reduction in percent comes with the leagues, badges and health milestones
+with step 6.
+
+**Locks.** Every change locks the accounts of both users first, in the order of their ids. Two requests that
+cross each other cannot wait for each other, and two acceptances at the same moment cannot pass the limit
+together. If an account was deleted while the request waited, the answer is the same as for a user who was
+never there. Lifting a block changes a row of the blocker alone and locks that account only.
+
+**Export and deletion (FR-ACC-07, FR-ACC-08).** The export holds the invite code, the friendships and open
+requests, and the blocks the user has set. Of the other user it holds the id and nothing else. Deleting an
+account deletes its code, every friendship and request it is part of, and every block in both directions.
+
+**Known limits, accepted for the pilot:**
+
+- **No rate limit on friend requests.** A code has 50 bits, so guessing is hopeless, but somebody who has a
+  code can send, be declined and send again without end. Blocking stops it. Belongs with the limits of step 11.
+- **An invite code does not expire.** It works until the user replaces it.
+- **A declined request leaves no trace**, so the sender does not learn it. A notification could tell (step 7).
+- **A block can be told from a decline.** After a decline the sender can ask again and gets `pending`. After
+  a block the code seems not to exist. That is the same answer as after a renewed code, so the sender cannot be
+  sure, but can guess.
+- **A replaced invite code is free again.** The generator could give it to another user (one chance in 2^50
+  per new code). Somebody who still has the old code would then ask that user.
+- **No test with two requests at the same moment.** The tests show that every change waits for both accounts
+  (with a second database connection) and that the limit holds one request after the other.
+
 ---
 
 ## 5. Key flows
@@ -840,7 +908,7 @@ which count as caught. The run needs more memory than PHP's default (`make mutat
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
 | 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
 | 4 | Logging sync + check-in + finalization cron (§4.6) | Idempotent UUID upsert, 48 h grace. `days:finalize` is the second step of `cron:run`, after `mail:send` |
-| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league | Calendar-aligned leagues |
+| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in two parts: friends first (§4.7), then duels and leagues | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot. The core without screens (§6.1) was built ahead, after step 4 | React + Vite |
