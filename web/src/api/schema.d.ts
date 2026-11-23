@@ -378,6 +378,212 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The personal invite code of the user (SRS FR-FRND-01)
+         * @description Whoever has the code can send the user a friend request, and nothing else: the user still has to accept. The first call makes the code.
+         */
+        get: operations["showInvite"];
+        put?: never;
+        /**
+         * Replace the invite code by a new one
+         * @description The old code stops working at once. Requests that were sent with it stay. The request has no body.
+         */
+        post: operations["renewInvite"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Friends and open friend requests (SRS FR-FRND-02, FR-FRND-03)
+         * @description Of a friend the user sees the name, the avatar and aggregates as they were stored when the friend's last day became final: level, XP and the two streaks. Never counts, limits, the baseline or the time of a log. Of somebody who has only asked, or was only asked: name and avatar.
+         */
+        get: operations["listFriends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask the owner of an invite code to be friends (SRS FR-FRND-01)
+         * @description The owner has to accept. Sending the same request again changes nothing. If the owner has already asked the user, both have agreed and they are friends at once (`status` is `accepted`).
+         *
+         *     A code of somebody who has blocked the user, or whom the user has blocked, is answered like a code that does not exist.
+         */
+        post: operations["sendFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/requests/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a friend request (SRS FR-FRND-01, FR-FRND-04)
+         * @description `userId` is the user who asked.
+         */
+        post: operations["acceptFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/requests/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decline a friend request
+         * @description `userId` is the user who asked. The request is deleted. The one who asked is not told, and can ask again.
+         */
+        post: operations["declineFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/requests/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take back a friend request the user has sent
+         * @description `userId` is the user who was asked.
+         */
+        post: operations["withdrawFriendRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * End a friendship (SRS FR-FRND-02)
+         * @description Ends it for both. The other one is not told.
+         */
+        post: operations["removeFriend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/block": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Block a friend, or somebody with an open friend request (SRS FR-FRND-02)
+         * @description Ends the friendship or deletes the request, and hides the two from each other everywhere: neither can send the other a friend request, and each other's invite code seems not to exist. `userId` is a friend, somebody who has asked the user, or somebody the user has asked. Blocking somebody who is blocked already changes nothing.
+         */
+        post: operations["blockUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/unblock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Lift a block
+         * @description The two are not friends again by this. Each can ask the other anew.
+         */
+        post: operations["unblockUser"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/friends/blocked": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The users this user has blocked
+         * @description Nobody can see who has blocked them.
+         */
+        get: operations["listBlockedUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -625,7 +831,7 @@ export interface components {
              */
             password: string;
         };
-        /** @description Everything the server stores about the user. Every table with user data has its member here, and a later version of the API adds members. Times are UTC. `plan` and `progress` are absent before the onboarding. */
+        /** @description Everything the server stores about the user. Every table with user data has its member here, and a later version of the API adds members. Times are UTC. `plan` and `progress` are absent before the onboarding, `inviteCode` before the first `GET /me/invite`. */
         AccountExport: {
             /** @enum {integer} */
             formatVersion: 1;
@@ -653,6 +859,11 @@ export interface components {
             mailLinks: components["schemas"]["ExportedMailLink"][];
             /** @description The mails to the user that wait to be sent, oldest first. Usually empty: a mail goes out within a minute or two and is deleted from the server as soon as the mail server has it. They go to the address of the profile. */
             queuedMails: components["schemas"]["ExportedQueuedMail"][];
+            inviteCode?: components["schemas"]["ExportedInvite"];
+            /** @description Friendships and open friend requests, oldest request first. */
+            friends: components["schemas"]["ExportedFriend"][];
+            /** @description The users this user has blocked, oldest block first. Not who has blocked this user. */
+            blockedUsers: components["schemas"]["ExportedBlock"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -949,6 +1160,104 @@ export interface components {
             /** @description How often the mail server did not take the mail so far. After the fifth time the mail is dropped. */
             attempts: number;
         };
+        /**
+         * @description Ten characters out of `23456789ABCDEFGHJKLMNPQRSTUVWXYZ` (no 0, 1, I or O, which are easily mixed up). The server answers in capitals and takes small letters too.
+         * @example K7M2QX9RTB
+         */
+        InviteCode: string;
+        Invite: {
+            code: string;
+            /**
+             * Format: uri
+             * @description The link to share: the address of the app with the code after a `#`, which a browser never sends to a server. It opens the app, which sends the friend request with the code.
+             */
+            url: string;
+        };
+        /** @description What one user sees of another before they are friends, and never more than this. */
+        PublicUser: {
+            /** Format: uuid */
+            userId: string;
+            displayName: string;
+            avatar: components["schemas"]["AvatarKey"];
+        };
+        /** @description A friend and the aggregates friends see of each other (SRS FR-FRND-03), as stored when the friend's last day became final. All zero for a friend who has not done the onboarding. */
+        Friend: {
+            user: components["schemas"]["PublicUser"];
+            /**
+             * Format: date-time
+             * @description When the request was accepted.
+             */
+            since: string;
+            level: number;
+            xp: number;
+            checkInStreak: components["schemas"]["Streak"];
+            underLimitStreak: components["schemas"]["Streak"];
+        };
+        FriendRequest: {
+            user: components["schemas"]["PublicUser"];
+            /** Format: date-time */
+            requestedAt: string;
+        };
+        FriendOverview: {
+            /** @description By name, without regard to capitals. */
+            friends: components["schemas"]["Friend"][];
+            /** @description Requests the user can accept or decline, oldest first. `user` is who asked. */
+            incoming: components["schemas"]["FriendRequest"][];
+            /** @description Requests the user has sent and can take back, oldest first. `user` is who was asked. */
+            outgoing: components["schemas"]["FriendRequest"][];
+        };
+        FriendRequestRequest: {
+            code: components["schemas"]["InviteCode"];
+        };
+        FriendRequestSent: {
+            /**
+             * @description `accepted` when the owner of the code had asked the user before.
+             * @enum {string}
+             */
+            status: "pending" | "accepted";
+            user: components["schemas"]["PublicUser"];
+        };
+        /** @description Names another user. The id is sent in the body, never in a URL (URLs end up in server logs). */
+        UserReference: {
+            /** Format: uuid */
+            userId: string;
+        };
+        BlockedUserList: {
+            blocked: {
+                user: components["schemas"]["PublicUser"];
+                /** Format: date-time */
+                blockedAt: string;
+            }[];
+        };
+        ExportedInvite: {
+            code: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description A friendship or an open friend request. Of the other user the export holds the id only. */
+        ExportedFriend: {
+            /**
+             * Format: uuid
+             * @description The other user.
+             */
+            userId: string;
+            /** @enum {string} */
+            status: "pending" | "accepted";
+            requestedByMe: boolean;
+            /** Format: date-time */
+            requestedAt: string;
+            /** Format: date-time */
+            acceptedAt: string | null;
+        };
+        ExportedBlock: {
+            /**
+             * Format: uuid
+             * @description The user who was blocked.
+             */
+            userId: string;
+            /** Format: date-time */
+            blockedAt: string;
+        };
         /** @description RFC 9457 problem details */
         Problem: {
             /**
@@ -1166,6 +1475,60 @@ export interface components {
             headers: {
                 /** @description `Bearer`, with `unauthorized` only. */
                 "WWW-Authenticate"?: "Bearer";
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `invite_not_found`: nobody the user can ask has this invite code. Either it does not exist (any more), or one of the two has blocked the other. */
+        InviteNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `own_invite` (the code is the user's own), `already_friends`, or `friend_limit_reached`: the user has 50 friends and own open requests already (SRS FR-FRND-04). */
+        FriendRequestRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `friend_limit_reached`: the user has 50 friends and own open requests already (SRS FR-FRND-04). How many friends the other user has never decides. */
+        FriendLimitReached: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `friend_request_not_found`: there is no open friend request between the two in this direction. */
+        FriendRequestNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `friend_not_found`: the user is not a friend (and, for a block, has no open request with this user either). The answer for a user id that does not exist is the same. */
+        FriendNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `block_not_found`: the user has not blocked this user. */
+        BlockNotFound: {
+            headers: {
                 [name: string]: unknown;
             };
             content: {
@@ -1756,6 +2119,307 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             409: components["responses"]["DayNotOpen"];
             422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The invite code and the link that carries it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    renewInvite: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new invite code. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invite"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listFriends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Friends by name, requests oldest first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendOverview"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    sendFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FriendRequestRequest"];
+            };
+        };
+        responses: {
+            /** @description The request waits for an answer, or the two are friends now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequestSent"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["InviteNotFound"];
+            409: components["responses"]["FriendRequestRefused"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    acceptFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description The two are friends. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Friend"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendRequestNotFound"];
+            409: components["responses"]["FriendLimitReached"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    declineFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendRequestNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    withdrawFriendRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendRequestNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    removeFriend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    blockUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    unblockUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Done. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["BlockNotFound"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listBlockedUsers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Oldest block first. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlockedUserList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
