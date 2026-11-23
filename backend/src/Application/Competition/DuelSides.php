@@ -10,7 +10,6 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Time\LocalDate;
-use SmokeDetector\Domain\Competition\CompetitionScoreCalculator;
 use SmokeDetector\Domain\Competition\FrozenBaseline;
 use SmokeDetector\Domain\Plan\Baseline;
 
@@ -66,20 +65,17 @@ final readonly class DuelSides
             $byDate[$record->date->value] = $record;
         }
 
-        $calculator = new CompetitionScoreCalculator();
         $counted = [];
-        $percents = [];
-        for ($day = 1, $date = $start; !$date->isAfter($last); $day++, $date = $date->plusDays(1)) {
+        for ($date = $start; !$date->isAfter($last); $date = $date->plusDays(1)) {
             $record = $byDate[$date->value] ?? null;
             $checkedIn = $record?->isCheckedIn() ?? false;
-            // A later day cannot be checked in yet, so "today once it is checked in" is all of it.
+            // A later day cannot be checked in yet, so "today once it is checked in" is all of it,
+            // and the days that count are always the first ones of the side.
             if ($today === null || $date->isBefore($today) || $checkedIn) {
-                $outcome = $calendar->outcomeOn($date, $record->count ?? 0, $checkedIn);
-                $counted[] = $outcome;
-                $percents[$day] = SideStanding::percent($calculator->score($baseline, [$outcome])->reduction);
+                $counted[] = $calendar->outcomeOn($date, $record->count ?? 0, $checkedIn);
             }
         }
 
-        return new SideDays($calendar, $baseline, $counted, $percents);
+        return new SideDays($calendar, $baseline, $counted);
     }
 }

@@ -17,16 +17,14 @@ use SmokeDetector\Domain\Day\DayOutcome;
 final readonly class SideDays
 {
     /**
-     * @param list<DayOutcome>  $counted  The days that count, in order.
-     * @param array<int, float> $percents The reduction of each day that counts, in percent, by the
-     *                                    number of the day in the duel (from 1).
+     * @param list<DayOutcome> $counted The days that count, in order: always the first days of the
+     *                                  duel, so the one at index 0 is day 1.
      */
     public function __construct(
         /** The calendar of the side's user, as the days were read with it. */
         public Calendar $calendar,
         public FrozenBaseline $baseline,
         private array $counted,
-        public array $percents,
     ) {
     }
 
@@ -36,5 +34,13 @@ final readonly class SideDays
     public function score(): ?CompetitionScore
     {
         return $this->counted === [] ? null : (new CompetitionScoreCalculator())->score($this->baseline, $this->counted);
+    }
+
+    /**
+     * @return list<DayLevel> The level of each day that counts, in order: the one at index 0 is day 1.
+     */
+    public function levels(): array
+    {
+        return array_map(fn (DayOutcome $outcome): DayLevel => DayLevel::of($outcome, $this->baseline), $this->counted);
     }
 }

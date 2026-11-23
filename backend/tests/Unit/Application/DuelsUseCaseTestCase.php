@@ -23,7 +23,8 @@ use SmokeDetector\Tests\Support\TestData;
  *
  * It is noon UTC on Tuesday, 17 November 2026. Users live in Vienna, so their today is the 17th.
  * With the rule table v1 a starting baseline of 12 is a frozen baseline of 12.0: a day with 6
- * sessions is a reduction of 50 %.
+ * sessions is a reduction of 50 %. Friends see whole percentages of a duel, and of a single day one
+ * of four levels (HLD §4.8): exact figures would give the baseline and the counts away.
  */
 abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
 {
@@ -136,7 +137,7 @@ abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
     }
 
     /**
-     * @return array{float, int, int, int}|null Percent, smoke-free days, check-ins, counted days.
+     * @return array{int, int, int, int}|null Whole percent, smoke-free days, check-ins, counted days.
      */
     protected static function side(?SideStanding $side): ?array
     {
@@ -164,13 +165,13 @@ abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
     }
 
     /**
-     * @return list<array{int, float|null, float|null}> Day, mine, theirs.
+     * @return list<array{int, string|null, string|null}> Day, and the level of the day for the user and for the opponent.
      */
     protected static function dayStandings(DuelDetail $detail): array
     {
         $days = [];
         foreach ($detail->days as $day) {
-            $days[] = [$day->day, $day->mine, $day->theirs];
+            $days[] = [$day->day, $day->mine?->value, $day->theirs?->value];
         }
 
         return $days;

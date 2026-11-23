@@ -19,7 +19,7 @@ use SmokeDetector\Application\TransactionRunner;
 
 /**
  * GET /duels and POST /duels/show (FR-COMP-01, 03, 08, 09; FR-FRND-03; HLD §4.8 "What the opponent
- * sees"): the duels of a user, both sides in percent.
+ * sees"): the duels of a user, both sides in whole percent and each day as a level.
  *
  * - A running duel shows the days that count so far, each side in its own calendar.
  * - A completed duel shows the stored result, and its days against the stored frozen baselines.
@@ -109,7 +109,7 @@ final readonly class ShowDuels
         $days = [];
         if ($status === DuelStatus::Active || $result !== null) {
             for ($day = 1; $day <= $duel->periodDays; $day++) {
-                $days[] = new DayStanding($day, $myDays[$day] ?? null, $theirDays[$day] ?? null);
+                $days[] = new DayStanding($day, $myDays[$day - 1] ?? null, $theirDays[$day - 1] ?? null);
             }
         }
 
@@ -149,10 +149,10 @@ final readonly class ShowDuels
     }
 
     /**
-     * One side: its standing, the reduction of each day that counts (by the number of the day), and
-     * the XP the side earned with a completed duel.
+     * One side: its standing, the level of each day that counts (day 1 at index 0), and the XP the
+     * side earned with a completed duel.
      *
-     * @return array{SideStanding|null, array<int, float>, int|null}
+     * @return array{SideStanding|null, list<DayLevel>, int|null}
      */
     private function side(Duel $duel, DuelStatus $status, UserId $userId, DateTimeImmutable $now): array
     {
@@ -160,7 +160,7 @@ final readonly class ShowDuels
             $days = $this->sides->soFar($userId, self::startOf($duel, $userId), $duel->periodDays, $now);
             $score = $days->score();
 
-            return [$score === null ? null : SideStanding::ofScore($score), $days->percents, null];
+            return [$score === null ? null : SideStanding::ofScore($score), $days->levels(), null];
         }
         if ($status === DuelStatus::Completed) {
             $decision = $duel->decision;
@@ -170,7 +170,7 @@ final readonly class ShowDuels
             \assert($result !== null);
             $days = $this->sides->whole($userId, self::startOf($duel, $userId), $duel->periodDays, $result->b0Tenths);
 
-            return [SideStanding::ofResult($result, $duel->periodDays), $days->percents, $result->xp];
+            return [SideStanding::ofResult($result, $duel->periodDays), $days->levels(), $result->xp];
         }
 
         return [null, [], null];

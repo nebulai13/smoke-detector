@@ -9,17 +9,17 @@ use SmokeDetector\Domain\Competition\Reduction;
 
 /**
  * One side of a duel as both of the two see it (FR-FRND-03, HLD §4.8 "What the opponent sees"):
- * the reduction in percent and the tie-breakers. Deliberately no baseline and no totals, so a
+ * the reduction in whole percent and the tie-breakers. Deliberately no baseline and no totals, so a
  * responder cannot let them out.
  */
 final readonly class SideStanding
 {
-    /** Percentages are shown with one decimal and never compared. */
-    private const int DECIMALS = 1;
-
     public function __construct(
-        /** One decimal. Negative when more was smoked than the baseline. */
-        public float $reductionPercent,
+        /**
+         * Whole percent, rounded half away from zero: an exact figure could be calculated back to
+         * the baseline and the counts. Negative when more was smoked than the baseline.
+         */
+        public int $reductionPercent,
         public int $smokeFreeDays,
         public int $checkIns,
         public int $countedDays,
@@ -48,10 +48,10 @@ final readonly class SideStanding
     }
 
     /**
-     * A reduction as it is shown.
+     * A reduction as it is shown. Never compared: winners are decided on the exact reduction.
      */
-    public static function percent(Reduction $reduction): float
+    private static function percent(Reduction $reduction): int
     {
-        return $reduction->toPercent(self::DECIMALS);
+        return (int) $reduction->toPercent(0);
     }
 }

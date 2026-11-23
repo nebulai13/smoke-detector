@@ -136,7 +136,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 |---|---|---|
 | FR-FRND-01 | M | Each user has a personal invite code/link. Opening it sends a friend request, and the other user must accept. The user can replace the code by a new one at any time, and the old one stops working at once. If both users have asked each other, they are friends without a further step. |
 | FR-FRND-02 | M | Users can list, remove and block friends. Somebody with an open friend request can be blocked too. Blocking hides both users from each other everywhere. Only the user who set a block sees it and can lift it, and lifting it does not bring the friendship back. Removing or blocking a friend ends a running duel of the two without a winner and deletes a proposed one. |
-| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period, streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps. |
+| FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period (in whole percent), streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps, counts, limits or the baseline, and nothing precise enough to calculate these. |
 | FR-FRND-04 | M | Maximum 50 friends per user. A user's own open requests count towards the 50, when sending a request and when accepting one. Requests from others do not count, and the other user's number of friends never decides (it must not be revealed). |
 
 ### 3.6 Competitions (COMP)
@@ -150,7 +150,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. A participant with no rated day yet is listed without a rank. |
 | FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). |
 | FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. |
-| FR-COMP-09 | S | Duel detail screen: day-by-day comparison chart (reduction per day, not timestamps). |
+| FR-COMP-09 | S | Duel detail screen: day-by-day comparison in four levels per day (smoke-free, well under the baseline, under, not under). Not percentages per day and not timestamps: an exact daily percentage could be calculated back to the baseline and the count. |
 
 ### 3.7 Social reactions (SOC)
 | ID | Pri | Requirement |

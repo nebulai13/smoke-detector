@@ -6,6 +6,7 @@ namespace SmokeDetector\Tests\Integration\Http\Competition;
 
 use DateTimeImmutable;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Competition\DayLevel;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\DuelInvitations;
 use SmokeDetector\Application\Competition\DuelStatus;
@@ -103,21 +104,23 @@ final class DuelsTest extends HttpTestCase
         $list = $this->call('GET', '/duels', headers: $this->authorization($anna));
         $detail = $this->post($anna, '/duels/show', ['duelId' => $id]);
 
-        // Anna: 15 of 36. Bob: 12 of 24, his today does not count yet.
+        // Anna: 15 of 36, 58.3 %, shown as 58. Bob: 12 of 24, his today does not count yet.
         $duel = [
             'id' => $id, 'status' => 'active', 'periodDays' => 7, 'challenger' => true, 'opponent' => self::publicUser($bob, 'Bob'),
             'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
-            'mine' => ['reductionPercent' => 58.3, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
+            'mine' => ['reductionPercent' => 58, 'smokeFreeDays' => 0, 'checkIns' => 3, 'countedDays' => 3],
             'theirs' => ['reductionPercent' => 50, 'smokeFreeDays' => 1, 'checkIns' => 2, 'countedDays' => 2],
             'outcome' => null, 'xp' => null, 'provisional' => true,
         ];
-        self::assertEquals(['duels' => [$duel]], $list->json());
+        self::assertSame(['duels' => [$duel]], $list->json());
         self::assertSame(200, $detail->status());
-        self::assertEquals(
+        // A day is a level and never a number: exact figures would give the baseline and the counts away.
+        self::assertSame(
             [
                 'duel' => $duel,
                 'days' => [
-                    ['day' => 1, 'mine' => 50, 'theirs' => 100], ['day' => 2, 'mine' => 50, 'theirs' => 0], ['day' => 3, 'mine' => 75, 'theirs' => null],
+                    ['day' => 1, 'mine' => 'well_under', 'theirs' => 'smoke_free'], ['day' => 2, 'mine' => 'well_under', 'theirs' => 'not_under'],
+                    ['day' => 3, 'mine' => 'well_under', 'theirs' => null],
                     ['day' => 4, 'mine' => null, 'theirs' => null], ['day' => 5, 'mine' => null, 'theirs' => null],
                     ['day' => 6, 'mine' => null, 'theirs' => null], ['day' => 7, 'mine' => null, 'theirs' => null],
                 ],
@@ -126,9 +129,12 @@ final class DuelsTest extends HttpTestCase
         );
         // Nothing else: no count, no limit, no baseline, no time of a log, no address.
         foreach ([$list, $detail] as $response) {
-            foreach (['count"', 'limit', 'baseline', 'b0', 'tenths', 'actual', 'expected', 'smokedAt', '10:00', 'email', 'example.org', 'timeZone'] as $private) {
+            // (No word here is made of the characters 0-9 and a-f alone: the ids in the answer are random.)
+            foreach (['count"', 'limit', 'baseline', 'tenths', 'actual', 'expected', 'smokedAt', '10:00', 'email', 'example.org', 'timeZone'] as $private) {
                 self::assertStringNotContainsStringIgnoringCase($private, $response->body());
             }
+            // And no number with a decimal point anywhere.
+            self::assertDoesNotMatchRegularExpression('/[0-9]\\.[0-9]/', $response->body());
         }
     }
 
@@ -152,22 +158,25 @@ final class DuelsTest extends HttpTestCase
         $this->clock()->travelTo(new DateTimeImmutable('2026-11-26 23:00:00 UTC'));
         self::assertStringContainsString('competitions:finalize: Expired 0 duel proposals, decided 1 duel.', $this->cronRun());
 
-        // Anna: 39 of 84. Bob: 36 of 84 with four smoke-free days. Bob wins.
+        // Anna: 39 of 84 (53.6 %). Bob: 36 of 84 (57.1 %) with four smoke-free days. Bob wins.
         $annas = [
             'id' => $id, 'status' => 'completed', 'periodDays' => 7, 'challenger' => true, 'opponent' => self::publicUser($bob, 'Bob'),
             'createdAt' => '2026-11-17T12:00:00Z', 'expiresAt' => '2026-11-20T12:00:00Z', 'startsOn' => '2026-11-18', 'endsOn' => '2026-11-24',
-            'mine' => ['reductionPercent' => 53.6, 'smokeFreeDays' => 0, 'checkIns' => 7, 'countedDays' => 7],
-            'theirs' => ['reductionPercent' => 57.1, 'smokeFreeDays' => 4, 'checkIns' => 5, 'countedDays' => 7],
+            'mine' => ['reductionPercent' => 54, 'smokeFreeDays' => 0, 'checkIns' => 7, 'countedDays' => 7],
+            'theirs' => ['reductionPercent' => 57, 'smokeFreeDays' => 4, 'checkIns' => 5, 'countedDays' => 7],
             'outcome' => 'lost', 'xp' => 20, 'provisional' => false,
         ];
-        self::assertEquals(['duels' => [$annas]], $this->call('GET', '/duels', headers: $this->authorization($anna))->json());
+        self::assertSame(['duels' => [$annas]], $this->call('GET', '/duels', headers: $this->authorization($anna))->json());
         $bobs = $this->post($bob, '/duels/show', ['duelId' => $id])->json();
-        self::assertEquals(
+        self::assertSame(
             ['won', 100, $annas['theirs'], $annas['mine']],
             [self::at($bobs, 'duel', 'outcome'), self::at($bobs, 'duel', 'xp'), self::at($bobs, 'duel', 'mine'), self::at($bobs, 'duel', 'theirs')],
         );
-        self::assertEquals(
-            [[1, 100, 50], [2, 0, 50], [3, 0, 75], [4, 0, 50], [5, 100, 50], [6, 100, 50], [7, 100, 50]],
+        self::assertSame(
+            [
+                [1, 'smoke_free', 'well_under'], [2, 'not_under', 'well_under'], [3, 'not_under', 'well_under'], [4, 'not_under', 'well_under'],
+                [5, 'smoke_free', 'well_under'], [6, 'smoke_free', 'well_under'], [7, 'smoke_free', 'well_under'],
+            ],
             array_map(static fn (mixed $day): array => [self::at((array) $day, 'day'), self::at((array) $day, 'mine'), self::at((array) $day, 'theirs')], (array) self::at($bobs, 'days')),
         );
         // Stored as it was scored, and the XP is in the ledger of each, on their own today (the 27th in Berlin).
@@ -472,6 +481,9 @@ final class DuelsTest extends HttpTestCase
         self::assertSame('#/components/schemas/DuelStatus', $schema('ExportedDuel', 'properties', 'status', '$ref'));
         self::assertSame(ShowDuels::MAX_LISTED, $schema('DuelList', 'properties', 'duels', 'maxItems'));
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'maxItems'));
+        self::assertSame(array_map(static fn (DayLevel $level): string => $level->value, DayLevel::cases()), $schema('DuelDayLevel', 'enum'));
+        // Whole percent for a duel, a level for a day: nothing with a decimal that could be calculated back.
+        self::assertSame('integer', $schema('DuelSide', 'properties', 'reductionPercent', 'type'));
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'items', 'properties', 'day', 'maximum'));
         self::assertSame([72, 5], [Duel::OPEN_FOR_HOURS, DuelInvitations::MAX_OPEN]);
         $notes = self::at($document, 'paths', '/duels', 'post', 'description');

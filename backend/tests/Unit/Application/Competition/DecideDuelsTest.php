@@ -256,6 +256,24 @@ final class DecideDuelsTest extends DuelsUseCaseTestCase
         self::assertSame([0, 0, 0], self::report($this->decideDuels()->execute()));
     }
 
+    public function test_FR_ACC_08_a_proposal_whose_other_account_is_gone_is_deleted_and_stops_nothing(): void
+    {
+        // Account deletion deletes proposals. If one is left all the same (the foreign key only takes
+        // the id out), the step must not fail at it every minute: nobody can answer it any more.
+        $this->duels->save(new Duel(TestData::uuid(1), $this->anna->id, null, 7, DuelStatus::Proposed, TestData::time('2026-11-01 08:00:00'), TestData::time('2026-11-04 08:00:00')));
+        $this->duels->save(new Duel(TestData::uuid(2), null, $this->bob->id, 7, DuelStatus::Proposed, TestData::time('2026-11-01 08:00:00'), TestData::time('2026-11-04 08:00:00')));
+        $due = $this->givenProposal(3, $this->anna, $this->bob, 7, '2026-11-02 08:00:00');
+
+        $report = $this->decideDuels()->execute();
+
+        self::assertSame([3, 0, 0], self::report($report));
+        self::assertEquals(
+            [new Duel($due->id, $this->anna->id, $this->bob->id, 7, DuelStatus::Expired, $due->createdAt, $due->expiresAt)],
+            $this->duels->all(),
+        );
+        self::assertSame([], $this->logger->records);
+    }
+
     public function test_NFR_01_a_duel_that_changed_while_the_step_waited_for_the_accounts_is_left_alone(): void
     {
         $proposal = $this->givenProposal(1, $this->anna, $this->bob, 7, '2026-11-14 12:00:00');
