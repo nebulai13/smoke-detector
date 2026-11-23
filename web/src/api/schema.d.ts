@@ -593,7 +593,7 @@ export interface paths {
         };
         /**
          * The duels of the user, newest first (SRS FR-COMP-01)
-         * @description Proposals in both directions, running duels and the ones that are over, at most 100. Of the opponent the user sees name and avatar and, in a running or completed duel, the reduction in percent, the smoke-free days and the check-ins of the duel. Never counts, limits or the baseline. When the two are not friends any more, the opponent and the opponent's side are `null`.
+         * @description Proposals in both directions, running duels and the ones that are over, at most 100. Of the opponent the user sees name and avatar and, in a running or completed duel, the reduction in whole percent, the smoke-free days and the check-ins of the duel. Never counts, limits or the baseline. When the two are not friends any more, the opponent and the opponent's side are `null`.
          */
         get: operations["listDuels"];
         put?: never;
@@ -619,7 +619,7 @@ export interface paths {
         put?: never;
         /**
          * One duel with its days (SRS FR-COMP-09)
-         * @description The duel as in the list, and the reduction of both sides for every day of the duel that counts already. Days are numbered from 1, because the two users have calendars of their own.
+         * @description The duel as in the list, and for every day of the duel that counts already how it went for both sides, as one of four levels. Days are numbered from 1, because the two users have calendars of their own.
          */
         post: operations["showDuel"];
         delete?: never;
@@ -1386,9 +1386,9 @@ export interface components {
          * @enum {string}
          */
         DuelStatus: "proposed" | "active" | "declined" | "expired" | "cancelled" | "completed" | "forfeited";
-        /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown. */
+        /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
         DuelSide: {
-            /** @description With one decimal. Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). */
+            /** @description In whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
             reductionPercent: number;
             smokeFreeDays: number;
             checkIns: number;
@@ -1442,12 +1442,17 @@ export interface components {
             /** @description One entry per day of a running or completed duel, in order. Empty for every other duel. */
             days: {
                 day: number;
-                /** @description The reduction of that day in percent, one decimal. `null` while the day does not count yet. */
-                mine: number | null;
+                /** @description The level of that day. `null` while the day does not count yet. */
+                mine: components["schemas"]["DuelDayLevel"] | null;
                 /** @description As `mine`, and `null` whenever `opponent` is. */
-                theirs: number | null;
+                theirs: components["schemas"]["DuelDayLevel"] | null;
             }[];
         };
+        /**
+         * @description How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in below the baseline. `not_under`: at or over the baseline, or not checked in.
+         * @enum {string}
+         */
+        DuelDayLevel: "smoke_free" | "well_under" | "under" | "not_under";
         /** @description A duel of the user with the user's own side. Of the opponent the export holds the id and nothing else. */
         ExportedDuel: {
             /** Format: uuid */

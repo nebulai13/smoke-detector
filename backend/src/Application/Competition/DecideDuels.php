@@ -74,8 +74,8 @@ final readonly class DecideDuels
     /**
      * Does the work for every duel, each in its own transaction.
      *
-     * @param list<Duel>           $duels
-     * @param callable(Duel): Duel $work The duel as it is to be stored.
+     * @param list<Duel>            $duels
+     * @param callable(Duel): ?Duel $work The duel as it is to be stored, or null to delete it.
      *
      * @return array{int, int} How many were done, and how many failed.
      */
@@ -89,7 +89,12 @@ final readonly class DecideDuels
                     if (!$this->isUnchangedAfterLocks($duel)) {
                         return 0;
                     }
-                    $this->duels->save($work($duel));
+                    $changed = $work($duel);
+                    if ($changed === null) {
+                        $this->duels->delete($duel->id);
+                    } else {
+                        $this->duels->save($changed);
+                    }
 
                     return 1;
                 });
@@ -104,12 +109,17 @@ final readonly class DecideDuels
     }
 
     /**
-     * Locks both accounts, the smaller id first, and reads the duel again.
+     * Locks both accounts, the smaller id first, and reads the duel again. Of a duel that lost an
+     * account id without the eraser, only the account that is left is locked.
      */
     private function isUnchangedAfterLocks(Duel $duel): bool
     {
+        // With one id missing, both are the one that is left, and LockedPair locks it once.
+        $left = $duel->challengerId ?? $duel->opponentId;
         try {
-            LockedPair::lock($this->users, self::idOf($duel->challengerId), self::idOf($duel->opponentId));
+            if ($left !== null) {
+                LockedPair::lock($this->users, $left, $duel->opponentId ?? $left);
+            }
         } catch (AccountNotFound) {
             // Deleted while the step waited: the deletion has taken care of the duel.
             return false;
@@ -118,8 +128,16 @@ final readonly class DecideDuels
         return $this->duels->find($duel->id) == $duel;
     }
 
-    private function expire(Duel $proposal): Duel
+    /**
+     * @return Duel|null Null for a proposal that lost an account id without the eraser (the foreign
+     *                   key only takes the id out): nobody can answer it any more, so it is deleted.
+     */
+    private function expire(Duel $proposal): ?Duel
     {
+        if ($proposal->challengerId === null || $proposal->opponentId === null) {
+            return null;
+        }
+
         return $proposal->withStatus(DuelStatus::Expired);
     }
 

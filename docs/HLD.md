@@ -668,11 +668,27 @@ with its count. A day without one counts as the baseline, or as what was logged 
   local date of the decision, and to `user_progress` with the level recalculated, in the transaction that
   decides the duel. A reward of 0 writes nothing.
 
-**What the opponent sees (FR-FRND-03).** Per side: reduction in percent with one decimal (negative when over
-the baseline), smoke-free days, check-ins and counted days. In the detail: the reduction of every day that
-counts. Never the baseline, a count or a limit. A day at 100 % was smoke-free and a day at 0 % was at the
-baseline or missed: that much a percentage tells, and the owner accepted it. When the two are not friends
-any more, each sees the own side of their past duels and neither the name nor the side of the other.
+**What the opponent sees (FR-FRND-03).** Per side: the reduction of the duel in whole percent (negative when
+over the baseline), smoke-free days, check-ins and counted days. In the detail, each day that counts is one
+of four levels and never a number:
+
+| Level | The day |
+|---|---|
+| `smoke_free` | checked in without a session |
+| `well_under` | checked in with at most half of the frozen baseline |
+| `under` | checked in below the baseline |
+| `not_under` | at or over the baseline, or not checked in |
+
+The figures are coarse on purpose. The first version showed every day in percent with one decimal. An audit
+showed that this gives everything away: two days that differ by one session differ by exactly 100 ÷ baseline
+percent, so a friend could calculate the baseline and from it the count of every day. The owner then chose
+levels and whole percent. The user's own days are shown in the same way here; the exact numbers of one's own
+days are in `GET /days`. The server keeps the exact totals and decides the winner with them. The export
+holds the user's own exact result.
+
+Never shown: the baseline, a count, a limit, or the totals a percentage was made from. When the two are not
+friends any more, each sees the own side of their past duels, with its outcome, and neither the name nor
+the side of the other.
 
 **No id in a URL** (as §4.7): the duel id is sent in the body, also for reading one duel (`POST /duels/show`).
 
@@ -698,6 +714,12 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
 
 **Known limits, accepted for the pilot:**
 
+- **What whole percent still tells.** Over many days a whole percentage narrows the possible baselines and
+  totals, without fixing them. A side at exactly 100 % had no session, and at 0 % or below was not under its
+  baseline. Accepted: a ranking needs a figure.
+- **Shown days use today's rule table.** A completed duel's days are worked out again from the stored days
+  and the stored baseline. After a new rule version the levels could disagree with the stored totals. To be
+  settled when rule versions become selectable (§4.6).
 - **Leaving instead of losing.** Whoever is behind can end the friendship, and the duel ends without a
   result. The owner chose this over "the one who leaves loses", which would punish a block for good reason.
 - **Declined and expired proposals are kept** until one of the two accounts is deleted. The list shows the

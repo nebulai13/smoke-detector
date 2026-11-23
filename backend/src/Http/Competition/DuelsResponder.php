@@ -15,7 +15,7 @@ use SmokeDetector\Application\Friends\PublicProfile;
 /**
  * Writes duels as the schemas Duel, DuelList and DuelDetail of api/openapi.yaml.
  *
- * Built from DuelView and DayStanding only: percentages, never a baseline, a count or a limit, so
+ * Built from DuelView and DayStanding only: whole percentages and day levels, never a baseline, a count or a limit, so
  * nothing else of the other user can get into these answers (HLD §4.8 "What the opponent sees").
  */
 final readonly class DuelsResponder
@@ -38,7 +38,7 @@ final readonly class DuelsResponder
         return [
             'duel' => $this->duel($detail->duel),
             'days' => array_map(
-                static fn (DayStanding $day): array => ['day' => $day->day, 'mine' => $day->mine, 'theirs' => $day->theirs],
+                static fn (DayStanding $day): array => ['day' => $day->day, 'mine' => $day->mine?->value, 'theirs' => $day->theirs?->value],
                 $detail->days,
             ),
         ];
@@ -68,12 +68,12 @@ final readonly class DuelsResponder
     }
 
     /**
-     * @return array<string, float|int>
+     * @return array<string, int>
      */
     private static function side(SideStanding $side): array
     {
         return [
-            // Already rounded to one decimal, and always a number with a decimal point.
+            // Whole percent: no decimal that could be calculated back to the baseline and the counts.
             'reductionPercent' => $side->reductionPercent,
             'smokeFreeDays' => $side->smokeFreeDays,
             'checkIns' => $side->checkIns,

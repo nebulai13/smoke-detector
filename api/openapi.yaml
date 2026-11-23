@@ -1196,7 +1196,7 @@ paths:
       description: >
         Proposals in both directions, running duels and the ones that are over, at most 100. Of the
         opponent the user sees name and avatar and, in a running or completed duel, the reduction in
-        percent, the smoke-free days and the check-ins of the duel. Never counts, limits or the baseline.
+        whole percent, the smoke-free days and the check-ins of the duel. Never counts, limits or the baseline.
         When the two are not friends any more, the opponent and the opponent's side are `null`.
       responses:
         "200":
@@ -1253,7 +1253,7 @@ paths:
       tags: [Competition]
       summary: One duel with its days (SRS FR-COMP-09)
       description: >
-        The duel as in the list, and the reduction of both sides for every day of the duel that counts already. Days are numbered from 1, because the two users have calendars of their own.
+        The duel as in the list, and for every day of the duel that counts already how it went for both sides, as one of four levels. Days are numbered from 1, because the two users have calendars of their own.
       requestBody:
         required: true
         content:
@@ -2692,14 +2692,16 @@ components:
       required: [reductionPercent, smokeFreeDays, checkIns, countedDays]
       description: >
         One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the
-        reduction is relative to a baseline that is never shown.
+        reduction is relative to a baseline that is never shown, and is given in whole percent.
       properties:
         reductionPercent:
-          type: number
+          type: integer
           maximum: 100
           description: >
-            With one decimal. Negative when more was smoked than the baseline. A day without a check-in
-            counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03).
+            In whole percent, rounded (a half away from zero). Negative when more was smoked than the
+            baseline. A day without a check-in counts as the baseline, or as what was logged when that is
+            more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to
+            the baseline and the counts.
         smokeFreeDays:
           type: integer
           minimum: 0
@@ -2803,15 +2805,22 @@ components:
                 minimum: 1
                 maximum: 180
               mine:
-                type: number
-                maximum: 100
+                allOf:
+                  - $ref: "#/components/schemas/DuelDayLevel"
                 nullable: true
-                description: The reduction of that day in percent, one decimal. `null` while the day does not count yet.
+                description: The level of that day. `null` while the day does not count yet.
               theirs:
-                type: number
-                maximum: 100
+                allOf:
+                  - $ref: "#/components/schemas/DuelDayLevel"
                 nullable: true
                 description: As `mine`, and `null` whenever `opponent` is.
+    DuelDayLevel:
+      type: string
+      enum: [smoke_free, well_under, under, not_under]
+      description: >
+        How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a
+        session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in
+        below the baseline. `not_under`: at or over the baseline, or not checked in.
     ExportedDuel:
       type: object
       additionalProperties: false
