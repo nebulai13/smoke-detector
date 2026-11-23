@@ -13,11 +13,11 @@
 | AD-1 | Backend runtime | PHP/Slim · PHP/Laravel · Node on VPS · BaaS (Firebase/Supabase) | **PHP 8.4 + Slim 4** | Runs natively on IONOS Webhosting Plus, which most likely can't keep a Node process alive. Small, explicit and easy to unit test. |
 | AD-2 | Database | MariaDB/MySQL (IONOS) · SQLite | **MariaDB 11.8 from the IONOS package** (verified) | Included, managed and backed up. Concurrent writes from many users. Reachable only from the webspace. |
 | AD-3 | Client strategy | 3 native thin clients · KMP · PWA-first · Flutter/RN | **TS web + SwiftUI + Jetpack Compose, all thin** | **All game rules run on the server**, so business logic is written and tested once, in PHP. Clients only render and queue logs. |
-| AD-4 | API contract | Code-first · **Contract-first OpenAPI 3.1** | **Contract-first** | One `openapi.yaml` generates typed clients for TS, Swift and Kotlin. The backend validates against it in tests (contract tests). |
-| AD-5 | Auth | Email+pw · +Apple/Google · Magic link | **Email + password, JWT access (15 min) + rotating opaque refresh token** | Self-hosted, no third parties. Refresh tokens are stored hashed, so they can be revoked. |
+| AD-4 | API contract | Code-first · **Contract-first OpenAPI 3.0.3** | **Contract-first** (3.0.3 rather than 3.1, because the PHP validator and all three client generators support it fully) | One `openapi.yaml` generates typed clients for TS, Swift and Kotlin. The backend validates against it in tests (contract tests). |
+| AD-5 | Auth | Email+pw · +Apple/Google · Magic link | **Email + password, JWT access (15 min) + rotating opaque refresh token. Email must be confirmed before first use** | Self-hosted, no third parties. Refresh tokens are stored hashed, so they can be revoked. Confirm-first means sign-up never reveals who has an account. Details in §4.5. |
 | AD-6 | Offline | Offline-first · online-only | **Offline-first logging via client outbox + idempotent batch sync** | NFR-03 zero log loss. Users log outdoors. |
 | AD-7 | Realtime | WebSockets · SSE · **polling + push** | **Push notifications + refresh on app foreground / pull-to-refresh** | Shared hosting allows no long-lived connections (C-1). |
-| AD-8 | Background work | Queue worker · **cron** | **IONOS UnixCron → executable wrapper `bin/cron` every 5 min** (URL+secret fallback) | The only background mechanism available. Jobs are idempotent. |
+| AD-8 | Background work | Queue worker · **cron** | **IONOS UnixCron → executable wrapper `bin/cron` every minute** (URL+secret fallback) | The only background mechanism available, and the web PHP cannot work after its response (§8). Every minute because confirmation and reset mails are sent by this job. Jobs are idempotent. |
 | AD-9 | Hosting topology | API subdomain · **same origin** | **Same origin: `/` = web SPA, `/api/v1` = PHP** | No CORS, and the web refresh token can live in an httpOnly SameSite=Strict cookie. |
 | AD-10 | Web framework | React · Vue · Svelte | **React 18 + Vite + TypeScript** (overridable) | Largest ecosystem for testing (Vitest, Testing Library, Playwright, MSW). |
 | AD-11 | Repo & CI | **GitHub monorepo + Actions** · GitLab · manual | **GitHub monorepo** | One PR can change contract + backend + clients. macOS runners for iOS. |
@@ -37,7 +37,7 @@ flowchart LR
   subgraph IONOS["IONOS Webhosting Plus (DE)"]
     AP[Apache + .htaccess]
     API[PHP 8.4 Slim API<br/>/api/v1]
-    CR[UnixCron */5<br/>bin/cron]
+    CR[UnixCron every minute<br/>bin/cron]
     DB[(MariaDB)]
     ST[Static files<br/>web build]
     MAIL[IONOS SMTP]
@@ -54,7 +54,7 @@ flowchart LR
   API --> DB
   CR --> DB
   CR -- push outbox --> APNS & FCM & WP
-  API -- verification/reset mails --> MAIL
+  CR -- mail outbox --> MAIL
   APNS --> I
   FCM --> A
   WP --> W
@@ -69,16 +69,18 @@ smoke-detector/
 ├── api/openapi.yaml            # single source of truth for the HTTP contract
 ├── backend/                    # PHP 8.4, Slim 4
 │   ├── public/index.php        # front controller (document root on IONOS)
-│   ├── public/.htaccess
+│   ├── public/.htaccess        # comes with the first deployment
 │   ├── src/Domain/             # pure PHP: scoring, streaks, XP, plan, duels — NO I/O
 │   ├── src/Application/        # use cases (LogSmoke, CheckIn, CreateDuel, FinalizeDays…)
 │   ├── src/Infrastructure/     # PDO repositories, mailer, push senders, clock
 │   ├── src/Http/               # Slim actions, middleware, request/response mapping
-│   ├── src/Cron/               # job runner + jobs
+│   ├── src/Console/            # CLI commands: migrate, mail:send, housekeeping:purge, cron:run
+│   ├── templates/mail/{de,en}/ # mail texts
 │   ├── config/rules/v1.php     # rule table: every tunable number (SRS App. A). One file per version, never edited once released
 │   ├── migrations/             # Phinx migrations
-│   ├── bin/console             # CLI: migrate, cron:run, …
-│   └── tests/{Unit,Integration,Contract}/
+│   ├── bin/console             # CLI entry point for the commands above
+│   ├── bin/cron                # executable wrapper the hosting's cron calls (runs cron:run)
+│   └── tests/{Unit,Integration,Support}/   # the contract is checked inside the Integration HTTP tests
 ├── web/                        # React + Vite + TS
 ├── ios/                        # Xcode project, SwiftUI
 ├── android/                    # Gradle, Compose
@@ -113,14 +115,15 @@ smoke-detector/
     `Clock`, never `new DateTime()` inside the domain.
 - **Application**: one class per use case. It orchestrates repositories and domain objects and owns the
   transaction boundaries.
-- **Infrastructure**: PDO repositories, `SmtpMailer`, `ApnsSender`, `FcmSender`, `WebPushSender` and
+- **Infrastructure**: PDO repositories (among them `PdoMailOutbox`), `SymfonyMailer` (SMTP),
+  `SodiumMailValuesCipher` (libsodium), `FileCronHeartbeat`, `ApnsSender`, `FcmSender`, `WebPushSender` and
   `SystemClock`, each behind an interface with fakes for tests.
 - **HTTP**: Slim actions translate JSON ↔ commands. Errors use RFC 9457 `application/problem+json`.
 
 ### 4.2 Key libraries (all pure PHP, installed via Composer in CI, `vendor/` uploaded)
 `slim/slim` 4, `php-di/php-di`, `robmorgan/phinx`, `firebase/php-jwt`, `symfony/mailer`,
 `minishlink/web-push`, `league/openapi-psr7-validator` (tests), `phpunit/phpunit` 12,
-`phpstan/phpstan` (max level), `friendsofphp/php-cs-fixer`, optional `infection/infection` (mutation testing).
+`phpstan/phpstan` (max level), `infection/infection` (mutation testing). A code style checker is not set up yet.
 
 ### 4.3 Data model (core tables)
 
@@ -140,14 +143,15 @@ erDiagram
   users ||--o{ feed_events : produces
   feed_events ||--o{ reactions : receives
   users ||--o{ notifications_outbox : receives
+  users ||--o{ mail_outbox : "is mailed"
 ```
 
 | Table | Key columns / notes |
 |---|---|
-| `users` | id, email (unique), password_hash, display_name, avatar_key, locale, timezone, email_verified_at, deleted_at |
-| `consents` | user_id, type (age18, art9, privacy), version, granted_at |
-| `plans` | user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version |
-| `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days, rules_version. Append-only, never recalculated |
+| `users` | id (UUIDv7, native `UUID` column), email (unique, lower-cased), password_hash, display_name, avatar_key, locale, timezone, email_verified_at (NULL = registration not confirmed yet), token_version (raised by a password reset; an access token is accepted only with the account's current number), created_at (for an unconfirmed registration: when its newest confirmation link was mailed) |
+| `consents` | user_id, type (age18, art9, privacy), version, granted_at. Primary key (user_id, type, version) |
+| `plans` | user_id (one row per user), goal_mode, target, taper_speed, default_product, start_date, rules_version (the version at onboarding) |
+| `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days (all four NULL for the onboarding entry), rules_version. Primary key (user_id, valid_from). Append-only, never recalculated. The current baseline is the entry with the latest valid_from |
 | `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at_utc, local_date, product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count, deleted (tombstone), created_at |
 | `day_summaries` | user_id, local_date, count, limit, checked_in, freeze_used, status (provisional/final), xp, rules_version |
 | `streaks` | user_id, type (checkin/under_limit), current, longest, freezes_held |
@@ -159,20 +163,231 @@ erDiagram
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
-| `refresh_tokens` | user_id, token_hash, device_label, expires_at, revoked_at |
-| `rate_limits` | key, window_start, hits |
+| `mail_outbox` | id (UUIDv7), user_id (`ON DELETE CASCADE`), template (confirm_email / already_registered / reset_password), locale, recipient, sealed_values (the links of the mail, encrypted with `sodium_crypto_secretbox`: random nonce per row, key derived from `jwt.secret` by HKDF-SHA256 with its own label), created_at, not_before (the next try, or the end of a run's 10-minute hold), attempts (failed tries). A row is deleted as soon as the mail server has the mail. Deliberately no index on not_before (two runs could deadlock on it) |
+| `refresh_tokens` | id (the session: one row per login/device), user_id, key_hash and token_hash (SHA-256 of the session key and of the current token), device_label, created_at, generation (0 at login, +1 per refresh; a token's secret is derived from the session key and this number), rotated_at, expires_at, revoked_at. At most 20 live (not revoked) sessions per user; revoked rows are deleted by the cleanup |
+| `one_time_tokens` | id, user_id, purpose (verify_email / reset_password), token_hash (SHA-256), expires_at, used_at, failed_attempts (wrong passwords entered with a confirmation link; the fifth deletes the token). Unique (user_id, purpose): a new token replaces the old one in one statement |
+| `rate_limits` | key (rule name + keyed hash of the email, user id or client address; for a rule about a pair: rule name + hash of the client + hash of the email, the email last), window_start, hits. The hash is HMAC-SHA256 with a key derived from `jwt.secret` by HKDF-SHA256 with its own label, so the table alone does not tell whether a given address is in it. A key is still treated as personal data: rows are deleted with the account and after 2 days |
 
 ### 4.4 API overview (`/api/v1`, full detail in `api/openapi.yaml`)
 | Area | Endpoints |
 |---|---|
-| Auth | `POST /auth/register`, `/auth/verify-email`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password-reset/{request,confirm}` |
-| Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/baseline-history`, `GET /me/export`, `DELETE /me` |
+| Auth | `POST /auth/register`, `/auth/verify-email`, `/auth/resend-verification`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password-reset/{request,confirm}` |
+| Legal | `GET /legal/consents` (public: the versions of the consent texts in force) |
+| Me | `GET/PATCH /me`, `PUT /me/plan`, `GET /me/export`, `DELETE /me`. `GET /me/baseline-history` comes with the weekly update in step 4 |
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
 | Friends | `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{id}/{accept,decline}`, `DELETE /friends/{id}`, `POST /friends/{id}/block` |
 | Competition | `POST /duels`, `POST /duels/{id}/{accept,decline,cancel}`, `GET /duels`, `GET /duels/{id}`, `GET /leagues/{type}/{periodKey}`, `GET /leagues/xp/current` |
 | Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
+
+### 4.5 Auth & account design (step 3)
+
+**Stack:** Slim 4, PHP-DI, `nyholm/psr7`, PDO (no ORM), Phinx migrations, `firebase/php-jwt`, `symfony/mailer`,
+`symfony/uid` (UUIDv7), `psr/clock`. Tests: `league/openapi-psr7-validator` for contract tests.
+
+**Layers:** `Http` actions only translate JSON ↔ commands and results. `Application` has one class per use
+case and owns the transaction. `Infrastructure` has the PDO repositories, mailer, clock, token and password
+services, each behind an interface with an in-memory or fake version for tests.
+
+**Registration (confirm first, FR-ACC-01/02/03):**
+1. `POST /auth/register` validates the input and the three consents, each sent as `{accepted: true, version}`
+   with the version of the text the app showed. A version other than the one in force is
+   `422 outdated_version` and nothing is stored. Then it always answers `202 {"status":"verification_sent"}`.
+2. New email: create the user with `email_verified_at = NULL`, store the consents, mail a confirmation link.
+3. Email of a confirmed account: nothing is changed. Mail "you already have an account" with links to login
+   and password reset.
+4. Email of an unconfirmed registration: replace its data (password hash, profile, consents) with the new
+   submission, replace the older link with a new one and mail it. The 24 hours start again. The newest link
+   therefore belongs to the newest submission, which is why confirming needs that submission's password.
+5. `POST /auth/verify-email {token, password, refreshIn, deviceLabel?}` confirms the account when the token
+   is valid **and the password matches the pending registration**, and answers like login (it starts a
+   session). So if somebody else registered the address last, the owner's click activates nothing.
+   - An invalid, expired or used token is `invalid_token`, refused before any password hashing. So is the
+     leftover link of an account that is already confirmed.
+   - A wrong password is `401 invalid_credentials`. It confirms nothing, carries no data of the registration
+     and counts as a failed login of the client. After 5 wrong passwords the token is deleted.
+6. `POST /auth/resend-verification {email}` always answers 202. An unconfirmed registration gets a new link
+   valid 24 h and is kept for those 24 h. A confirmed account gets the "you already have an account" mail.
+   An unknown address gets nothing.
+7. A registration lives 24 h from its newest confirmation link (registration, repeated registration, resend,
+   or login with the right password). After that it cannot be confirmed or re-sent, whether or not the
+   cleanup has run, and `bin/console housekeeping:purge` deletes it, together with its queued mails. The cron
+   job (`cron:run`, every minute) calls that command.
+8. A registration does the same work in every case (one password hash, at most one queued mail), and no mail contains
+   text the user typed, such as the display name. When the address has had its 10 mails of the hour, the
+   password is still hashed and the answer is the same, but nothing is queued, stored or replaced: the link
+   of the last mail that was queued keeps working.
+
+**Login and tokens (FR-ACC-04, NFR-05, NFR-06):**
+- `POST /auth/login {email, password, deviceLabel?, refreshIn: "body" | "cookie"}`.
+  A wrong email, a wrong password and an unconfirmed registration give the same `401 invalid_credentials`,
+  with the same counting towards the login limits, and the password check runs against a dummy hash when the
+  email is unknown (same timing). A correct password on an unconfirmed registration additionally queues a
+  mail with a fresh confirmation link, in the same transaction as the new token (the cron job sends it):
+  at most 1 per hour per address and 5 per hour per client,
+  counted separately from the other mail limits and never answered with 429. (An answer of its own for
+  "not confirmed" would let anybody test who is registered: register the address, then log in.)
+- Access token: JWT HS256, 15 min, claims `sub`, `iat`, `exp`, `jti`, `ver` (the account's token version).
+  Secret ≥ 32 bytes from config. Every request reads the account row: a deleted or unconfirmed account, or a
+  newer token version, makes the token invalid at once.
+- Refresh token: `<key>.<secret>`. The key is 32 random bytes (base64url) and stays for the session. The
+  secret of generation n is `base64url(HMAC-SHA256(K, key "." n))`, with K derived from `jwt.secret` by
+  HKDF-SHA256 with a fixed label (independent of the JWT signing key, no extra setting). Only SHA-256 hashes
+  of the key and of the current token, and the generation, are stored. Valid 60 days from the last refresh.
+  - **Rotated on every use.** For 10 seconds after a refresh, the replaced token is answered with the *same*
+    new refresh token and a fresh access token, without another rotation. Two browser tabs refreshing
+    together, or a retry after a lost answer, therefore end up with the identical current token. (That is why
+    the secret is derived and not random: the server can hand it out again without storing it.)
+  - After those 10 seconds, and for any older token, a token that is not the current one ends the session
+    (theft detection), however many refreshes lie in between.
+  - A user has at most 20 live sessions; one more login ends the live one unused longest. Sessions that
+    have ended (logout, theft detection) do not count and wait for the cleanup.
+  - Changing `jwt.secret` ends every session, not only the access tokens.
+- Native apps get the refresh token in the body. The web app asks for `refreshIn: "cookie"` and gets it as an
+  `HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth` cookie, never in the body.
+- `POST /auth/refresh` reads the cookie or the body (both at once is refused) and answers the way the token
+  arrived. `POST /auth/logout` ends the session of the presented refresh token (this device only) and always
+  answers 204. The device's last access token works until it expires (at most 15 min).
+- Passwords: Argon2id through `password_hash` with fixed parameters (64 MiB, 4 passes), 10 to 200 characters
+  counted in Unicode code points, never trimmed or normalised. Rehash on login when parameters change. The
+  application refuses to start without Argon2id rather than falling back to a weaker hash.
+- Email addresses are ASCII only, lower-cased and trimmed, so one mailbox cannot have two spellings.
+
+**Password reset (FR-ACC-05):** `POST /auth/password-reset/request {email}` always answers 202. The link is
+valid 1 h and usable once. `POST /auth/password-reset/confirm {token, password}` sets the password, ends every
+session of the user, raises the token version (which ends the access tokens that are out) and clears the
+failed logins counted for the address over all clients. It does not log in. A request for an unconfirmed registration sends
+no mail, so the reset cannot be used to activate an account around the confirmation link.
+
+**Rate limits (NFR-05):** fixed windows in the `rate_limits` table, aligned to the clock (a 15-minute window
+starts at :00, :15, :30 and :45).
+- Failed password checks (login, `DELETE /me`): 30 per 15 min per client, 5 per 15 min per pair of email
+  and client, 50 per hour per email over all clients, checked in this order. A refusal stops at the first
+  rule, so a client over its own limit uses up nobody else's budget. Every attempt is counted before the
+  password is checked and taken back only when it succeeds, so parallel guesses cannot outrun the counter.
+  The limits lock **the client that guesses, not the account**: after five wrong guesses by a stranger, the
+  owner still logs in from elsewhere.
+- Wrong passwords on `verify-email` count for the client only; the link has 5 tries of its own.
+- Register, resend and password-reset request share one mail budget: 5 per hour per client and 3 per hour per
+  pair of email and client (`429`). Over all clients an address gets at most 10 such mails per hour; above
+  that the answer is unchanged and nothing is queued, stored or replaced.
+- The confirmation mail triggered by a login has its own silent limits (1 per hour per address, 5 per client).
+- Export: 5 per hour per account.
+- Unknown addresses are counted exactly like known ones, so no limit tells who is registered.
+- The client is `REMOTE_ADDR` only (forwarding headers are never read); IPv6 counts per /64 network.
+- Over a limit: `429` with `Retry-After`.
+- **Known weakness (SRS OQ-15):** the per-address rules still let somebody with a few client addresses lock
+  the owner out. Each client may fail 5 times per 15 minutes, which adds up to 20 per hour to the address
+  count of 50. So 3 client addresses (IPv4 or IPv6) reach the limit within the hour, and 10 lock login and
+  account deletion for the whole hour, because the owner's own attempt is counted before the password is
+  checked. Likewise 4 client addresses use up the 10 mails per hour, after which the owner's reset or
+  confirmation mail is silently left out for the rest of the hour.
+
+**Account (FR-ACC-06 to 09):**
+- `GET/PATCH /me`: profile (display name 2–30 chars, avatar from the preset list, locale de/en, IANA time zone).
+  An older zone name that browsers still report (`Asia/Calcutta`) is stored under the current name
+  (`Asia/Kolkata`): whether PHP knows the older names depends on the time zone data of the machine, and day
+  logic must never meet a name the server cannot resolve.
+- `PUT /me/plan`: onboarding and later changes. Baseline 1–80 can be set only once (later it changes through
+  the weekly update only). Goal, target (below the current baseline) and taper speed can be changed.
+- `GET /me/export`: all data of the user as JSON. Every table with user data is registered with an exporter
+  and an eraser. A test reads the database schema and fails when a table that references users is in
+  neither registry, so later steps cannot forget export or deletion. The export never contains password or
+  token hashes. It lists the user's sessions (device label, created, last refreshed, expires) and the mails that wait to
+  be sent (kind, queued at, failed tries; never the address or the content).
+- `DELETE /me {password}`: deletes every registered table's rows of the user in one transaction, then the
+  user. Nothing is kept: the rate-limit counters of the email (alone and per client) and of the user id go too, and the access tokens
+  stop working at once.
+- A new table is added in one place (`Infrastructure\Privacy\UserDataTables`) with its exporter and eraser
+  together. Tables owned by one user also get `ON DELETE CASCADE` as a safety net; tables shared between
+  users (duels, friendships) need their own eraser.
+
+**Errors:** every error is RFC 9457 `application/problem+json` with a stable `type` slug (e.g.
+`validation_failed` with a field list, `invalid_credentials`, `rate_limited`, `service_unavailable`). Each
+entry of the field list has the field, a stable `code` from a closed list (clients translate by it) and an
+English message for developers. Unknown fields in a request are rejected. A database outage, a deadlock or a
+lock wait timeout is answered as `503 service_unavailable` (with `Retry-After` where the server can tell)
+and is not retried by the server. Counter work that runs after a commit (taking a counted login attempt
+back, clearing the counters of an address or of a deleted account) is the exception: if it fails, the
+finished login, confirmation, reset or deletion stands, a warning is logged, and the counter is left to the
+2-day cleanup.
+
+**Transactions and locks:** every use case locks the account row first and only then tokens or sessions; the
+cleanup uses one transaction per table. A new one-time token replaces the old one with
+`INSERT … ON DUPLICATE KEY UPDATE`. A use case queues its mail last, in the same transaction as the token:
+if the mail cannot be queued, the token is rolled back too. The mail sender takes its batch in a short
+transaction of its own (`SELECT … FOR UPDATE SKIP LOCKED`, touching only `mail_outbox`) and talks to the
+mail server outside any transaction. It does not lock the account. Deleting a sent mail and deleting its
+account at the same instant take their locks in opposite order and can deadlock: the sender then leaves
+the row held (at worst a duplicate mail 10 minutes later), or the deletion is answered 503. Taking a
+batch locks the table for a few milliseconds, and a request that queues a mail at that moment waits.
+
+The read that tells a use case *which* account to lock (user by email, token owner, session by key) runs
+**before** the transaction, never inside it, and the transaction starts with the lock on the account.
+Reason: MariaDB 11.8 has `innodb_snapshot_isolation` on by default and gives a transaction up with error
+1020 ("Record has changed since last read") when it locks a row that changed after the transaction's first
+plain read. That happened exactly when two requests about one address arrived together, answered 500, and
+which request failed depended on whether the address was registered. As a safety net, errors 1020, 1213 and
+1205 are all answered as 503. `LockingTest` checks the lock order with two database sessions for verify-email, reset confirm, refresh
+and logout, and runs three real processes at once for register, resend and reset request in each state of
+the address (unknown, pending, confirmed). Login and account deletion have no concurrency test yet (open,
+first task of the next step).
+
+**Mail:** `Mailer` interface, SMTP implementation (IONOS) and an in-memory one for tests. Templates in German
+and English, chosen by the user's locale. Links point to the web app (`APP_URL/verify-email?token=…`,
+`APP_URL/reset-password?token=…`). The confirmation link opens a page of the web app that asks for the
+sign-up password; the mail says so. The web app removes the token from the address bar and sends no referrer.
+**No web request sends mail.** The web PHP on the server cannot keep working after it has answered (§8), so a
+mail sent inside a request would show in the response time whether an address has an account, and a slow
+mail server would slow every sign-up. Instead:
+- A use case stores its mail in `mail_outbox` in the transaction that stores the token of the link. The
+  values of the mail (the links) are encrypted before they reach the repository.
+- `mail:send`, run by cron every minute, takes due rows oldest first in batches of 10 and sets them aside
+  for 10 minutes. It sends them outside any transaction and deletes each row once the mail server has it.
+  A mail therefore normally arrives within one or two minutes.
+- A mail the mail server does not take is tried again after 1, 5 and 15 minutes and then every 15 minutes
+  for as long as its link is valid (24 h confirmation and "already registered", 1 h reset). It is given up
+  when the next try would come at or after the link's expiry, or when it is found too old when taken. The
+  row is then deleted and the log gets the template name and the exception class only, never the address
+  or the link.
+- Two failures are not the mail server's and are handled differently. Values that cannot be decrypted (a
+  changed `jwt.secret`, a damaged value) can never succeed: the row is deleted at once with an error line.
+  A template that cannot be rendered means a broken release: the row is kept and tried again 15 minutes
+  later without counting a try, an error line is logged, and the run reports a failure (no heartbeat that
+  minute) while the other mails still go out.
+- A run that dies between sending and deleting sends the mail again 10 minutes later: a duplicate is
+  accepted, a lost mail is not. The same holds when the delete itself fails.
+- A run takes no new mails after 40 seconds; the budget is checked between mails, and each read from the
+  mail server is limited to 10 seconds. Only templates and locales the running release knows are taken,
+  so after a rollback the newer release's mails wait instead of stopping the sender. The cleanup deletes
+  queued mails older than 24 hours whatever their template.
+- A mail server outage does not fail the cron run (the mails are kept for another try); it shows in the
+  run's log line. A row that cannot be read back at all stops `mail:send` loudly until it is fixed or
+  deleted.
+- A mail that a running sender has already taken can still go out to its own address within that run
+  after the account was deleted. Nothing about the account is stored afterwards.
+
+**Config:** one typed `Settings` object read from environment variables in dev/test and from
+`shared/config/local.php` in production (named by `SETTINGS_FILE` or found from the release folder, see
+below; production from environment variables is refused). Every key is required and unknown keys are rejected. Nothing secret is committed. The versions
+of the three consent texts in force are settings; the apps read them from `GET /legal/consents` and send the
+version they showed. `jwt.secret` signs the access tokens, keys the refresh token secrets, keys the encryption of queued
+mails and keys the hashes in the rate-limit table. Changing it ends every session, drops the mails that
+wait at that moment and starts every rate-limit counter again.
+
+Production finds its settings file in one of two ways. `SETTINGS_FILE`, when set, always wins, and a named
+file that is missing stops the application. Without it, code that runs from a release folder
+(`<root>/releases/<name>/app`, §8) reads `<root>/shared/config/local.php`. This is how the cron wrapper
+works, because the hosting's cron passes neither arguments nor environment, and the web entry point uses
+the same rule. In the repository layout the rule never applies. Every environment refuses a relative log
+path (cron and the web server start in different directories), and production refuses the mail transport
+`null://` (it would delete every mail unsent).
+
+**Local and CI database:** `mariadb:11.8` (docker compose service `db`, GitHub Actions service container).
+Every connection sets UTC, strict mode and utf8mb4. Integration tests migrate a fresh schema once and
+isolate each test. The dev container mounts only `backend/` and `api/`, never the repository root, so the
+git-ignored `.env` and `server.info` are not visible inside it.
 
 ---
 
@@ -197,20 +412,26 @@ sequenceDiagram
   C->>C: clear accepted from outbox, surface rejections
 ```
 
-### 5.2 Day finalization & scoring (cron, every 5 min)
+### 5.2 Day finalization & scoring (cron, every minute)
 1. Select users whose local `date − 2 days` has passed midnight and still has provisional days.
 2. For each such day: build the `DayOutcome` (count, limit from `ReductionPlan`, check-in) and run
    `DayFinalizer`. Store its result: update `streaks`, append `xp_events`, evaluate badges, mark the day
    `final`. Days are processed once each, in calendar order per user. **One
    transaction per user-day. Idempotent**: re-running is a no-op.
-3. **Weekly baseline** (first run after Monday 00:00 local per user): `BaselineCalculator` → append to `baseline_history` (FR-PLAN-04…06). It uses the data known at that moment (Sat/Sun may still be provisional), and the stored value is final.
+3. **Weekly baseline** (first run after Monday 00:00 local per user): `BaselineCalculator` → append to `baseline_history` (FR-PLAN-04…06). It uses the data known at that moment (Sat/Sun may still be provisional), and the stored value is final. The job passes one entry per calendar day of the previous 28 local days, oldest first (fewer only before the user's first day), with `null` for every day without a check-in, including days that have no `day_summaries` row. A list built only from existing rows would never trigger FR-PLAN-05.
 4. Finalize any duels and league periods whose days are now all final → `DuelJudge` / `LeagueRanker`.
 5. Write feed events + `notifications_outbox` rows.
 6. Dispatch the outbox (batch ≤ 200, retries with backoff, invalid tokens pruned).
-7. Housekeeping: expire duel invites (72 h), purge accounts deleted > 30 days ago, delete expired tokens.
+7. Housekeeping: expire duel invites (72 h), delete registrations not confirmed within 24 h, delete expired tokens and old rate-limit rows.
 
-The job runner holds a DB advisory lock (`GET_LOCK`) so overlapping cron runs never double-process.
-The time budget per run is < 50 s. Leftover work is picked up in the next run.
+**Built so far (step 3):** `cron:run` runs `mail:send`, then `housekeeping:purge`, every minute. Each step
+is isolated: one failing does not stop the other, and the run exits non-zero. Overlapping runs are safe
+without a global lock: mail uses `SKIP LOCKED` plus the 10-minute hold, and the cleanup is idempotent.
+`mail:send` stops taking mails after 40 s.
+
+**Steps 1–6 come with step 4 and later.** Finalization must be safe under overlapping runs too (a DB
+advisory lock, `GET_LOCK`, or row locks per user-day; decided in step 4). The time budget per run stays
+below 50 s. Leftover work is picked up in the next run.
 
 ### 5.3 Duel lifecycle
 ```mermaid
@@ -275,15 +496,21 @@ Sounds and animations live in `shared/assets/`. They must be original or license
 ## 7. Cross-cutting concerns
 - **Time zones:** every day calculation uses the user's IANA time zone stored on the server. Logs
   carry UTC plus the client's offset. `local_date` is computed server-side. A time zone change applies
-  from the next local day onward.
+  from the next local day onward (to build in step 4: today `PATCH /me` stores the new zone at once and
+  nothing records when it changed).
 - **Security:** HTTPS + HSTS, Argon2id via `password_hash`, rate limiting in DB (`rate_limits`),
-  JWT signed with HS256 using a secret from a config file **outside the document root**, input
-  validation against the OpenAPI schema, prepared statements only, security headers via `.htaccess`.
-- **Privacy:** aggregate-only friend views (FR-FRND-03), generic push payloads, JSON export, hard-delete
-  job, no third-party analytics. Logs are kept indefinitely while the account exists (needed for 6-month
+  JWT signed with HS256 using a secret from a config file **outside the document root**, explicit input
+  validation in the HTTP layer (the OpenAPI schema is enforced by contract tests, not parsed per request),
+  prepared statements only. The API sets its own security headers in middleware (so they are tested); `.htaccess` adds them for the static web app.
+- **Privacy:** aggregate-only friend views (FR-FRND-03), generic push payloads, JSON export, immediate
+  hard delete, no third-party analytics. Logs are kept indefinitely while the account exists (needed for 6-month
   windows) and are purged on deletion.
 - **Errors & observability:** RFC 9457 problem responses. Logs go to a file outside the document root
-  with daily rotation done by cron. `/api/v1/health` checks DB + cron heartbeat (last run time).
+  with daily rotation done by cron (not built yet; the cron job alone writes one JSON line per run, about
+  1,440 a day). `/api/v1/health` checks the DB and reports the cron heartbeat: the end of the last cron run
+  in which every step succeeded, kept in the file `cron-heartbeat` next to the application log. It is
+  reported, not judged, so a stale heartbeat is still a 200; the deploy smoke test and the monitoring
+  compare it with the clock.
 - **Configuration:** `config/local.php` (secrets, DB, SMTP, APNs key, FCM service account, VAPID keys)
   stays outside the document root, is never committed, and is uploaded once by hand.
 
@@ -324,9 +551,30 @@ Verified on the server on 2026-11-17. Details are in the git-ignored `server.inf
   with no arguments, spaces or redirects. We therefore ship an executable wrapper
   `app/bin/cron` (`#!/usr/bin/php8.4`, which writes its own log) and register
   `/home/www/smoke-detector/current-cron` as the command. That is a stable symlink to the wrapper of the
-  active release, updated during the swap. Schedule: advanced mode, `*/5 * * * *`.
+  active release, updated during the swap. Schedule: **every minute** (confirmation and reset mails wait
+  for this job).
   **Verified:** runs reliably every minute (start jitter < 10 s) under the same UID as SSH, with `/bin/sh`,
   cwd `/home/www` and `PATH=/usr/local/bin:/usr/bin:/bin`, so the wrapper uses absolute paths only.
+  The wrapper runs `cron:run` (`mail:send`, then `housekeeping:purge`, which deletes unconfirmed
+  registrations, old tokens and old rate-limit rows). It prints nothing and writes one line per run to the
+  application log. `bin/cron` must keep its executable bit in git (mode 100755) and through rsync, and
+  `shared/logs` must be writable (log and heartbeat file).
+- **Verified on the server on 2026-11-21** (temporary probe page, deleted afterwards):
+  - `REMOTE_ADDR` is the visitor's own address (IPv4 or IPv6), not a proxy. The rate limits can rely on it.
+  - The web PHP runs as `cgi-fcgi` and has **no `fastcgi_finish_request()`**: a request that keeps working
+    after its output holds the client for the whole time. Nothing can be done "after the response", so mail
+    is never sent inside a web request. It goes into the `mail_outbox` table and cron sends it (§4.5 Mail).
+  - `zend.exception_ignore_args` is on, the `Authorization` header reaches PHP, and `DELETE` with a JSON
+    body arrives intact.
+- **Settings on the server:** neither Apache nor cron has to pass anything. Both entry points find
+  `shared/config/local.php` from the release folder they run in (§4.5 Config). If the cron wrapper cannot
+  start (settings missing or invalid), it appends one line to `shared/logs/cron-start.log` (UTC time and the class of the
+  failure only, because a message could quote the settings file), since the application log is not
+  available at that point. Standard error gets the message.
+- **Still to verify before the first release:** `SELECT @@innodb_snapshot_isolation` on the production database (the code is correct with it
+  on or off, but the local and CI database should match production).
+- **The release must ship** `backend/templates/` and `backend/config/rules/` next to `src/`, and
+  `shared/config/local.php` needs the consent version keys.
 - **Server facts:** Debian 12 ARM64. PHP 8.1–8.4 CLI (`php` = 8.3, so always call `php8.4` explicitly) with
   Argon2id, sodium, gmp, bcmath, intl, pdo_mysql, OPcache, APCu and curl with HTTP/2. Web PHP:
   memory_limit 512M, max_execution_time 360 s. rsync, git and the MariaDB 10.11 client are present. Node 18 (EOL)
@@ -340,22 +588,48 @@ Verified on the server on 2026-11-17. Details are in the git-ignored `server.inf
 
 **Workflow:** red → green → refactor, one SRS requirement at a time. A test's name (or tag) contains the
 FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script produces a
-**traceability report** (FR ID → tests) and fails if a `M` requirement with logic has no test.
+**traceability report** (requirement ID → tests). It counts IDs in test method names only, knows `FR`, `NFR`
+and `LEG` IDs, and fails when a test names an ID that is not in the SRS, when the SRS mentions an ID that has no
+requirement row the tool can read, or when it found no test name at all. Its own tests
+(`tools/test_traceability.py`) run in `make trace` and in CI. "Covered" means at least one test names the
+requirement, not that it is complete. Failing on a must-have requirement without a test (`--strict`) is
+switched on once all build steps that own must-haves are done.
 
 | Level | What | Tools | Where it runs |
 |---|---|---|---|
 | Domain unit | Scoring, streaks, XP, plan, duel judge, league ranker, badges — table-driven cases straight from the SRS | PHPUnit | every push |
 | Mutation | Do the tests notice when the domain code is deliberately broken? Target: no surviving mutant that isn't provably harmless | Infection (`make mutation`) | before each step is closed |
 | Integration | Repositories, use cases, cron jobs against real MariaDB | PHPUnit + MariaDB service container | every push |
-| Contract | Every API response validated against `openapi.yaml`. Generated clients compile. | openapi-psr7-validator, codegen in CI | every push |
+| Contract | Every API request and response in the HTTP tests is validated against `openapi.yaml`. The harness also checks that the `status` of a problem body equals the HTTP status and that a 204 has no body. A 401 always carries `WWW-Authenticate: Bearer` and a 429 always `Retry-After` (required in the contract); a 503 carries `Retry-After` only when the server can tell. From step 8 on: generated clients compile | openapi-psr7-validator; codegen in CI from step 8 | every push |
 | Client unit | ViewModels, outbox/sync logic, event → celebration mapping | Vitest / Swift Testing / JUnit 5 + Turbine | every push |
 | Client UI | Key screens: onboarding, +1, check-in, duel | Testing Library / XCUITest / Compose UI | every push |
 | E2E | Register → log offline → sync → duel → finalize (with time travel via test `Clock`) | Playwright against staging | on `main`, nightly |
 | Deploy smoke | `/health`, login, sync one log | curl/Playwright script | after each deploy |
 | Manual | Sounds/haptics feel, push on real devices, accessibility | checklist in `docs/` | per release |
 
-**Time control:** the backend accepts a test-only `X-Test-Now` header (enabled only when
-`APP_ENV=testing`), and cron jobs take `--now`. This lets 7-day duels be tested in seconds.
+**Time control:** tests replace the `Clock` in the container (`FrozenClock`), and the console commands use the same
+`Clock` (they take no arguments, because the hosting's cron cannot pass any). This lets 7-day duels be tested in seconds. There is no time-travel header in the API.
+
+**Mutation testing** covers `src/Domain` and `src/Application` (the code the Unit suite tests without a
+database). Code tested through HTTP or the real database is not mutated. `make mutation` fails below a
+score of 99 %; it is run locally before a step is closed, not in CI (it takes several minutes). The threshold is
+raised, never lowered.
+
+**CI** runs `composer validate --strict` and `composer audit`, the Unit suite without a reachable database
+(so a unit test that touches the database fails there as it does locally), the Integration suite against
+MariaDB 11.8, PHPStan and the traceability report. Every job has a 15-minute timeout, read-only
+permissions and checks out without stored credentials. Actions are referenced by version tag, not by
+commit hash (accepted; revisit before the pilot).
+
+Known surviving mutants, all provably harmless:
+- `Level\LevelCalculator::levelFor`, the two correction loops after the square-root guess. The guess is
+  never below the true level, so the second loop never runs, and it is at most one too high, so the first
+  loop runs at most once. Mutants that turn `while` into `if`, `>` into `>=`, `<=` into `<` or remove the
+  second loop change nothing; mutants that make a loop endless end as time-outs.
+- `Competition\Reduction` (percentage for display): `$saved < 0` mutated to `<= 0`. With nothing saved the
+  rounded value is the integer 0, and minus zero is the same integer.
+- `Day\DayFinalizer` (milestone awards): the list cut to its first entry. One day raises the check-in
+  streak by at most one, so it reaches at most one milestone and the list never has a second entry.
 
 ---
 
@@ -366,11 +640,11 @@ FR ID, e.g. `test_FR_COMP_03_missing_checkin_counts_as_baseline`. A CI script pr
 | 0 | **IONOS spike** (half a day): deploy a hello-world Slim app + migration + cron + outbound HTTP/2 to APNs sandbox + SMTP mail | Confirms the risks in §11 before anything else is built |
 | 1 | Monorepo, CI skeleton, OpenAPI v1 draft, traceability script | GitHub Actions; contract-first |
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
-| 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh |
+| 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
 | 4 | Logging sync + check-in + finalization cron | Idempotent UUID upsert, 48 h grace |
 | 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
-| 7 | Notifications outbox + APNs/FCM/Web Push senders | Cron dispatch every 5 min |
+| 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot | React + Vite |
 | 9 | **iOS client**: built and tested in the simulator and on your own iPhone (free Apple ID). **Pay the Apple Developer Program** before the push test + TestFlight | SwiftUI + SwiftData. APNs code tested against a fake until then |
 | 10 | **Android client**: emulator + sideloaded APK on real devices (push via FCM works without a Play account). **Pay Google Play** before store/internal testing | Compose + Room. Free Firebase project for FCM |
