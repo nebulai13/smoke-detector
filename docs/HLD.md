@@ -668,9 +668,11 @@ with its count. A day without one counts as the baseline, or as what was logged 
   local date of the decision, and to `user_progress` with the level recalculated, in the transaction that
   decides the duel. A reward of 0 writes nothing.
 
-**What the opponent sees (FR-FRND-03).** Per side: the reduction of the duel in whole percent (negative when
-over the baseline), smoke-free days, check-ins and counted days. In the detail, each day that counts is one
-of four levels and never a number:
+**What the opponent sees (FR-FRND-03).** Of the opponent's side: smoke-free days, check-ins and counted days,
+and for each day that counts one of four levels. While the duel runs: who is ahead (`ahead`, `level`,
+`behind`, by the comparison that decides the winner, over the days that count so far, once both have one), and
+no percentage. Once the duel is decided: the reduction of both sides in whole percent (negative when over the
+baseline). The user's own percentage is shown to the user all the time. A day is never a number:
 
 | Level | The day |
 |---|---|
@@ -679,12 +681,18 @@ of four levels and never a number:
 | `under` | checked in below the baseline |
 | `not_under` | at or over the baseline, or not checked in |
 
-The figures are coarse on purpose. The first version showed every day in percent with one decimal. An audit
-showed that this gives everything away: two days that differ by one session differ by exactly 100 ÷ baseline
-percent, so a friend could calculate the baseline and from it the count of every day. The owner then chose
-levels and whole percent. The user's own days are shown in the same way here; the exact numbers of one's own
-days are in `GET /days`. The server keeps the exact totals and decides the winner with them. The export
-holds the user's own exact result.
+The figures are coarse on purpose, after two audit findings:
+
+- The first version showed every day in percent with one decimal. That gives everything away: two days that
+  differ by one session differ by exactly 100 ÷ baseline percent, so a friend could calculate the baseline
+  and from it the count of every day. The owner chose levels and whole percent.
+- A whole percentage of a running duel still moves every day. A friend who notes it daily can take the
+  differences: on the first day the total is that day's reduction, and each later change is about that day's
+  share of the baseline. The owner chose: while a duel runs, only who is ahead.
+
+The user's own days are shown as levels too; the exact numbers of one's own days are in `GET /days`. The
+server keeps the exact totals and decides the winner with them, so two sides can show the same whole percent
+and one of them wins. The export holds the user's own exact result.
 
 Never shown: the baseline, a count, a limit, or the totals a percentage was made from. When the two are not
 friends any more, each sees the own side of their past duels, with its outcome, and neither the name nor
@@ -714,9 +722,12 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
 
 **Known limits, accepted for the pilot:**
 
-- **What whole percent still tells.** Over many days a whole percentage narrows the possible baselines and
-  totals, without fixing them. A side at exactly 100 % had no session, and at 0 % or below was not under its
-  baseline. Accepted: a ranking needs a figure.
+- **What the final figures still tell.** The whole percentage of a decided duel, with the levels of its days,
+  narrows the possible baselines without fixing one (an audit counted hundreds of candidates for a 7-day
+  duel) and gives a lower bound for the baseline. A side at exactly 100 % had no session. Accepted: a result
+  needs a figure.
+- **Who is ahead, day by day,** tells how the opponent's reduction compares with one's own, which one knows
+  exactly: one comparison a day. Accepted.
 - **Shown days use today's rule table.** A completed duel's days are worked out again from the stored days
   and the stored baseline. After a new rule version the levels could disagree with the stored totals. To be
   settled when rule versions become selectable (§4.6).

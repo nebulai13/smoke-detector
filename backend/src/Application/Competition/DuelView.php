@@ -11,7 +11,7 @@ use SmokeDetector\Domain\Xp\DuelResult;
 
 /**
  * A duel as one of the two sees it (HLD §4.8 "What the opponent sees"). Percentages only, never
- * a baseline, a count or a limit.
+ * a baseline, a count or a limit; of the opponent of a running duel only who is ahead.
  */
 final readonly class DuelView
 {
@@ -31,8 +31,16 @@ final readonly class DuelView
         public ?LocalDate $endsOn,
         /** Null while no day counts, and for a duel without a result. */
         public ?SideStanding $mine,
-        /** As $mine, and null whenever $opponent is. */
+        /**
+         * As $mine, and null whenever $opponent is. While the duel runs, without its percentage:
+         * a figure that moves every day could be calculated back.
+         */
         public ?SideStanding $theirs,
+        /**
+         * The user against the opponent while the duel runs. Null unless both sides have a day
+         * that counts and the opponent is visible, and for every duel that does not run.
+         */
+        public ?DuelStanding $standing,
         /** Of a completed duel. */
         public ?DuelResult $outcome,
         /** What the user earned with a completed duel. */

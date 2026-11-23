@@ -149,7 +149,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-COMP-05 | M | A user may have at most 1 open duel per friend (proposed or running, whoever proposed it) and 5 open duels in total. Running duels and own proposals count. Proposals from others count once they are accepted. |
 | FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. A participant with no rated day yet is listed without a rank. |
 | FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). |
-| FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. |
+| FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge. While a duel or a period runs, other users' standings are shown as positions (who is ahead), not as percentages: a percentage that moves every day could be calculated back to daily counts. Percentages of others are shown once the result is final. |
 | FR-COMP-09 | S | Duel detail screen: day-by-day comparison in four levels per day (smoke-free, well under the baseline, under, not under). Not percentages per day and not timestamps: an exact daily percentage could be calculated back to the baseline and the count. |
 
 ### 3.7 Social reactions (SOC)

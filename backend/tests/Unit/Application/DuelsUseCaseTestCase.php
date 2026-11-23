@@ -137,7 +137,7 @@ abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
     }
 
     /**
-     * @return array{int, int, int, int}|null Whole percent, smoke-free days, check-ins, counted days.
+     * @return array{int|null, int, int, int}|null Whole percent (null for the opponent while the duel runs), smoke-free days, check-ins, counted days.
      */
     protected static function side(?SideStanding $side): ?array
     {
@@ -158,6 +158,7 @@ abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
             'to' => $view->endsOn?->value,
             'mine' => self::side($view->mine),
             'theirs' => self::side($view->theirs),
+            'standing' => $view->standing?->value,
             'outcome' => $view->outcome?->value,
             'xp' => $view->xp,
             'provisional' => $view->provisional,

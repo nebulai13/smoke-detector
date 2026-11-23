@@ -9,11 +9,13 @@ use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Competition\DayLevel;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\DuelNotFound;
+use SmokeDetector\Application\Competition\DuelStanding;
 use SmokeDetector\Application\Competition\DuelStatus;
 use SmokeDetector\Application\Competition\DuelView;
 use SmokeDetector\Application\Competition\DuelWinner;
 use SmokeDetector\Application\Competition\ShowDuels;
 use SmokeDetector\Application\Competition\SideResult;
+use SmokeDetector\Application\Day\DayRecord;
 use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\DuelsUseCaseTestCase;
 
@@ -38,7 +40,7 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
     public function test_FR_COMP_01_a_proposal_is_seen_by_both_with_nothing_to_show_yet(): void
     {
         $proposal = $this->givenProposal(1, $this->anna, $this->bob, 30);
-        $nothingYet = ['from' => null, 'to' => null, 'mine' => null, 'theirs' => null, 'outcome' => null, 'xp' => null, 'provisional' => false];
+        $nothingYet = ['from' => null, 'to' => null, 'mine' => null, 'theirs' => null, 'standing' => null, 'outcome' => null, 'xp' => null, 'provisional' => false];
 
         $annas = $this->showDuels()->list($this->anna->id);
         $bobs = $this->showDuels()->list($this->bob->id);
@@ -76,18 +78,19 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
 
         // Anna: 7 + 12 + 12 (a day without a check-in counts as the baseline) + 15 (or as what was
         // logged, when that is more) + 3 = 49 of 60: 18.3 %, shown as 18. Bob: 18 of 48, 62.5 %, shown
-        // as 63: his today does not count yet.
+        // as 63: his today does not count yet. While the duel runs, each sees the own percentage, and
+        // of the other only who is ahead: a figure that moves every day could be calculated back.
         self::assertSame(
             [[
                 'status' => 'active', 'days' => 7, 'challenger' => true, 'opponent' => 'Bob', 'from' => '2026-11-13', 'to' => '2026-11-19',
-                'mine' => [18, 0, 3, 5], 'theirs' => [63, 2, 4, 4], 'outcome' => null, 'xp' => null, 'provisional' => true,
+                'mine' => [18, 0, 3, 5], 'theirs' => [null, 2, 4, 4], 'standing' => 'behind', 'outcome' => null, 'xp' => null, 'provisional' => true,
             ]],
             array_map(self::duelView(...), $annas),
         );
         self::assertSame(
             [[
                 'status' => 'active', 'days' => 7, 'challenger' => false, 'opponent' => 'Anna', 'from' => '2026-11-13', 'to' => '2026-11-19',
-                'mine' => [63, 2, 4, 4], 'theirs' => [18, 0, 3, 5], 'outcome' => null, 'xp' => null, 'provisional' => true,
+                'mine' => [63, 2, 4, 4], 'theirs' => [null, 0, 3, 5], 'standing' => 'ahead', 'outcome' => null, 'xp' => null, 'provisional' => true,
             ]],
             array_map(self::duelView(...), $bobs),
         );
@@ -143,9 +146,52 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
         $this->givenDays($this->anna, '2026-11-15', [1, 2]);
         $this->givenDays($this->bob, '2026-11-15', [13, 14]);
 
-        $view = $this->showDuels()->list($this->anna->id)[0];
+        self::assertSame([88, 0, 2, 2], self::side($this->showDuels()->list($this->anna->id)[0]->mine));
+        self::assertSame([-13, 0, 2, 2], self::side($this->showDuels()->list($this->bob->id)[0]->mine));
+    }
 
-        self::assertSame([[88, 0, 2, 2], [-13, 0, 2, 2]], [self::side($view->mine), self::side($view->theirs)]);
+    public function test_FR_FRND_03_while_a_duel_runs_the_other_side_is_ahead_level_or_behind_and_has_no_percentage(): void
+    {
+        self::assertSame(['ahead', 'level', 'behind'], array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()));
+        $in = true;
+        $out = false;
+
+        // More reduction is ahead: 15 of 36 against 16 of 36.
+        self::assertSame(['ahead', 'behind'], $this->standingsWith([[5, $in], [5, $in], [5, $in]], [[5, $in], [5, $in], [6, $in]]));
+        // The same reduction: more smoke-free days are ahead.
+        self::assertSame(['behind', 'ahead'], $this->standingsWith([[4, $in], [4, $in], [4, $in]], [[0, $in], [6, $in], [6, $in]]));
+        // The same reduction and smoke-free days: more check-ins are ahead (a day without one counts as the baseline, 12).
+        self::assertSame(['ahead', 'behind'], $this->standingsWith([[12, $in], [12, $in], [6, $in]], [[12, $out], [12, $in], [6, $in]]));
+        // Equal on all three.
+        self::assertSame(['level', 'level'], $this->standingsWith([[3, $in], [6, $in], [9, $in]], [[9, $in], [6, $in], [3, $in]]));
+    }
+
+    public function test_FR_FRND_03_who_is_ahead_is_decided_exactly_also_when_both_show_the_same_whole_percent(): void
+    {
+        // 30 days from the 18th of October, which ended yesterday. Anna 179 of 360, Bob 180 of 360:
+        // 50.3 % and 50.0 %, both shown as 50.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-10-18', 30);
+        $this->givenDays($this->anna, '2026-10-18', [...array_fill(0, 29, 6), 5]);
+        $this->givenDays($this->bob, '2026-10-18', array_fill(0, 30, 6));
+
+        $annas = $this->showDuels()->list($this->anna->id)[0];
+        $bobs = $this->showDuels()->list($this->bob->id)[0];
+
+        self::assertSame([50, 50], [$annas->mine?->reductionPercent, $bobs->mine?->reductionPercent]);
+        self::assertSame(['ahead', 'behind'], [$annas->standing?->value, $bobs->standing?->value]);
+    }
+
+    public function test_FR_FRND_03_nobody_is_ahead_before_both_have_a_day_that_counts(): void
+    {
+        // Started today. Anna has checked in, Bob has not.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-17');
+        $this->givenDays($this->anna, '2026-11-17', [0]);
+
+        $annas = $this->showDuels()->list($this->anna->id)[0];
+        $bobs = $this->showDuels()->list($this->bob->id)[0];
+
+        self::assertSame([[100, 1, 1, 1], null, null], [self::side($annas->mine), $annas->theirs, $annas->standing]);
+        self::assertSame([null, [null, 1, 1, 1], null], [$bobs->mine, self::side($bobs->theirs), $bobs->standing]);
     }
 
     public function test_FR_COMP_02_before_its_first_day_a_duel_has_no_side_yet(): void
@@ -156,7 +202,7 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
 
         $detail = $this->showDuels()->show($this->anna->id, TestData::uuid(1));
 
-        self::assertSame([null, null, true], [$detail->duel->mine, $detail->duel->theirs, $detail->duel->provisional]);
+        self::assertSame([null, null, null, true], [$detail->duel->mine, $detail->duel->theirs, $detail->duel->standing, $detail->duel->provisional]);
         self::assertSame(['2026-11-18', '2026-11-24'], [$detail->duel->startsOn?->value, $detail->duel->endsOn?->value]);
         self::assertSame(array_map(static fn (int $day): array => [$day, null, null], range(1, 7)), self::dayStandings($detail));
     }
@@ -196,7 +242,7 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
 
         // His days 14 to 17 count, his 18th is today and not checked in. Her days 13 to 16 count.
         self::assertSame(['2026-11-14', '2026-11-20'], [$detail->duel->startsOn?->value, $detail->duel->endsOn?->value]);
-        self::assertSame([[100, 4, 4, 4], [50, 0, 4, 4]], [self::side($detail->duel->mine), self::side($detail->duel->theirs)]);
+        self::assertSame([[100, 4, 4, 4], [null, 0, 4, 4], 'ahead'], [self::side($detail->duel->mine), self::side($detail->duel->theirs), $detail->duel->standing?->value]);
         self::assertSame(['2026-11-13', '2026-11-19'], [$this->showDuels()->list($this->anna->id)[0]->startsOn?->value, $this->showDuels()->list($this->anna->id)[0]->endsOn?->value]);
     }
 
@@ -214,7 +260,8 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
         $view = $this->showDuels()->list($this->anna->id)[0];
 
         // Anna against 8.0 on all eight days, also after her baseline went down to 4.0. Bob against 12.0.
-        self::assertSame([[50, 0, 8, 8], [50, 0, 2, 2]], [self::side($view->mine), self::side($view->theirs)]);
+        self::assertSame([[50, 0, 8, 8], [null, 0, 2, 2]], [self::side($view->mine), self::side($view->theirs)]);
+        self::assertSame([50, 0, 2, 2], self::side($this->showDuels()->list($this->bob->id)[0]->mine));
     }
 
     public function test_FR_PLAN_07_a_duel_never_scores_against_a_baseline_below_one(): void
@@ -247,7 +294,7 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
         self::assertSame(
             [
                 'status' => 'completed', 'days' => 7, 'challenger' => true, 'opponent' => 'Bob', 'from' => '2026-11-03', 'to' => '2026-11-09',
-                'mine' => [50, 0, 7, 7], 'theirs' => [11, 2, 6, 7], 'outcome' => 'won', 'xp' => 100, 'provisional' => false,
+                'mine' => [50, 0, 7, 7], 'theirs' => [11, 2, 6, 7], 'standing' => null, 'outcome' => 'won', 'xp' => 100, 'provisional' => false,
             ],
             self::duelView($annas->duel),
         );
@@ -313,7 +360,8 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
 
         $view = $this->showDuels()->list($this->anna->id)[0];
 
-        self::assertSame([null, null], [$view->opponent, $view->theirs]);
+        // Not even who is ahead.
+        self::assertSame([null, null, null], [$view->opponent, $view->theirs, $view->standing]);
     }
 
     public function test_FR_ACC_08_a_duel_whose_other_account_is_gone_shows_the_own_side(): void
@@ -398,5 +446,31 @@ final class ShowDuelsTest extends DuelsUseCaseTestCase
             }
         }
         self::assertSame([], $this->users->lockLog);
+    }
+
+    /**
+     * A duel that started on the 14th with these three days for each of the two, and what each sees
+     * as the standing.
+     *
+     * @param list<array{int, bool}> $annas The count of each day and whether it was checked in.
+     * @param list<array{int, bool}> $bobs
+     *
+     * @return array{string|null, string|null} Anna's standing and Bob's.
+     */
+    private function standingsWith(array $annas, array $bobs): array
+    {
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-14');
+        foreach ([[$this->anna, $annas], [$this->bob, $bobs]] as [$user, $days]) {
+            foreach (['2026-11-14', '2026-11-15', '2026-11-16'] as $index => $date) {
+                $this->dayRecords->save(new DayRecord($user->id, self::date($date), $days[$index][0], $days[$index][1] ? TestData::time("{$date} 20:00:00") : null));
+            }
+        }
+        $anna = $this->showDuels()->list($this->anna->id)[0];
+        $bob = $this->showDuels()->list($this->bob->id)[0];
+        // The other one's percentage is never there while the duel runs.
+        self::assertSame([null, null], [$anna->theirs?->reductionPercent, $bob->theirs?->reductionPercent]);
+        self::assertNotNull($anna->theirs);
+
+        return [$anna->standing?->value, $bob->standing?->value];
     }
 }
