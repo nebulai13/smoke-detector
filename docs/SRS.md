@@ -259,7 +259,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | Day ≤ daily limit | +20 |
 | Smoke-free day (checked in, 0 logs) | +40 (on top) |
 | Check-in streak reaches 7 / 30 / 100 / 365 **for the first time** (new personal best only, so breaking and rebuilding a streak does not pay twice) | +50 / +150 / +500 / +1500 |
-| Duel won / draw / lost but completed (forfeit: 0) | +100 / +50 / +20 |
+| Duel won / draw / lost but completed (forfeit: 0). Paid to a side only for a reduction above zero of its own | +100 / +50 / +20 |
 | League period rank 1 / 2 / 3 (≥ 3 participants, and only for a result with a reduction above zero) | +150 / +100 / +50 (×1 week, ×2 month, ×3 quarter, ×4 half-year) |
 | Reaction sent | +2 (max 10 XP/day) |
 
