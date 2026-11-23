@@ -21,8 +21,8 @@ use SmokeDetector\Infrastructure\Database\Sql;
  * - the member of the export document (and its schema in AccountExport of api/openapi.yaml),
  * - an exporter: a small class next to this one that selects the user's rows and names the columns
  *   as the schema does (never a secret column),
- * - an eraser: RowsOfUser when every row belongs to one user alone, otherwise a class of its own
- *   (a duel or a friendship also belongs to the other user).
+ * - an eraser: RowsOfUser when every row belongs to one user alone, RowsOfEitherUser when a row
+ *   belongs to two users in two columns (a friendship, a block), otherwise a class of its own.
  *
  * The order is the order of erasure: a table comes before the tables its rows refer to.
  * UserDataGuardTest fails for a table that refers to users and is not listed here, and
@@ -49,6 +49,11 @@ final readonly class UserDataTables
             new UserDataTable('refresh_tokens', 'sessions', new SessionsExporter($this->sql), new RowsOfUser($this->sql, 'refresh_tokens')),
             new UserDataTable('one_time_tokens', 'mailLinks', new MailLinksExporter($this->sql), new RowsOfUser($this->sql, 'one_time_tokens')),
             new UserDataTable('mail_outbox', 'queuedMails', new QueuedMailsExporter($this->sql), new RowsOfUser($this->sql, 'mail_outbox')),
+            // Friends (HLD §4.7). A friendship and a block belong to both users: deleting an account
+            // deletes every one it is part of, on either side.
+            new UserDataTable('invite_codes', 'inviteCode', new InviteCodeExporter($this->sql), new RowsOfUser($this->sql, 'invite_codes')),
+            new UserDataTable('friendships', 'friends', new FriendsExporter($this->sql), new RowsOfEitherUser($this->sql, 'friendships', 'user_a', 'user_b')),
+            new UserDataTable('blocks', 'blockedUsers', new BlockedUsersExporter($this->sql), new RowsOfEitherUser($this->sql, 'blocks', 'blocker_id', 'blocked_id')),
         ]);
     }
 }

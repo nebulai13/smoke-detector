@@ -105,6 +105,16 @@ final class UserDataTablesTest extends IntegrationTestCase
         'mail_outbox.template' => 'queuedMails.*.template',
         'mail_outbox.created_at' => 'queuedMails.*.createdAt',
         'mail_outbox.attempts' => 'queuedMails.*.attempts',
+        'invite_codes.code' => 'inviteCode.code',
+        'invite_codes.created_at' => 'inviteCode.createdAt',
+        // The other user of the pair, whichever of the two columns holds them.
+        'friendships.user_a' => 'friends.*.userId',
+        'friendships.user_b' => 'friends.*.userId',
+        'friendships.requested_by' => 'friends.*.requestedByMe',
+        'friendships.requested_at' => 'friends.*.requestedAt',
+        'friendships.accepted_at' => 'friends.*.acceptedAt',
+        'blocks.blocked_id' => 'blockedUsers.*.userId',
+        'blocks.created_at' => 'blockedUsers.*.blockedAt',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -137,6 +147,8 @@ final class UserDataTablesTest extends IntegrationTestCase
         'mail_outbox.recipient' => 'The address the mail goes to: the address of the account, which is profile.email. The export shows an address in one place only.',
         'mail_outbox.sealed_values' => 'A secret: the links of the mail, encrypted. A link carries a token that may still be valid.',
         'mail_outbox.not_before' => 'When the sender tries next: the schedule of the cron job, which says nothing about the user.',
+        'invite_codes.user_id' => 'The user\'s own id, which is profile.id.',
+        'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
     private ContainerInterface $container;
@@ -156,6 +168,15 @@ final class UserDataTablesTest extends IntegrationTestCase
                 [$user->id->value, $email, $user->passwordHash, $user->displayName->value, 'avatar-03', 'de', 'Europe/Berlin', '2026-11-02 08:00:00', '2026-11-01 07:00:00'],
             );
             (new UserDataFixture($sql))->fill($user->id, $number);
+            // Three other accounts for the rows two users share: 11, 12, 13 for user 1 and 21, 22, 23 for user 2.
+            foreach ([1, 2, 3] as $other) {
+                $this->sql()->execute(
+                    'INSERT INTO users (id, email, password_hash, display_name, avatar_key, locale, timezone, email_verified_at, created_at) '
+                    . "VALUES (?, ?, 'x', ?, 'avatar-05', 'de', 'Europe/Berlin', '2026-11-02 08:00:00', '2026-11-01 07:00:00')",
+                    [TestData::uuid($number * 10 + $other), "other-{$number}-{$other}@example.org", "Other {$number}{$other}"],
+                );
+            }
+            (new UserDataFixture($sql))->fillShared($user->id, $number, TestData::userId($number * 10 + 1), TestData::userId($number * 10 + 2), TestData::userId($number * 10 + 3));
         }
     }
 
@@ -235,6 +256,16 @@ final class UserDataTablesTest extends IntegrationTestCase
                     ['template' => 'confirm_email', 'createdAt' => '2026-11-17T11:58:00Z', 'attempts' => 0],
                     ['template' => 'reset_password', 'createdAt' => '2026-11-17T11:59:00Z', 'attempts' => 2],
                 ],
+                'inviteCode' => ['code' => 'K7M2QX9RT2', 'createdAt' => '2026-11-12T08:00:00Z'],
+                // Of the other user the id and nothing else, oldest request first.
+                'friends' => [
+                    ['userId' => TestData::uuid(11), 'status' => 'accepted', 'requestedByMe' => true, 'requestedAt' => '2026-11-10T10:00:00Z', 'acceptedAt' => '2026-11-11T09:00:00Z'],
+                    ['userId' => TestData::uuid(12), 'status' => 'pending', 'requestedByMe' => false, 'requestedAt' => '2026-11-15T10:00:00Z', 'acceptedAt' => null],
+                ],
+                // Whom the user has blocked. Not that user 13 has blocked the user too.
+                'blockedUsers' => [
+                    ['userId' => TestData::uuid(13), 'blockedAt' => '2026-11-16T09:00:00Z'],
+                ],
             ],
             $export,
         );
@@ -254,7 +285,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         self::assertSame(
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
-                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [],
+                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [],
             ],
             $export,
         );
@@ -300,7 +331,7 @@ final class UserDataTablesTest extends IntegrationTestCase
     {
         $json = json_encode($this->service(ExportAccount::class)->execute(TestData::userId(1)), JSON_THROW_ON_ERROR);
 
-        foreach ([TestData::uuid(2), 'bob@example.org', 'Name 2', 'Phone 2', TestData::uuid(2101), TestData::uuid(2102), TestData::uuid(2008), TestData::uuid(2009), 'mailbox-2@example.org'] as $bobs) {
+        foreach ([TestData::uuid(2), 'bob@example.org', 'Name 2', 'Phone 2', TestData::uuid(2101), TestData::uuid(2102), TestData::uuid(2008), TestData::uuid(2009), 'mailbox-2@example.org', 'K7M2QX9RT3', TestData::uuid(21), TestData::uuid(22), TestData::uuid(23), 'Other'] as $bobs) {
             self::assertStringNotContainsString($bobs, $json);
         }
         self::assertStringContainsString('anna@example.org', $json);

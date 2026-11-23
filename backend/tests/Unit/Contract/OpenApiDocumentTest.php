@@ -179,6 +179,12 @@ final class OpenApiDocumentTest extends TestCase
                 'WrongSignUpPassword',
                 'InvalidRefreshToken',
                 'UnauthorizedOrWrongPassword',
+                'InviteNotFound',
+                'FriendRequestRefused',
+                'FriendLimitReached',
+                'FriendRequestNotFound',
+                'FriendNotFound',
+                'BlockNotFound',
             ],
             array_keys($responses),
         );

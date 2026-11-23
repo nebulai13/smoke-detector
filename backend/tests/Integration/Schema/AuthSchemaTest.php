@@ -149,15 +149,20 @@ final class AuthSchemaTest extends IntegrationTestCase
             . 'k.REFERENCED_COLUMN_NAME AS parent_col, r.DELETE_RULE AS on_delete '
             . 'FROM information_schema.KEY_COLUMN_USAGE k JOIN information_schema.REFERENTIAL_CONSTRAINTS r '
             . 'ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME '
-            . 'WHERE k.TABLE_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.TABLE_NAME',
+            . 'WHERE k.TABLE_SCHEMA = DATABASE() AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.TABLE_NAME, k.COLUMN_NAME',
         );
 
-        $row = static fn (string $table): array => [
-            'tbl' => $table, 'col' => 'user_id', 'parent' => 'users', 'parent_col' => 'id', 'on_delete' => 'CASCADE',
+        $row = static fn (string $table, string $column = 'user_id'): array => [
+            'tbl' => $table, 'col' => $column, 'parent' => 'users', 'parent_col' => 'id', 'on_delete' => 'CASCADE',
         ];
         self::assertSame(
             [
-                $row('baseline_history'), $row('consents'), $row('day_summaries'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
+                $row('baseline_history'),
+                // A block goes with either of its two accounts, and so does a friendship.
+                $row('blocks', 'blocked_id'), $row('blocks', 'blocker_id'),
+                $row('consents'), $row('day_summaries'),
+                $row('friendships', 'user_a'), $row('friendships', 'user_b'),
+                $row('invite_codes'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".
                 $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_progress'), $row('xp_events'),
             ],

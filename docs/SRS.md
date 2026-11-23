@@ -134,10 +134,10 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 ### 3.5 Friends (FRND)
 | ID | Pri | Requirement |
 |---|---|---|
-| FR-FRND-01 | M | Each user has a personal invite code/link. Opening it sends a friend request, and the other user must accept. |
-| FR-FRND-02 | M | Users can list, remove and block friends. Blocking hides both users from each other everywhere. |
+| FR-FRND-01 | M | Each user has a personal invite code/link. Opening it sends a friend request, and the other user must accept. The user can replace the code by a new one at any time, and the old one stops working at once. If both users have asked each other, they are friends without a further step. |
+| FR-FRND-02 | M | Users can list, remove and block friends. Somebody with an open friend request can be blocked too. Blocking hides both users from each other everywhere. Only the user who set a block sees it and can lift it, and lifting it does not bring the friendship back. |
 | FR-FRND-03 | M | Friends see only **aggregates**: reduction % per period, streaks, level, XP, badges and health milestones reached. They do **not** see individual log timestamps. |
-| FR-FRND-04 | M | Maximum 50 friends per user. |
+| FR-FRND-04 | M | Maximum 50 friends per user. A user's own open requests count towards the 50, when sending a request and when accepting one. Requests from others do not count, and the other user's number of friends never decides (it must not be revealed). |
 
 ### 3.6 Competitions (COMP)
 | ID | Pri | Requirement |
