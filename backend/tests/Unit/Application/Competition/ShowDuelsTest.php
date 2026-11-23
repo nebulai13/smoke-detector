@@ -1,0 +1,362 @@
+<?php
+
+declare(strict_types=1);
+
+namespace SmokeDetector\Tests\Unit\Application\Competition;
+
+use SmokeDetector\Application\Account\AccountNotFound;
+use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Competition\Duel;
+use SmokeDetector\Application\Competition\DuelNotFound;
+use SmokeDetector\Application\Competition\DuelStatus;
+use SmokeDetector\Application\Competition\DuelView;
+use SmokeDetector\Application\Competition\DuelWinner;
+use SmokeDetector\Application\Competition\ShowDuels;
+use SmokeDetector\Application\Competition\SideResult;
+use SmokeDetector\Tests\Support\TestData;
+use SmokeDetector\Tests\Unit\Application\DuelsUseCaseTestCase;
+
+/**
+ * What a user sees of their duels (SRS FR-COMP-03, 08, 09; FR-FRND-03; HLD §4.8): both sides in
+ * percent, never a count, a limit or the baseline of the other one.
+ *
+ * Both users have a baseline of 12, so 6 sessions on a day are a reduction of 50 %.
+ */
+final class ShowDuelsTest extends DuelsUseCaseTestCase
+{
+    private User $anna;
+    private User $bob;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        [$this->anna, $this->bob] = $this->givenTwoFriends();
+    }
+
+    public function test_FR_COMP_01_a_proposal_is_seen_by_both_with_nothing_to_show_yet(): void
+    {
+        $proposal = $this->givenProposal(1, $this->anna, $this->bob, 30);
+        $nothingYet = ['from' => null, 'to' => null, 'mine' => null, 'theirs' => null, 'outcome' => null, 'xp' => null, 'provisional' => false];
+
+        $annas = $this->showDuels()->list($this->anna->id);
+        $bobs = $this->showDuels()->list($this->bob->id);
+
+        self::assertSame([['status' => 'proposed', 'days' => 30, 'challenger' => true, 'opponent' => 'Bob'] + $nothingYet], array_map(self::duelView(...), $annas));
+        self::assertSame([['status' => 'proposed', 'days' => 30, 'challenger' => false, 'opponent' => 'Anna'] + $nothingYet], array_map(self::duelView(...), $bobs));
+        self::assertSame([$proposal->id, $proposal->createdAt, $proposal->expiresAt], [$annas[0]->id, $annas[0]->createdAt, $annas[0]->expiresAt]);
+        self::assertSame([$this->bob->id->value, 'Bob', 'avatar-07'], self::profile($annas[0]->opponent ?? self::fail('No opponent.')));
+    }
+
+    public function test_FR_COMP_01_a_proposal_whose_72_hours_are_over_is_shown_as_expired_before_the_cron_job_was_there(): void
+    {
+        $this->givenProposal(1, $this->anna, $this->bob, 7, '2026-11-14 12:00:01');
+
+        self::assertSame('proposed', $this->showDuels()->list($this->bob->id)[0]->status->value);
+
+        $this->clock->advanceSeconds(1);
+        self::assertSame('expired', $this->showDuels()->list($this->bob->id)[0]->status->value);
+        self::assertSame('expired', $this->showDuels()->show($this->anna->id, TestData::uuid(1))->duel->status->value);
+        // Nothing was written by looking.
+        self::assertSame(DuelStatus::Proposed, $this->duels->find(TestData::uuid(1))?->status);
+    }
+
+    public function test_FR_COMP_03_a_running_duel_shows_both_sides_over_the_days_that_count_so_far(): void
+    {
+        // From the 13th to the 19th. Today is the 17th.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-13');
+        // Anna: 6, then 12, a day without anything, a day with 15 logged and no check-in, and today 3, checked in.
+        $this->givenDays($this->anna, '2026-11-13', [6, 12, null, [15], 3]);
+        // Bob: two smoke-free days, 12, 6, and today 2 without a check-in yet.
+        $this->givenDays($this->bob, '2026-11-13', [0, 0, 12, 6, [2]]);
+
+        $annas = $this->showDuels()->list($this->anna->id);
+        $bobs = $this->showDuels()->list($this->bob->id);
+
+        // Anna: 6 + 12 + 12 (a day without a check-in counts as the baseline) + 15 (or as what was
+        // logged, when that is more) + 3 = 48 of 60. Bob: 18 of 48: his today does not count yet.
+        self::assertSame(
+            [[
+                'status' => 'active', 'days' => 7, 'challenger' => true, 'opponent' => 'Bob', 'from' => '2026-11-13', 'to' => '2026-11-19',
+                'mine' => [20.0, 0, 3, 5], 'theirs' => [62.5, 2, 4, 4], 'outcome' => null, 'xp' => null, 'provisional' => true,
+            ]],
+            array_map(self::duelView(...), $annas),
+        );
+        self::assertSame(
+            [[
+                'status' => 'active', 'days' => 7, 'challenger' => false, 'opponent' => 'Anna', 'from' => '2026-11-13', 'to' => '2026-11-19',
+                'mine' => [62.5, 2, 4, 4], 'theirs' => [20.0, 0, 3, 5], 'outcome' => null, 'xp' => null, 'provisional' => true,
+            ]],
+            array_map(self::duelView(...), $bobs),
+        );
+    }
+
+    public function test_FR_COMP_09_the_detail_shows_the_reduction_of_every_day_that_counts(): void
+    {
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-13');
+        $this->givenDays($this->anna, '2026-11-13', [6, 12, null, [15], 3]);
+        $this->givenDays($this->bob, '2026-11-13', [0, 0, 12, 6, [2]]);
+
+        $detail = $this->showDuels()->show($this->anna->id, TestData::uuid(1));
+
+        self::assertSame(self::duelView($this->showDuels()->list($this->anna->id)[0]), self::duelView($detail->duel));
+        self::assertSame(
+            [[1, 50.0, 100.0], [2, 0.0, 100.0], [3, 0.0, 0.0], [4, -25.0, 50.0], [5, 75.0, null], [6, null, null], [7, null, null]],
+            self::dayStandings($detail),
+        );
+        // The same days from the other side.
+        self::assertSame(
+            [[1, 100.0, 50.0], [2, 100.0, 0.0], [3, 0.0, 0.0], [4, 50.0, -25.0], [5, null, 75.0], [6, null, null], [7, null, null]],
+            self::dayStandings($this->showDuels()->show($this->bob->id, TestData::uuid(1))),
+        );
+    }
+
+    public function test_FR_COMP_02_before_its_first_day_a_duel_has_no_side_yet(): void
+    {
+        // Accepted today: it starts tomorrow.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-18');
+        $this->givenDays($this->anna, '2026-11-17', [0]);
+
+        $detail = $this->showDuels()->show($this->anna->id, TestData::uuid(1));
+
+        self::assertSame([null, null, true], [$detail->duel->mine, $detail->duel->theirs, $detail->duel->provisional]);
+        self::assertSame(['2026-11-18', '2026-11-24'], [$detail->duel->startsOn?->value, $detail->duel->endsOn?->value]);
+        self::assertSame(array_map(static fn (int $day): array => [$day, null, null], range(1, 7)), self::dayStandings($detail));
+    }
+
+    public function test_FR_COMP_03_the_first_day_counts_from_its_check_in_and_the_last_day_is_the_last(): void
+    {
+        // A duel that starts today: nothing counts until today is checked in.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-17');
+        self::assertNull($this->showDuels()->list($this->anna->id)[0]->mine);
+        $this->givenDays($this->anna, '2026-11-17', [0]);
+        self::assertSame([100.0, 1, 1, 1], self::side($this->showDuels()->list($this->anna->id)[0]->mine));
+
+        // A duel whose last day was yesterday: seven days count, and the days after it do not.
+        $carol = $this->givenNamed('Carol');
+        $this->givenFriends($this->anna, $carol);
+        $this->givenOnboarded($carol, '2026-11-01');
+        $this->givenRunning(2, $carol, $this->anna, '2026-11-10');
+        $this->givenDays($carol, '2026-11-10', [6, 6, 6, 6, 6, 6, 6, 40]);
+
+        $carols = $this->showDuels()->show($carol->id, TestData::uuid(2));
+
+        self::assertSame([50.0, 0, 7, 7], self::side($carols->duel->mine));
+        self::assertSame('2026-11-16', $carols->duel->endsOn?->value);
+        self::assertCount(7, $carols->days);
+        self::assertTrue($carols->duel->provisional);
+    }
+
+    public function test_FR_COMP_02_each_side_is_rated_over_its_own_days(): void
+    {
+        // Bob lives in Auckland and started a day later, on his 14th. His today is the 18th already.
+        $bob = $this->givenZoneChange($this->bob, '2026-11-02', 'Pacific/Auckland');
+        $this->givenRunning(1, $this->anna, $bob, '2026-11-13', 7, '2026-11-14');
+        $this->givenDays($this->anna, '2026-11-13', [6, 6, 6, 6]);
+        $this->givenDays($bob, '2026-11-14', [0, 0, 0, 0, [5]]);
+
+        $detail = $this->showDuels()->show($bob->id, TestData::uuid(1));
+
+        // His days 14 to 17 count, his 18th is today and not checked in. Her days 13 to 16 count.
+        self::assertSame(['2026-11-14', '2026-11-20'], [$detail->duel->startsOn?->value, $detail->duel->endsOn?->value]);
+        self::assertSame([[100.0, 4, 4, 4], [50.0, 0, 4, 4]], [self::side($detail->duel->mine), self::side($detail->duel->theirs)]);
+        self::assertSame(['2026-11-13', '2026-11-19'], [$this->showDuels()->list($this->anna->id)[0]->startsOn?->value, $this->showDuels()->list($this->anna->id)[0]->endsOn?->value]);
+    }
+
+    public function test_FR_PLAN_07_the_baseline_of_a_duel_is_frozen_on_its_first_day(): void
+    {
+        // The weekly baselines: 8.0 from Monday the 9th, 4.0 from Monday the 16th.
+        $this->givenWeeklyBaseline($this->anna, '2026-11-09', 80);
+        $this->givenWeeklyBaseline($this->anna, '2026-11-16', 40);
+        $this->givenWeeklyBaseline($this->bob, '2026-11-16', 40);
+        // Anna started on the 9th itself, Bob on the 15th, the day before his new baseline.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-09', 30, '2026-11-15');
+        $this->givenDays($this->anna, '2026-11-09', [4, 4, 4, 4, 4, 4, 4, 4]);
+        $this->givenDays($this->bob, '2026-11-15', [6, 6]);
+
+        $view = $this->showDuels()->list($this->anna->id)[0];
+
+        // Anna against 8.0 on all eight days, also after her baseline went down to 4.0. Bob against 12.0.
+        self::assertSame([[50.0, 0, 8, 8], [50.0, 0, 2, 2]], [self::side($view->mine), self::side($view->theirs)]);
+    }
+
+    public function test_FR_PLAN_07_a_duel_never_scores_against_a_baseline_below_one(): void
+    {
+        $this->givenWeeklyBaseline($this->anna, '2026-11-09', 4);
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-13');
+        $this->givenDays($this->anna, '2026-11-13', [0, 1, 2, null]);
+
+        // Against 1.0 a day: 0 + 1 + 2 + 1 (the day without a check-in) of 4.
+        self::assertSame([0.0, 1, 3, 4], self::side($this->showDuels()->list($this->anna->id)[0]->mine));
+        self::assertSame(
+            [100.0, 0.0, -100.0, 0.0],
+            array_slice(array_column(self::dayStandings($this->showDuels()->show($this->anna->id, TestData::uuid(1))), 1), 0, 4),
+        );
+    }
+
+    public function test_FR_COMP_08_a_completed_duel_shows_the_stored_result_to_both(): void
+    {
+        // Decided on the 12th: Anna 50 %. Bob, against a baseline of 8.0, was a little over it.
+        $this->givenEnded(1, $this->anna, $this->bob, DuelStatus::Completed, TestData::decision(
+            DuelWinner::Challenger, new SideResult(120, 420, 840, 0, 7, 100), new SideResult(80, 570, 560, 2, 6, 20), '2026-11-12 23:00:40',
+        ));
+        $this->givenDays($this->anna, '2026-11-03', [6, 6, 6, 6, 6, 6, 6]);
+        $this->givenDays($this->bob, '2026-11-03', [0, 0, 12, 12, 12, 12, [9]]);
+
+        $annas = $this->showDuels()->show($this->anna->id, TestData::uuid(1));
+        $bobs = $this->showDuels()->show($this->bob->id, TestData::uuid(1));
+
+        self::assertSame(
+            [
+                'status' => 'completed', 'days' => 7, 'challenger' => true, 'opponent' => 'Bob', 'from' => '2026-11-03', 'to' => '2026-11-09',
+                'mine' => [50.0, 0, 7, 7], 'theirs' => [-1.8, 2, 6, 7], 'outcome' => 'won', 'xp' => 100, 'provisional' => false,
+            ],
+            self::duelView($annas->duel),
+        );
+        self::assertSame(['lost', 20, [-1.8, 2, 6, 7], [50.0, 0, 7, 7]], [$bobs->duel->outcome?->value, $bobs->duel->xp, self::side($bobs->duel->mine), self::side($bobs->duel->theirs)]);
+        // The days against the baseline the result was scored with: 8.0 for Bob, not his 12.0 of today.
+        self::assertSame(
+            [[1, 50.0, 100.0], [2, 50.0, 100.0], [3, 50.0, -50.0], [4, 50.0, -50.0], [5, 50.0, -50.0], [6, 50.0, -50.0], [7, 50.0, -12.5]],
+            self::dayStandings($annas),
+        );
+    }
+
+    public function test_FR_COMP_03_a_draw_is_a_draw_for_both(): void
+    {
+        $this->givenEnded(1, $this->anna, $this->bob, DuelStatus::Completed, TestData::decision(
+            DuelWinner::Draw, new SideResult(120, 420, 840, 0, 7, 50), new SideResult(120, 420, 840, 0, 7, 50),
+        ));
+
+        self::assertSame(['draw', 50], [$this->showDuels()->list($this->anna->id)[0]->outcome?->value, $this->showDuels()->list($this->anna->id)[0]->xp]);
+        self::assertSame(['draw', 50], [$this->showDuels()->list($this->bob->id)[0]->outcome?->value, $this->showDuels()->list($this->bob->id)[0]->xp]);
+    }
+
+    public function test_FR_COMP_01_a_duel_that_ended_without_a_result_shows_no_side(): void
+    {
+        foreach ([DuelStatus::Declined, DuelStatus::Expired, DuelStatus::Cancelled, DuelStatus::Forfeited] as $index => $status) {
+            $this->givenEnded(10 + $index, $this->anna, $this->bob, $status);
+        }
+        $this->givenDays($this->anna, '2026-11-03', [6, 6, 6, 6, 6, 6, 6]);
+
+        foreach ($this->showDuels()->list($this->anna->id) as $view) {
+            self::assertSame([null, null, null, null, false], [$view->mine, $view->theirs, $view->outcome, $view->xp, $view->provisional], $view->status->value);
+            self::assertSame([], $this->showDuels()->show($this->anna->id, $view->id)->days, $view->status->value);
+        }
+    }
+
+    public function test_FR_FRND_03_once_the_two_are_no_friends_any_more_each_keeps_the_own_side_only(): void
+    {
+        $this->givenEnded(1, $this->anna, $this->bob, DuelStatus::Completed, TestData::decision(
+            DuelWinner::Challenger, new SideResult(120, 420, 840, 0, 7, 100), new SideResult(120, 630, 840, 2, 6, 20),
+        ));
+        $this->givenEnded(2, $this->bob, $this->anna, DuelStatus::Cancelled, null, '2026-11-13');
+        $this->givenDays($this->anna, '2026-11-03', [6, 6, 6, 6, 6, 6, 6]);
+        $this->givenDays($this->bob, '2026-11-03', [0, 0, 12, 12, 12, 12, 12]);
+        $this->friendLinks->delete($this->anna->id, $this->bob->id);
+
+        $views = $this->showDuels()->list($this->anna->id);
+        $detail = $this->showDuels()->show($this->anna->id, TestData::uuid(1));
+
+        // The newer one first. No name and no score of the other one, in neither duel.
+        self::assertSame(['cancelled', 'completed'], array_map(static fn (DuelView $view): string => $view->status->value, $views));
+        self::assertSame([null, null], [$views[0]->opponent, $views[1]->opponent]);
+        self::assertSame(['mine' => [50.0, 0, 7, 7], 'theirs' => null, 'outcome' => 'won', 'xp' => 100], array_intersect_key(self::duelView($views[1]), ['mine' => 1, 'theirs' => 1, 'outcome' => 1, 'xp' => 1]));
+        self::assertSame(array_map(static fn (int $day): array => [$day, 50.0, null], range(1, 7)), self::dayStandings($detail));
+    }
+
+    public function test_FR_FRND_03_a_request_that_is_not_accepted_is_no_friendship(): void
+    {
+        $this->givenRunning(1, $this->anna, $this->bob);
+        $this->givenDays($this->bob, '2026-11-13', [0, 0]);
+        // They stopped being friends, and Bob has asked again.
+        $this->friendLinks->delete($this->anna->id, $this->bob->id);
+        $this->givenRequest($this->bob, $this->anna);
+
+        $view = $this->showDuels()->list($this->anna->id)[0];
+
+        self::assertSame([null, null], [$view->opponent, $view->theirs]);
+    }
+
+    public function test_FR_ACC_08_a_duel_whose_other_account_is_gone_shows_the_own_side(): void
+    {
+        $this->givenEnded(1, $this->anna, $this->bob, DuelStatus::Forfeited);
+        $this->givenEnded(2, $this->bob, $this->anna, DuelStatus::Completed, TestData::decision(DuelWinner::Opponent, null, new SideResult(120, 420, 840, 0, 7, 100)), '2026-10-20');
+        // As the eraser leaves them: without the id, the start and the result of the side that is gone.
+        foreach ($this->duels->all() as $duel) {
+            $annaChallenged = $duel->challengerId?->equals($this->anna->id) ?? false;
+            $this->duels->save(new Duel(
+                $duel->id, $annaChallenged ? $duel->challengerId : null, $annaChallenged ? null : $duel->opponentId, $duel->periodDays, $duel->status,
+                $duel->createdAt, $duel->expiresAt, $duel->answeredAt, $annaChallenged ? $duel->challengerStart : null, $annaChallenged ? null : $duel->opponentStart, $duel->decision,
+            ));
+        }
+        $this->friendLinks->delete($this->anna->id, $this->bob->id);
+        $this->users->delete($this->bob->id);
+
+        $views = $this->showDuels()->list($this->anna->id);
+
+        self::assertSame(
+            [
+                ['status' => 'forfeited', 'challenger' => true, 'opponent' => null, 'mine' => null, 'theirs' => null, 'outcome' => null, 'xp' => null],
+                ['status' => 'completed', 'challenger' => false, 'opponent' => null, 'mine' => [50.0, 0, 7, 7], 'theirs' => null, 'outcome' => 'won', 'xp' => 100],
+            ],
+            array_map(
+                static fn (DuelView $view): array => array_intersect_key(self::duelView($view), ['status' => 1, 'challenger' => 1, 'opponent' => 1, 'mine' => 1, 'theirs' => 1, 'outcome' => 1, 'xp' => 1]),
+                $views,
+            ),
+        );
+    }
+
+    public function test_FR_COMP_01_the_list_holds_the_100_newest_duels(): void
+    {
+        self::assertSame(100, ShowDuels::MAX_LISTED);
+        for ($i = 1; $i <= 101; $i++) {
+            $this->givenEnded($i, $this->anna, $this->bob, DuelStatus::Declined, null, sprintf('2026-%02d-%02d', 1 + intdiv($i, 28), 1 + $i % 28));
+        }
+
+        $views = $this->showDuels()->list($this->anna->id);
+
+        self::assertCount(100, $views);
+        self::assertNotContains(TestData::uuid(1), array_map(static fn (DuelView $view): string => $view->id, $views));
+    }
+
+    public function test_NFR_05_only_the_two_of_a_duel_can_look_at_it(): void
+    {
+        $carol = $this->givenNamed('Carol');
+        $this->givenFriends($carol, $this->anna);
+        $this->givenRunning(1, $this->anna, $this->bob);
+
+        self::assertSame([], $this->showDuels()->list($carol->id));
+        foreach ([TestData::uuid(1), self::unknownId()] as $id) {
+            try {
+                $this->showDuels()->show($carol->id, $id);
+                self::fail('Should have been refused.');
+            } catch (DuelNotFound) {
+                $this->addToAssertionCount(1);
+            }
+        }
+    }
+
+    public function test_FR_ACC_06_a_user_without_a_plan_sees_the_proposals_they_got(): void
+    {
+        $carol = $this->givenNamed('Carol');
+        $this->givenFriends($carol, $this->anna);
+        $this->givenProposal(1, $this->anna, $carol);
+
+        self::assertSame(['proposed'], array_map(static fn (DuelView $view): string => $view->status->value, $this->showDuels()->list($carol->id)));
+    }
+
+    public function test_FR_ACC_08_an_account_that_was_deleted_in_the_meantime_sees_nothing(): void
+    {
+        $this->givenRunning(1, $this->anna, $this->bob);
+        $this->users->delete($this->anna->id);
+
+        foreach ([fn () => $this->showDuels()->list($this->anna->id), fn () => $this->showDuels()->show($this->anna->id, TestData::uuid(1))] as $look) {
+            try {
+                $look();
+                self::fail('Should have been refused.');
+            } catch (AccountNotFound) {
+                $this->addToAssertionCount(1);
+            }
+        }
+        self::assertSame([], $this->users->lockLog);
+    }
+}

@@ -8,6 +8,7 @@ use Psr\Clock\ClockInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Competition\EndDuels;
 use SmokeDetector\Application\TransactionRunner;
 
 /**
@@ -25,11 +26,13 @@ final readonly class Blocking
         private UserRepository $users,
         private FriendLinks $links,
         private Blocks $blocks,
+        private EndDuels $endDuels,
     ) {
     }
 
     /**
-     * Blocking somebody who is blocked already changes nothing.
+     * Blocking somebody who is blocked already changes nothing. Like the end of a friendship, a
+     * block deletes the proposal between the two and cancels their running duel (HLD §4.8 "Friends").
      *
      * @throws FriendNotFound  No friendship and no open request between the two, or the other
      *                         account does not exist (any more). Also when only the other one has
@@ -53,6 +56,7 @@ final readonly class Blocking
             }
             $this->links->delete($userId, $other);
             $this->blocks->add(new Block($userId, $other, $now));
+            $this->endDuels->between($userId, $other);
         });
     }
 
