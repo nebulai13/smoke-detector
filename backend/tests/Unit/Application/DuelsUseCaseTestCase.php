@@ -52,6 +52,7 @@ abstract class DuelsUseCaseTestCase extends FriendsUseCaseTestCase
             $this->ids,
             $this->logger,
             $this->awardBadges(),
+            $this->publishToFeed(),
         );
     }
 

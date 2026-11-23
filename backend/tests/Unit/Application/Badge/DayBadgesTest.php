@@ -42,7 +42,7 @@ final class DayBadgesTest extends LoggingUseCaseTestCase
 
     protected function awardBadges(): AwardBadges
     {
-        return new AwardBadges($this->counted, $this->duels);
+        return new AwardBadges($this->counted, $this->duels, $this->publishToFeed());
     }
 
     public function test_FR_GAME_08_the_first_check_in_is_a_badge_once_its_day_is_final_and_not_before(): void

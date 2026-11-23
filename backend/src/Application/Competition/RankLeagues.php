@@ -15,6 +15,7 @@ use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\Friends\FriendLinks;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\TransactionRunner;
@@ -64,8 +65,9 @@ final readonly class RankLeagues
         IdGenerator $ids,
         private LoggerInterface $logger,
         private AwardBadges $badges,
+        PublishToFeed $feed,
     ) {
-        $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
+        $this->rewards = new CompetitionRewards($progress, $ledger, $ids, $feed);
     }
 
     public function execute(): LeagueReport
