@@ -115,6 +115,35 @@ final class UserDataTablesTest extends IntegrationTestCase
         'friendships.accepted_at' => 'friends.*.acceptedAt',
         'blocks.blocked_id' => 'blockedUsers.*.userId',
         'blocks.created_at' => 'blockedUsers.*.blockedAt',
+        'duels.id' => 'duels.*.id',
+        // Whichever of the two the user is not. Which one the user is: duels.*.role.
+        'duels.challenger_id' => 'duels.*.opponentId',
+        'duels.opponent_id' => 'duels.*.opponentId',
+        'duels.period_days' => 'duels.*.periodDays',
+        'duels.status' => 'duels.*.status',
+        'duels.created_at' => 'duels.*.createdAt',
+        'duels.expires_at' => 'duels.*.expiresAt',
+        'duels.answered_at' => 'duels.*.answeredAt',
+        // The user's own first day and the user's own side of the result: the columns of the
+        // challenger for a duel the user proposed, the columns of the opponent otherwise. The other
+        // side is the other user's data and in nobody's export but theirs.
+        'duels.challenger_start' => 'duels.*.startsOn',
+        'duels.opponent_start' => 'duels.*.startsOn',
+        'duels.decided_at' => 'duels.*.decidedAt',
+        'duels.winner' => 'duels.*.outcome',
+        'duels.challenger_b0_tenths' => 'duels.*.result.baseline',
+        'duels.challenger_actual_tenths' => 'duels.*.result.actual',
+        'duels.challenger_expected_tenths' => 'duels.*.result.expected',
+        'duels.challenger_smoke_free_days' => 'duels.*.result.smokeFreeDays',
+        'duels.challenger_check_ins' => 'duels.*.result.checkIns',
+        'duels.challenger_xp' => 'duels.*.result.xp',
+        'duels.opponent_b0_tenths' => 'duels.*.result.baseline',
+        'duels.opponent_actual_tenths' => 'duels.*.result.actual',
+        'duels.opponent_expected_tenths' => 'duels.*.result.expected',
+        'duels.opponent_smoke_free_days' => 'duels.*.result.smokeFreeDays',
+        'duels.opponent_check_ins' => 'duels.*.result.checkIns',
+        'duels.opponent_xp' => 'duels.*.result.xp',
+        'duels.rules_version' => 'duels.*.rulesVersion',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -266,6 +295,22 @@ final class UserDataTablesTest extends IntegrationTestCase
                 'blockedUsers' => [
                     ['userId' => TestData::uuid(13), 'blockedAt' => '2026-11-16T09:00:00Z'],
                 ],
+                // The user's own side of each duel, oldest first. Of the opponent: the id. Not that
+                // user 11 started a day later, smoked 66.5 against a baseline of 9.5 and got 20 XP.
+                'duels' => [
+                    [
+                        'id' => TestData::uuid(1020), 'status' => 'completed', 'periodDays' => 7, 'role' => 'challenger', 'opponentId' => TestData::uuid(11),
+                        'createdAt' => '2026-10-20T08:00:00Z', 'expiresAt' => '2026-10-23T08:00:00Z', 'answeredAt' => '2026-10-20T09:00:00Z',
+                        'startsOn' => '2026-10-21', 'decidedAt' => '2026-10-30T23:00:40Z', 'outcome' => 'won',
+                        'result' => ['baseline' => 12.0, 'actual' => 63.0, 'expected' => 84.0, 'smokeFreeDays' => 1, 'checkIns' => 7, 'xp' => 100],
+                        'rulesVersion' => 'v1',
+                    ],
+                    [
+                        'id' => TestData::uuid(1021), 'status' => 'declined', 'periodDays' => 30, 'role' => 'opponent', 'opponentId' => TestData::uuid(12),
+                        'createdAt' => '2026-11-14T08:00:00Z', 'expiresAt' => '2026-11-17T08:00:00Z', 'answeredAt' => '2026-11-14T10:00:00Z',
+                        'startsOn' => null, 'decidedAt' => null, 'outcome' => null, 'result' => null, 'rulesVersion' => null,
+                    ],
+                ],
             ],
             $export,
         );
@@ -285,7 +330,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         self::assertSame(
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
-                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [],
+                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [],
             ],
             $export,
         );
@@ -369,6 +414,66 @@ final class UserDataTablesTest extends IntegrationTestCase
         );
 
         self::assertSame(['users' => 1], DatabaseContents::rowsMentioning($this->sql(), [TestData::uuid(1)]));
+    }
+
+    public function test_FR_ACC_08_of_a_duel_the_side_of_the_erased_user_goes_and_the_other_side_stays(): void
+    {
+        // Next to the completed and the declined duel of the fixture: a proposal of user 1 to user 11,
+        // and a running duel user 12 proposed.
+        $this->sql()->execute(
+            'INSERT INTO duels (id, challenger_id, opponent_id, period_days, status, created_at, expires_at) VALUES (?, ?, ?, 7, \'proposed\', \'2026-11-17 08:00:00\', \'2026-11-20 08:00:00\')',
+            [TestData::uuid(1030), TestData::uuid(1), TestData::uuid(11)],
+        );
+        $this->sql()->execute(
+            'INSERT INTO duels (id, challenger_id, opponent_id, period_days, status, created_at, expires_at, answered_at, challenger_start, opponent_start) '
+            . "VALUES (?, ?, ?, 30, 'active', '2026-11-10 08:00:00', '2026-11-13 08:00:00', '2026-11-10 09:00:00', '2026-11-11', '2026-11-12')",
+            [TestData::uuid(1031), TestData::uuid(12), TestData::uuid(1)],
+        );
+        $duels = fn (): array => $this->sql()->rows(
+            'SELECT id, status, challenger_id, opponent_id, challenger_start, opponent_start, winner, challenger_b0_tenths, challenger_xp, opponent_b0_tenths, opponent_xp '
+            . 'FROM duels WHERE id IN (?, ?, ?, ?) ORDER BY id',
+            [TestData::uuid(1020), TestData::uuid(1021), TestData::uuid(1030), TestData::uuid(1031)],
+        );
+        $othersBefore = $this->sql()->rows('SELECT * FROM duels WHERE id NOT IN (?, ?, ?, ?) ORDER BY id', [TestData::uuid(1020), TestData::uuid(1021), TestData::uuid(1030), TestData::uuid(1031)]);
+
+        $this->service(TransactionRunner::class)->run(
+            fn () => $this->service(UserDataRegistry::class)->erase(TestData::userId(1)),
+        );
+
+        self::assertSame(
+            [
+                // Decided: the other user keeps the duel and the own side. Who won stays, the scores of the erased side do not.
+                [
+                    'id' => TestData::uuid(1020), 'status' => 'completed', 'challenger_id' => null, 'opponent_id' => TestData::uuid(11),
+                    'challenger_start' => null, 'opponent_start' => '2026-10-22', 'winner' => 'challenger',
+                    'challenger_b0_tenths' => null, 'challenger_xp' => null, 'opponent_b0_tenths' => 95, 'opponent_xp' => 20,
+                ],
+                [
+                    'id' => TestData::uuid(1021), 'status' => 'declined', 'challenger_id' => TestData::uuid(12), 'opponent_id' => null,
+                    'challenger_start' => null, 'opponent_start' => null, 'winner' => null,
+                    'challenger_b0_tenths' => null, 'challenger_xp' => null, 'opponent_b0_tenths' => null, 'opponent_xp' => null,
+                ],
+                // The proposal is gone. The running duel is a forfeit: no winner, no XP (FR-ACC-08).
+                [
+                    'id' => TestData::uuid(1031), 'status' => 'forfeited', 'challenger_id' => TestData::uuid(12), 'opponent_id' => null,
+                    'challenger_start' => '2026-11-11', 'opponent_start' => null, 'winner' => null,
+                    'challenger_b0_tenths' => null, 'challenger_xp' => null, 'opponent_b0_tenths' => null, 'opponent_xp' => null,
+                ],
+            ],
+            $duels(),
+        );
+        // No value of the erased side is left in any column of the decided duel.
+        $decided = $this->sql()->row('SELECT * FROM duels WHERE id = ?', [TestData::uuid(1020)]);
+        self::assertIsArray($decided);
+        self::assertSame([], array_filter($decided, static fn (mixed $value, string $column): bool => str_starts_with($column, 'challenger_') && $value !== null, ARRAY_FILTER_USE_BOTH));
+        self::assertSame($othersBefore, $this->sql()->rows('SELECT * FROM duels WHERE id NOT IN (?, ?, ?, ?) ORDER BY id', [TestData::uuid(1020), TestData::uuid(1021), TestData::uuid(1030), TestData::uuid(1031)]));
+        self::assertSame([], $this->sql()->rows('SELECT * FROM xp_events WHERE source = ?', ['duel']));
+
+        // When the other user goes too, nobody is left to whom the duel belongs.
+        $this->service(TransactionRunner::class)->run(
+            fn () => $this->service(UserDataRegistry::class)->erase(TestData::userId(11)),
+        );
+        self::assertSame([TestData::uuid(1021), TestData::uuid(1031)], array_column($duels(), 'id'));
     }
 
     public function test_FR_ACC_08_erasing_one_user_leaves_every_row_of_another_as_it_was(): void
