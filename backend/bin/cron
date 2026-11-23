@@ -8,7 +8,8 @@ declare(strict_types=1);
 // - the first line names PHP 8.4 itself (plain "php" is 8.3 on that server),
 // - the file is executable,
 // - every path is derived from where this file lies (cron starts it in another directory),
-// - it takes no arguments: it always runs `cron:run` (mail:send, then housekeeping:purge),
+// - it takes no arguments: it always runs `cron:run` (mail:send, then days:finalize, then
+//   housekeeping:purge),
 // - it prints nothing: the one line of each run goes to the application log, with a UTC time.
 // The exit code is 0 when every step worked. Everything it does lives in SmokeDetector\Console.
 
