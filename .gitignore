@@ -15,6 +15,10 @@ backend/vendor/
 backend/.phpunit.cache/
 backend/coverage/
 backend/var/
+# Web client
+web/node_modules/
+web/dist/
+web/coverage/
 # Python
 __pycache__/
 # Local session files (conversation exports, resume notes): never commit
