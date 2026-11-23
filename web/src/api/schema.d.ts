@@ -688,6 +688,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/leagues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The league of the user and their friends for one period (SRS FR-COMP-06, FR-COMP-08)
+         * @description The user and their friends of today, ranked by reduction over a calendar period: more reduction, then more smoke-free days, then more check-ins; equal on all three share a rank. Somebody without a day that counts is listed last, without a rank.
+         *
+         *     While the user's rank for the period is not stored yet (`final` is `false`), friends are shown with their position and without a percentage: a percentage that moves every day could be calculated back to daily counts. The user's own percentage is always there. Once `final` is `true`, every friend with a final result has a percentage.
+         */
+        get: operations["showLeague"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/leagues/xp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The user and their friends by the XP of this week (SRS FR-COMP-07)
+         * @description The XP that became final in the current ISO week of the user, for the user and every friend. The XP of a day counts when the day is final, two days after it. There is no reward for this ranking.
+         */
+        get: operations["showXpLeague"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -970,6 +1012,8 @@ export interface components {
             blockedUsers: components["schemas"]["ExportedBlock"][];
             /** @description The duels of the user, oldest first. */
             duels: components["schemas"]["ExportedDuel"][];
+            /** @description The user's final results of the league periods, oldest first. */
+            leagueResults: components["schemas"]["ExportedLeagueResult"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1499,6 +1543,77 @@ export interface components {
             } | null;
             rulesVersion: string | null;
         };
+        /** @enum {string} */
+        LeaguePeriodType: "week" | "month" | "quarter" | "half_year";
+        League: {
+            type: components["schemas"]["LeaguePeriodType"];
+            /** @description The key of the period, e.g. `2026-W47`. */
+            period: string;
+            /** Format: date */
+            startsOn: string;
+            /** Format: date */
+            endsOn: string;
+            /** @description `true` once the user's own rank for the period is stored. */
+            final: boolean;
+            /** @description The user and their friends, in ranking order. Those without a rank come last, by name. */
+            entries: components["schemas"]["LeagueEntry"][];
+            /** @description The user's stored rank and reward. `null` until `final`. */
+            award: components["schemas"]["LeagueAward"] | null;
+        };
+        LeagueEntry: {
+            /** @description `null` for somebody without a day that counts. */
+            rank: number | null;
+            user: components["schemas"]["PublicUser"];
+            /** @description `true` for the user's own entry. */
+            you: boolean;
+            /** @description In whole percent. For a friend only once the league is `final` and the friend has a final result; `null` before, and for somebody without a rank. */
+            reductionPercent: number | null;
+            smokeFreeDays: number | null;
+            checkIns: number | null;
+            countedDays: number | null;
+        };
+        /** @description As it was decided, among the friends of that moment. It is not recalculated. */
+        LeagueAward: {
+            rank: number;
+            /** @description The user and the friends who had a result. */
+            participants: number;
+            /** @description Rank 1 to 3 among at least three participants earns XP. */
+            xp: number;
+        };
+        XpLeague: {
+            /** @description The key of the user's current ISO week, e.g. `2026-W47`. */
+            period: string;
+            /** Format: date */
+            startsOn: string;
+            /** Format: date */
+            endsOn: string;
+            entries: {
+                rank: number;
+                user: components["schemas"]["PublicUser"];
+                you: boolean;
+                xp: number;
+            }[];
+        };
+        /** @description The user's own final result of a period, as it was scored, and the rank once it is decided. */
+        ExportedLeagueResult: {
+            type: components["schemas"]["LeaguePeriodType"];
+            period: string;
+            /** @description The frozen baseline of the period, sessions per day. */
+            baseline: number;
+            actual: number;
+            expected: number;
+            smokeFreeDays: number;
+            checkIns: number;
+            countedDays: number;
+            rulesVersion: string;
+            /** Format: date-time */
+            scoredAt: string;
+            rank: number | null;
+            participants: number | null;
+            xp: number | null;
+            /** Format: date-time */
+            rankedAt: string | null;
+        };
         /** @description RFC 9457 problem details */
         Problem: {
             /**
@@ -1796,6 +1911,15 @@ export interface components {
         };
         /** @description `plan_required`: the user has not done the onboarding. `duel_exists`: there is an open duel with this friend already, whoever proposed it. `duel_limit_reached`: the user has 5 open duels already (SRS FR-COMP-05). */
         DuelRefused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `league_not_found`: the period has not begun for the user. */
+        LeagueNotFound: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2866,6 +2990,61 @@ export interface operations {
             409: components["responses"]["DuelNotOpen"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showLeague: {
+        parameters: {
+            query: {
+                /** @description The kind of period. */
+                type: components["schemas"]["LeaguePeriodType"];
+                /** @description `current`, or the key of a period that has begun: `2026-W47` (ISO week), `2026-11` (month), `2026-Q4` (quarter), `2026-H2` (half-year). */
+                period: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The league. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["League"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["LeagueNotFound"];
+            409: components["responses"]["PlanRequired"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showXpLeague: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ranking, most XP first. The same XP shares a rank. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["XpLeague"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["PlanRequired"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
