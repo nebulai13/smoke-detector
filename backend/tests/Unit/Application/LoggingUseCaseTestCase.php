@@ -21,6 +21,8 @@ use SmokeDetector\Application\Day\ShowDays;
 use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Logging\SyncLogs;
 use SmokeDetector\Application\Plan\ProductType;
+use SmokeDetector\Application\Recovery\AwardMilestones;
+use SmokeDetector\Application\Recovery\ReachedMilestone;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\Time\LocalDays;
 use SmokeDetector\Application\Time\ZoneChange;
@@ -33,7 +35,9 @@ use SmokeDetector\Tests\Support\InMemory\InMemoryBadgeRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDayRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
 use SmokeDetector\Tests\Support\InMemory\InMemoryLeagueResults;
+use SmokeDetector\Tests\Support\InMemory\InMemoryMilestoneRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemorySmokeLogs;
+use SmokeDetector\Tests\Support\InMemory\InMemoryUserSettings;
 use SmokeDetector\Tests\Support\InMemory\InMemoryXpLedger;
 use SmokeDetector\Tests\Support\TestData;
 
@@ -52,6 +56,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
     protected InMemoryXpLedger $xpLedger;
     protected InMemoryLeagueResults $leagueResults;
     protected InMemoryBadgeRecords $badgeRecords;
+    protected InMemoryMilestoneRecords $milestoneRecords;
+    protected InMemoryUserSettings $userSettings;
     /** Here and not with the duel tests: the badges of the duels are awarded from what is stored of them. */
     protected InMemoryDuels $duels;
 
@@ -63,6 +69,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
         $this->xpLedger = new InMemoryXpLedger($this->transactions);
         $this->leagueResults = new InMemoryLeagueResults($this->transactions);
         $this->badgeRecords = new InMemoryBadgeRecords($this->transactions);
+        $this->milestoneRecords = new InMemoryMilestoneRecords($this->transactions);
+        $this->userSettings = new InMemoryUserSettings($this->transactions);
         $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 
@@ -102,6 +110,18 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
             $this->logger,
             new LeagueScores($this->leagueResults, $this->dayRecords),
             $this->awardBadges(),
+            new AwardMilestones($this->milestoneRecords, $this->smokeLogs, $this->dayRecords),
+        );
+    }
+
+    /**
+     * @return list<array{string, string}> Key and time of every health milestone that is stored for the user, in the order of the milestones.
+     */
+    protected function milestonesOf(User $user): array
+    {
+        return array_map(
+            static fn (ReachedMilestone $reached): array => [$reached->milestone->value, $reached->reachedAt->format('Y-m-d H:i:s')],
+            $this->milestoneRecords->ofUser($user->id),
         );
     }
 

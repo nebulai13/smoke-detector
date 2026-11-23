@@ -9,7 +9,11 @@ use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Badge\AwardedBadge;
 use SmokeDetector\Application\Friends\FriendNotFound;
 use SmokeDetector\Application\Friends\FriendView;
+use SmokeDetector\Application\Recovery\ReachedMilestone;
+use SmokeDetector\Application\Settings\Settings;
 use SmokeDetector\Domain\Badge\Badge;
+use SmokeDetector\Domain\Recovery\HealthMilestone;
+use SmokeDetector\Domain\Recovery\MilestoneSharing;
 use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\FriendsUseCaseTestCase;
 
@@ -124,6 +128,45 @@ final class FriendListTest extends FriendsUseCaseTestCase
         // The view of a friend holds the badges and no time. Carol has none; Anna's own are not Bob's.
         self::assertSame(['Bob', 'Carol'], array_map(static fn (FriendView $friend): string => $friend->user->displayName->value, $overview->friends));
         self::assertSame([[Badge::FirstCheckIn, Badge::LimitHalved], []], array_map(static fn (FriendView $friend): array => $friend->badges, $overview->friends));
+    }
+
+    public function test_FR_FRND_03_a_friend_sees_the_health_milestones_the_friends_own_setting_allows(): void
+    {
+        $bob = $this->givenNamed('Bob');
+        $carol = $this->givenNamed('Carol');
+        $dave = $this->givenNamed('Dave');
+        $erin = $this->givenNamed('Erin');
+        foreach ([$bob, $carol, $dave, $erin] as $friend) {
+            $this->givenFriends($this->anna, $friend);
+        }
+        // All four have reached the same three, stored in another order than the milestones have.
+        foreach ([$bob, $carol, $dave, $this->anna] as $user) {
+            foreach ([HealthMilestone::Circulation, HealthMilestone::HeartRate, HealthMilestone::CarbonMonoxide] as $milestone) {
+                $this->milestoneRecords->add(new ReachedMilestone($user->id, $milestone, TestData::time('2026-11-15 08:00:00')));
+            }
+        }
+        // Bob never chose. Carol shows everything, Dave nothing. Erin has reached nothing.
+        $this->userSettings->save($carol->id, new Settings(MilestoneSharing::All));
+        $this->userSettings->save($dave->id, new Settings(MilestoneSharing::Private));
+        $this->userSettings->save($erin->id, new Settings(MilestoneSharing::All));
+        // Anna's own setting decides nothing about what she sees of others.
+        $this->userSettings->save($this->anna->id, new Settings(MilestoneSharing::Private));
+
+        $overview = $this->friendList()->show($this->anna->id);
+
+        self::assertSame(
+            [
+                'Bob' => [HealthMilestone::Circulation],
+                'Carol' => [HealthMilestone::HeartRate, HealthMilestone::CarbonMonoxide, HealthMilestone::Circulation],
+                'Dave' => [],
+                'Erin' => [],
+            ],
+            array_column(
+                array_map(static fn (FriendView $friend): array => ['name' => $friend->user->displayName->value, 'milestones' => $friend->healthMilestones], $overview->friends),
+                'milestones',
+                'name',
+            ),
+        );
     }
 
     public function test_FR_FRND_01_somebody_with_an_open_request_shows_no_badges(): void

@@ -101,6 +101,16 @@ final readonly class PdoSmokeLogs implements SmokeLogs
         return (new Row(['last' => $last]))->nullableTime('last');
     }
 
+    public function lastSessionUntil(UserId $userId, LocalDate $day): ?DateTimeImmutable
+    {
+        $last = $this->sql->value(
+            'SELECT MAX(smoked_at) FROM smoke_logs WHERE user_id = ? AND deleted_at IS NULL AND local_date <= ?',
+            [$userId->value, $day->value],
+        );
+
+        return (new Row(['last' => $last]))->nullableTime('last');
+    }
+
     public function productsOf(UserId $userId): array
     {
         $used = $this->sql->column('SELECT DISTINCT product_type FROM smoke_logs WHERE user_id = ? AND deleted_at IS NULL', [$userId->value]);

@@ -124,6 +124,7 @@ final readonly class UserDataFixture
         $this->insert('xp_events', [$id(11), $user, '2026-11-10', 'streak_milestone', 50, 7, '2026-11-12 23:00:20']);
         $this->fillLeagueResults($user);
         $this->fillBadges($user);
+        $this->fillMilestonesAndSettings($user);
     }
 
     /**
@@ -142,6 +143,17 @@ final readonly class UserDataFixture
     {
         $this->insert('user_badges', [$user, 'check_in_streak_7', '2026-11-12 23:00:20']);
         $this->insert('user_badges', [$user, 'first_check_in', '2026-11-04 23:00:20']);
+    }
+
+    /**
+     * The health milestones of step 6, stored in another order than the milestone cases have, and a
+     * setting other than the default.
+     */
+    private function fillMilestonesAndSettings(string $user): void
+    {
+        $this->insert('user_milestones', [$user, 'circulation', '2026-11-15 08:00:00']);
+        $this->insert('user_milestones', [$user, 'heart_rate', '2026-11-01 08:20:00']);
+        $this->insert('user_settings', [$user, 'all']);
     }
 
     /**

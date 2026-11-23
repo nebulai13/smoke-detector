@@ -15,7 +15,11 @@ use SmokeDetector\Application\Friends\Friendship;
 use SmokeDetector\Application\Friends\InviteCode;
 use SmokeDetector\Application\Friends\InviteNotFound;
 use SmokeDetector\Application\Friends\OwnInvite;
+use SmokeDetector\Application\Recovery\ReachedMilestone;
+use SmokeDetector\Application\Settings\Settings;
 use SmokeDetector\Domain\Badge\Badge;
+use SmokeDetector\Domain\Recovery\HealthMilestone;
+use SmokeDetector\Domain\Recovery\MilestoneSharing;
 use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\FriendsUseCaseTestCase;
 
@@ -278,6 +282,26 @@ final class FriendRequestsTest extends FriendsUseCaseTestCase
 
         // The same view as in the list of friends (FriendListTest).
         self::assertSame([Badge::FirstCheckIn, Badge::CheckInStreak7], $friend->badges);
+    }
+
+    public function test_FR_FRND_03_a_new_friend_shows_the_health_milestones_the_new_friends_setting_allows(): void
+    {
+        $this->givenRequest($this->bob, $this->anna);
+        foreach ([HealthMilestone::Circulation, HealthMilestone::HeartRate] as $milestone) {
+            $this->milestoneRecords->add(new ReachedMilestone($this->bob->id, $milestone, TestData::time('2026-11-15 08:00:00')));
+        }
+
+        // Bob never chose: the milestones from two weeks on. The same view as in the list of friends.
+        self::assertSame([HealthMilestone::Circulation], $this->friendRequests()->accept($this->anna->id, $this->bob->id)->healthMilestones);
+    }
+
+    public function test_FR_FRND_03_a_new_friend_who_keeps_the_milestones_private_shows_none(): void
+    {
+        $this->givenRequest($this->bob, $this->anna);
+        $this->milestoneRecords->add(new ReachedMilestone($this->bob->id, HealthMilestone::Circulation, TestData::time('2026-11-15 08:00:00')));
+        $this->userSettings->save($this->bob->id, new Settings(MilestoneSharing::Private));
+
+        self::assertSame([], $this->friendRequests()->accept($this->anna->id, $this->bob->id)->healthMilestones);
     }
 
     public function test_FR_FRND_03_a_new_friend_who_has_not_done_the_onboarding_has_nothing_to_show(): void

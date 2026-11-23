@@ -31,6 +31,7 @@ final class ExportTest extends HttpTestCase
             [
                 'formatVersion', 'exportedAt', 'profile', 'consents', 'plan', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days',
                 'progress', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults', 'badges',
+                'healthMilestones', 'settings',
             ],
             array_keys($export),
         );
@@ -58,6 +59,7 @@ final class ExportTest extends HttpTestCase
         $lists = [
             'consents' => 3, 'planHistory' => 2, 'baselineHistory' => 3, 'timeZoneHistory' => 2, 'smokeLogs' => 2, 'days' => 2, 'xpEvents' => 2,
             'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2, 'friends' => 0, 'blockedUsers' => 0, 'duels' => 0, 'leagueResults' => 2, 'badges' => 2,
+            'healthMilestones' => 2,
         ];
         foreach ($lists as $member => $entries) {
             self::assertIsArray($export[$member]);
@@ -172,12 +174,14 @@ final class ExportTest extends HttpTestCase
 
         $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
 
-        $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults', 'badges'];
+        $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults', 'badges', 'healthMilestones'];
         // No plan and no progress before the onboarding, and no invite code before the first look at it.
-        self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists], array_keys($export));
+        // The settings are always there: who never chose has the defaults.
+        self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists, 'settings'], array_keys($export));
         foreach ($lists as $member) {
             self::assertSame([], $export[$member], $member);
         }
+        self::assertSame(['milestoneSharing' => 'from_two_weeks'], $export['settings']);
     }
 
     public function test_FR_ACC_07_the_export_holds_the_data_of_the_user_of_the_token_and_of_nobody_else(): void

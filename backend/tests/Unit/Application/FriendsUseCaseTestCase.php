@@ -53,12 +53,12 @@ abstract class FriendsUseCaseTestCase extends LoggingUseCaseTestCase
 
     protected function friendRequests(): FriendRequests
     {
-        return new FriendRequests($this->transactions, $this->clock, $this->users, $this->inviteCodes, $this->friendLinks, $this->blocks, $this->progressRecords, $this->badgeRecords);
+        return new FriendRequests($this->transactions, $this->clock, $this->users, $this->inviteCodes, $this->friendLinks, $this->blocks, $this->progressRecords, $this->badgeRecords, $this->milestoneRecords, $this->userSettings);
     }
 
     protected function friendList(): FriendList
     {
-        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords, $this->endDuels(), $this->badgeRecords);
+        return new FriendList($this->transactions, $this->users, $this->friendLinks, $this->progressRecords, $this->endDuels(), $this->badgeRecords, $this->milestoneRecords, $this->userSettings);
     }
 
     protected function blocking(): Blocking

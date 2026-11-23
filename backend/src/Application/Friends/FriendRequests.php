@@ -11,6 +11,8 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Badge\BadgeRecords;
 use SmokeDetector\Application\Day\ProgressRecords;
+use SmokeDetector\Application\Recovery\MilestoneRecords;
+use SmokeDetector\Application\Settings\UserSettings;
 use SmokeDetector\Application\TransactionRunner;
 
 /**
@@ -34,6 +36,8 @@ final readonly class FriendRequests
         private Blocks $blocks,
         private ProgressRecords $progress,
         private BadgeRecords $badges,
+        private MilestoneRecords $milestones,
+        private UserSettings $settings,
     ) {
     }
 
@@ -108,10 +112,19 @@ final readonly class FriendRequests
             $this->assertRoom($userId);
             $this->links->save($request->acceptedAt($now));
 
-            // The badges the new friend holds, as GET /friends shows them (FriendList, FR-FRND-03).
+            // The badges and health milestones of the new friend, as GET /friends shows them
+            // (FriendList, FR-FRND-03): the milestones as the new friend's own setting allows.
             $badges = $this->badges->heldBy([$requester]);
+            $milestones = $this->milestones->reachedBy([$requester]);
 
-            return FriendView::of($account, $now, $this->progress->find($requester), $badges[$requester->value] ?? []);
+            return FriendView::of(
+                $account,
+                $now,
+                $this->progress->find($requester),
+                $badges[$requester->value] ?? [],
+                $milestones[$requester->value] ?? [],
+                $this->settings->find($requester)->milestoneSharing,
+            );
         });
     }
 

@@ -75,6 +75,18 @@ final class InMemorySmokeLogs implements SmokeLogs, InMemoryState
         return $last;
     }
 
+    public function lastSessionUntil(UserId $userId, LocalDate $day): ?DateTimeImmutable
+    {
+        $last = null;
+        foreach ($this->logs as $log) {
+            if ($log->userId->equals($userId) && $log->deletedAt === null && !$log->localDate->isAfter($day) && ($last === null || $log->smokedAt > $last)) {
+                $last = $log->smokedAt;
+            }
+        }
+
+        return $last;
+    }
+
     public function productsOf(UserId $userId): array
     {
         $used = [];

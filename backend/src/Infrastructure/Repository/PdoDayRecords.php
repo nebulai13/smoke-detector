@@ -69,6 +69,17 @@ final readonly class PdoDayRecords implements DayRecords
         );
     }
 
+    public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate
+    {
+        $columns = $this->sql->row(
+            'SELECT local_date FROM day_summaries WHERE user_id = ? AND local_date <= ? AND checked_in_at IS NULL '
+            . 'ORDER BY local_date DESC LIMIT 1',
+            [$userId->value, $day->value],
+        );
+
+        return $columns === null ? null : LocalDate::fromString((new Row($columns))->string('local_date'));
+    }
+
     /**
      * @param array<string, mixed> $columns
      */

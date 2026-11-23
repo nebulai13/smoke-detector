@@ -758,6 +758,58 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /me/settings:
+    get:
+      operationId: getMySettings
+      tags: [Me]
+      summary: The settings of the user
+      responses:
+        "200":
+          description: The settings. Somebody who never chose has the defaults.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+    put:
+      operationId: saveMySettings
+      tags: [Me]
+      summary: Change the settings
+      description: >
+        Counts at once: friends see more or less of the health milestones from the next request on
+        (SRS FR-GAME-09).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Settings"
+      responses:
+        "200":
+          description: The settings as they are now.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /me/badges:
     get:
       operationId: listBadges
@@ -1968,6 +2020,8 @@ components:
         - duels
         - leagueResults
         - badges
+        - healthMilestones
+        - settings
         - sessions
         - mailLinks
         - queuedMails
@@ -2073,6 +2127,15 @@ components:
           description: The badges of the user, in the order of `BadgeKey`.
           items:
             $ref: "#/components/schemas/Badge"
+        healthMilestones:
+          type: array
+          description: >
+            The health milestones the user has reached at some time, as stored for what friends may
+            see, in the order of `HealthMilestoneKey`.
+          items:
+            $ref: "#/components/schemas/ReachedHealthMilestone"
+        settings:
+          $ref: "#/components/schemas/Settings"
     ExportedProfile:
       type: object
       additionalProperties: false
@@ -2652,7 +2715,7 @@ components:
     Friend:
       type: object
       additionalProperties: false
-      required: [user, since, level, xp, checkInStreak, underLimitStreak, badges]
+      required: [user, since, level, xp, checkInStreak, underLimitStreak, badges, healthMilestones]
       description: >
         A friend and the aggregates friends see of each other (SRS FR-FRND-03), as stored when the
         friend's last day became final. All zero for a friend who has not done the onboarding.
@@ -2681,6 +2744,40 @@ components:
             were earned: the day of a first smoke-free day would be a day with a known count.
           items:
             $ref: "#/components/schemas/BadgeKey"
+        healthMilestones:
+          type: array
+          maxItems: 8
+          description: >
+            The health milestones the friend has reached at some time and lets friends see (the
+            friend's own setting, `MilestoneSharing`), in the order of `HealthMilestoneKey`. Worked out
+            from final days, kept for good and shown without a time: a session of today, or a relapse,
+            cannot be read from it.
+          items:
+            $ref: "#/components/schemas/HealthMilestoneKey"
+    MilestoneSharing:
+      type: string
+      description: >
+        What friends see of the user's health milestones. `from_two_weeks` (the default): the milestones
+        from two weeks on. `private`: none. `all`: also the two short ones (20 minutes, 12 hours).
+      enum: [from_two_weeks, private, all]
+    Settings:
+      type: object
+      additionalProperties: false
+      required: [milestoneSharing]
+      properties:
+        milestoneSharing:
+          $ref: "#/components/schemas/MilestoneSharing"
+    ReachedHealthMilestone:
+      type: object
+      additionalProperties: false
+      required: [key, reachedAt]
+      properties:
+        key:
+          $ref: "#/components/schemas/HealthMilestoneKey"
+        reachedAt:
+          type: string
+          format: date-time
+          description: The moment the milestone was reached for the first time.
     BadgeKey:
       type: string
       description: >
