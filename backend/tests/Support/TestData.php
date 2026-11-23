@@ -17,6 +17,11 @@ use SmokeDetector\Application\Auth\DeviceLabel;
 use SmokeDetector\Application\Auth\OneTimeToken;
 use SmokeDetector\Application\Auth\RefreshToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
+use SmokeDetector\Application\Competition\Duel;
+use SmokeDetector\Application\Competition\DuelDecision;
+use SmokeDetector\Application\Competition\DuelStatus;
+use SmokeDetector\Application\Competition\DuelWinner;
+use SmokeDetector\Application\Competition\SideResult;
 use SmokeDetector\Application\Day\DayRecord;
 use SmokeDetector\Application\Day\DayResult;
 use SmokeDetector\Application\Day\ProgressRecord;
@@ -345,5 +350,52 @@ final class TestData
     public static function block(int $blocker, int $blocked, string $blockedAt = '2026-11-16 09:00:00'): Block
     {
         return new Block(self::userId($blocker), self::userId($blocked), self::time($blockedAt));
+    }
+
+    /**
+     * The duel with the id uuid($number): user $challenger has challenged user $opponent. A user
+     * number of 0 stands for an account that was deleted. Without anything else it is a proposal
+     * of 7 days, made at noon of the 17th and open for 72 hours.
+     */
+    public static function duel(
+        int $number,
+        int $challenger = 1,
+        int $opponent = 2,
+        int $periodDays = 7,
+        DuelStatus $status = DuelStatus::Proposed,
+        string $createdAt = '2026-11-17 12:00:00',
+        ?string $answeredAt = null,
+        ?string $challengerStart = null,
+        ?string $opponentStart = null,
+        ?DuelDecision $decision = null,
+        ?string $expiresAt = null,
+    ): Duel {
+        return new Duel(
+            self::uuid($number),
+            $challenger === 0 ? null : self::userId($challenger),
+            $opponent === 0 ? null : self::userId($opponent),
+            $periodDays,
+            $status,
+            self::time($createdAt),
+            $expiresAt === null ? self::time($createdAt)->modify('+72 hours') : self::time($expiresAt),
+            $answeredAt === null ? null : self::time($answeredAt),
+            $challengerStart === null ? null : self::date($challengerStart),
+            $opponentStart === null ? null : self::date($opponentStart),
+            $decision,
+        );
+    }
+
+    /**
+     * How a duel was decided. Without anything else: the challenger won with 25 % against 0 %,
+     * both over 7 days against a baseline of 12.0.
+     */
+    public static function decision(
+        DuelWinner $winner = DuelWinner::Challenger,
+        ?SideResult $challenger = new SideResult(120, 630, 840, 1, 7, 100),
+        ?SideResult $opponent = new SideResult(120, 840, 840, 0, 5, 20),
+        string $decidedAt = '2026-11-27 23:00:40',
+        string $rulesVersion = 'v1',
+    ): DuelDecision {
+        return new DuelDecision(self::time($decidedAt), $winner, $challenger, $opponent, $rulesVersion);
     }
 }
