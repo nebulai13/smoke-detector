@@ -162,7 +162,7 @@ erDiagram
 | `friendships` | user_a, user_b (the two users, the one with the smaller id as text first: one row per pair, primary key), requested_by, requested_at, accepted_at (NULL while the request waits). There is no status column that could contradict it. A declined or withdrawn request and an ended friendship are deleted. CHECK constraints: the two users differ, and `requested_by` is one of them |
 | `blocks` | blocker_id, blocked_id (primary key together), created_at. A table of its own and not a status of the friendship: a block has a direction, and each of two users can block the other. A CHECK constraint: nobody blocks themselves |
 | `duels` | id, challenger_id, opponent_id (each NULL once that account is deleted), period_days, status (proposed / active / declined / expired / cancelled / completed / forfeited), created_at, expires_at, answered_at, challenger_start, opponent_start (the first day of the duel in each user's own calendar), and what the decision writes, NULL before it: decided_at, winner (challenger / opponent / draw), and per side b0_tenths, actual_tenths, expected_tenths (exact totals), smoke_free_days, check_ins, xp; rules_version. Columns and not JSON, so that the side of a deleted user can be emptied by name |
-| `league_results` | period_type, period_key (e.g. 2026-W47), user_id, b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), rank, final, rules_version |
+| `league_results` | user_id, period_type (week / month / quarter / half_year), period_key (e.g. 2026-W47), primary key together. b0_tenths, actual_tenths, expected_tenths (exact totals, not a rounded percentage), smoke_free_days, check_ins, counted_days, rules_version, scored_at. For the ranking: check_at (when the cron step looks next), and NULL until ranked: rank, participants, xp, ranked_at |
 | `user_badges` | user_id, badge_key, awarded_at |
 | `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
@@ -181,7 +181,7 @@ erDiagram
 | Logging | `POST /logs/sync` (batch upsert + tombstones → returns affected day summaries), `POST /days/{date}/check-in`, `GET /days?from&to` |
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges` |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
-| Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). Leagues follow: `GET /leagues/{type}/{periodKey}`, `GET /leagues/xp/current` |
+| Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
 | Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
 
@@ -741,9 +741,85 @@ duel: id, first day and result. A duel that belongs to nobody any more is delete
 - **XP by arrangement.** Two friends can agree to lose in turns: 120 XP per pair and week. Accepted: a week of
   real days is the price.
 
-**Leagues** (FR-COMP-06 to 08) are the next part: calendar periods, a stored result per user and period when
-its last day becomes final, ranks among the user and their friends with the duel tie-breakers and then a
-shared rank (OQ-8), and the weekly XP ranking.
+### 4.9 Leagues (step 5, third part)
+
+A league is the user and their friends over a calendar period, ranked by reduction (FR-COMP-06). There are
+four period types, and every user is in the league of each type all the time.
+
+**Periods.** Calendar-aligned, the same dates for everybody, each user in their own time zone (§4.6):
+
+| Type | Key | Dates |
+|---|---|---|
+| `week` | `2026-W47` | Monday to Sunday of the ISO week. The year of the key is the ISO year: 2027-01-01 is in `2026-W53` |
+| `month` | `2026-11` | the calendar month |
+| `quarter` | `2026-Q4` | three months from January, April, July or October |
+| `half_year` | `2026-H2` | six months from January or July |
+
+**The score of a user for a period** does not depend on who looks. It uses the scoring of the duels (§4.8,
+§5.4): the user's own days of the period, from the first day of the plan if that is later (FR-COMP-06: "rated
+over the days since joining"), against the baseline valid on that first counted day, frozen (FR-PLAN-07). A
+league is the same scores, ranked per viewer among the viewer and the viewer's friends of today.
+
+**Final scores.** When `days:finalize` makes a day final that is the last day of a period, it stores the
+user's result for that period in the same transaction: frozen baseline, exact totals, smoke-free days,
+check-ins, counted days, rules version. One row per user, type and period in `league_results`, never changed
+afterwards except for the rank (NFR-04).
+
+**Rank and reward (FR-COMP-08, OQ-8).** The cron step `competitions:finalize` ranks a stored result when every
+friend of that user is settled for the period: the friend has a stored result, or cannot get one (no plan, or
+a plan that started after the period). A result that has to wait is looked at again 15 minutes later. After 7
+days of waiting it is ranked with the results that are there: a friend whose days cannot be finalized must
+not hold up everybody else for ever.
+
+- The rank is 1 plus the number of participants who are better: more reduction (compared exactly), then
+  more smoke-free days, then more check-ins. Equal on all three share the rank (1, 1, 3).
+- Participants are the user and the friends who have a result. With at least `leagueMinParticipants` (3 in
+  v1), rank 1 to 3 earns `XpCalculator::forLeague` XP (150 / 100 / 50, times 1, 2, 3 or 4 by period type). It
+  is written to the ledger and to `user_progress` as the XP of a duel is (§4.8).
+- The rank is the user's rank among the friends of that moment. It is stored with the number of participants
+  and the XP, and never recalculated.
+
+**What a user sees (FR-FRND-03, FR-COMP-08).** `GET /leagues?type=…&period=…` (`period` is a key, or `current`).
+
+| | While the result is not final | Once the user's rank is stored |
+|---|---|---|
+| Own entry | own reduction in whole percent, over the days that count so far | own final percent, rank, participants, XP |
+| Friends' entries | position only: the list is in ranking order with ranks. No percentage | percent of every friend with a stored result |
+| Always | name, avatar, smoke-free days, check-ins, counted days | |
+
+- While a period runs, the days that count are the ones of §4.8: up to yesterday, and today once it is
+  checked in. Positions come from the exact comparison. The owner decided this for duels and leagues alike: a
+  percentage that moves every day could be calculated back to daily counts.
+- A participant without a counted day (no plan, a plan that starts later, the first day not checked in yet)
+  is listed without a rank and without figures.
+- For a period that is over, a friend's stored result is used where there is one, also before the user's own
+  rank is stored. The list shown later is ranked among the friends of today. The stored reward is the one of
+  the moment it was decided, and the two can differ when friendships changed.
+- A period that has not begun for the user is answered `league_not_found`. A user who has not done the
+  onboarding has no calendar yet and is answered `plan_required`, here and for the XP ranking.
+
+`type` and `period` are query parameters. They name a kind of period and a calendar period, and say nothing
+about a person (§4.4).
+
+**Weekly XP ranking (FR-COMP-07).** `GET /leagues/xp`: the user and their friends by the XP that became
+theirs in the current ISO week. The week is the viewer's: from the start of the viewer's Monday to the end of
+the viewer's Sunday, as two instants, for everybody in the list. It is the sum of the ledger entries written
+in that time. So it counts final XP only, like everything friends see of each other's progress (§4.7): the XP of
+a day appears when the day is final, two days later. There is no reward for this ranking: XP for XP would
+feed itself. XP is among the things friends see (FR-FRND-03), so the numbers are shown.
+
+**Export and deletion.** `league_results` belongs to one user: the export lists the rows with the user's own
+exact result, and deleting the account deletes them. A friend's stored rank is not changed when a user is
+deleted.
+
+**Known limits, accepted for the pilot:**
+
+- **A period whose last day is skipped** by a move across the date line (§4.6) gets no stored result.
+- **Ranks are among today's friends.** Adding friends who did badly shortly before a period is ranked improves
+  the own rank. Accepted for a pilot among friends.
+- **The XP of a day counts in the week it became final,** not in the week of the day. Sunday's XP is in the
+  next week's ranking.
+- **Badges** ("League champion") come with step 6, from the stored ranks.
 
 ---
 
@@ -771,7 +847,7 @@ sequenceDiagram
 ### 5.2 Day finalization & scoring (cron, every minute)
 `cron:run` runs its steps in this order, each isolated from the others: `mail:send` (step 3),
 `days:finalize` with the weekly baseline (step 4, §4.6), `competitions:finalize`, which lets duel proposals
-expire and decides the duels whose days are all final (step 5, §4.8; league periods follow), later feed events
+expire, decides the duels whose days are all final and ranks league results (step 5, §4.8 and §4.9), later feed events
 and the notifications outbox (steps 6 and 7), and last `housekeeping:purge`.
 
 Every step is safe to run twice at once and stops taking new work after its share of the minute
@@ -1037,7 +1113,7 @@ which count as caught. The run needs more memory than PHP's default (`make mutat
 | 2 | Domain core, TDD: plan/limits, day score, streaks + freezes, XP, levels | Rules in versioned config |
 | 3 | Auth, consent, email verification, account export/delete | JWT + rotating refresh. **Release conditions:** cron runs `bin/cron` every minute (`mail:send` + `housekeeping:purge`), server checks of §8 done |
 | 4 | Logging sync + check-in + finalization cron (§4.6) | Idempotent UUID upsert, 48 h grace. `days:finalize` is the second step of `cron:run`, after `mail:send` |
-| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in parts: friends (§4.7), duels (§4.8), then leagues | Calendar-aligned leagues |
+| 5 | Friends, duels, leagues (week/month/quarter/half-year), XP league. Built in parts: friends (§4.7), duels (§4.8), leagues (§4.9) | Calendar-aligned leagues |
 | 6 | Badges, health milestones, feed, reactions, nudges | Server-emitted `events[]` |
 | 7 | Notifications outbox + APNs/FCM/Web Push senders | Sent by the same cron job as the mail (every minute) |
 | 8 | **Web client** (complete, incl. PWA + Web Push) → staging pilot. The core without screens (§6.1) was built ahead, after step 4 | React + Vite |
