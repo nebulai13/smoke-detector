@@ -144,6 +144,20 @@ final class UserDataTablesTest extends IntegrationTestCase
         'duels.opponent_check_ins' => 'duels.*.result.checkIns',
         'duels.opponent_xp' => 'duels.*.result.xp',
         'duels.rules_version' => 'duels.*.rulesVersion',
+        'league_results.period_type' => 'leagueResults.*.type',
+        'league_results.period_key' => 'leagueResults.*.period',
+        'league_results.b0_tenths' => 'leagueResults.*.baseline',
+        'league_results.actual_tenths' => 'leagueResults.*.actual',
+        'league_results.expected_tenths' => 'leagueResults.*.expected',
+        'league_results.smoke_free_days' => 'leagueResults.*.smokeFreeDays',
+        'league_results.check_ins' => 'leagueResults.*.checkIns',
+        'league_results.counted_days' => 'leagueResults.*.countedDays',
+        'league_results.rules_version' => 'leagueResults.*.rulesVersion',
+        'league_results.scored_at' => 'leagueResults.*.scoredAt',
+        'league_results.rank' => 'leagueResults.*.rank',
+        'league_results.participants' => 'leagueResults.*.participants',
+        'league_results.xp' => 'leagueResults.*.xp',
+        'league_results.ranked_at' => 'leagueResults.*.rankedAt',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -177,6 +191,8 @@ final class UserDataTablesTest extends IntegrationTestCase
         'mail_outbox.sealed_values' => 'A secret: the links of the mail, encrypted. A link carries a token that may still be valid.',
         'mail_outbox.not_before' => 'When the sender tries next: the schedule of the cron job, which says nothing about the user.',
         'invite_codes.user_id' => 'The user\'s own id, which is profile.id.',
+        'league_results.user_id' => 'The user\'s own id, which is profile.id.',
+        'league_results.check_at' => 'When the cron job looks at the result next, to rank it: its schedule, which says nothing about the user.',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
@@ -311,6 +327,17 @@ final class UserDataTablesTest extends IntegrationTestCase
                         'startsOn' => null, 'decidedAt' => null, 'outcome' => null, 'result' => null, 'rulesVersion' => null,
                     ],
                 ],
+                // The user's own final results, oldest first, exactly as they were scored.
+                'leagueResults' => [
+                    [
+                        'type' => 'month', 'period' => '2026-10', 'baseline' => 9.5, 'actual' => 2850.0, 'expected' => 2945.0, 'smokeFreeDays' => 0, 'checkIns' => 30,
+                        'countedDays' => 31, 'rulesVersion' => 'v1', 'scoredAt' => '2026-11-02T23:00:20Z', 'rank' => null, 'participants' => null, 'xp' => null, 'rankedAt' => null,
+                    ],
+                    [
+                        'type' => 'week', 'period' => '2026-W45', 'baseline' => 12.0, 'actual' => 63.0, 'expected' => 84.0, 'smokeFreeDays' => 1, 'checkIns' => 6,
+                        'countedDays' => 7, 'rulesVersion' => 'v1', 'scoredAt' => '2026-11-10T23:00:20Z', 'rank' => 2, 'participants' => 4, 'xp' => 100, 'rankedAt' => '2026-11-11T23:01:05Z',
+                    ],
+                ],
             ],
             $export,
         );
@@ -330,7 +357,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         self::assertSame(
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
-                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [],
+                'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [],
             ],
             $export,
         );

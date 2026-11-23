@@ -57,6 +57,8 @@ final readonly class UserDataTables
             // Duels (HLD §4.8). A duel stays for the other user: the eraser empties the side of the
             // deleted user, deletes the proposals and turns running duels into forfeits.
             new UserDataTable('duels', 'duels', new DuelsExporter($this->sql), new DuelsOfUser($this->sql)),
+            // Leagues (HLD §4.9). A result belongs to its user alone. A friend's stored rank stays.
+            new UserDataTable('league_results', 'leagueResults', new LeagueResultsExporter($this->sql), new RowsOfUser($this->sql, 'league_results')),
         ]);
     }
 }

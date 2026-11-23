@@ -30,7 +30,7 @@ final class ExportTest extends HttpTestCase
         self::assertSame(
             [
                 'formatVersion', 'exportedAt', 'profile', 'consents', 'plan', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days',
-                'progress', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels',
+                'progress', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults',
             ],
             array_keys($export),
         );
@@ -57,7 +57,7 @@ final class ExportTest extends HttpTestCase
         );
         $lists = [
             'consents' => 3, 'planHistory' => 2, 'baselineHistory' => 3, 'timeZoneHistory' => 2, 'smokeLogs' => 2, 'days' => 2, 'xpEvents' => 2,
-            'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2, 'friends' => 0, 'blockedUsers' => 0, 'duels' => 0,
+            'sessions' => 2, 'mailLinks' => 2, 'queuedMails' => 2, 'friends' => 0, 'blockedUsers' => 0, 'duels' => 0, 'leagueResults' => 2,
         ];
         foreach ($lists as $member => $entries) {
             self::assertIsArray($export[$member]);
@@ -172,7 +172,7 @@ final class ExportTest extends HttpTestCase
 
         $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
 
-        $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels'];
+        $lists = ['consents', 'planHistory', 'baselineHistory', 'timeZoneHistory', 'smokeLogs', 'days', 'xpEvents', 'sessions', 'mailLinks', 'queuedMails', 'friends', 'blockedUsers', 'duels', 'leagueResults'];
         // No plan and no progress before the onboarding, and no invite code before the first look at it.
         self::assertSame(['formatVersion', 'exportedAt', 'profile', ...$lists], array_keys($export));
         foreach ($lists as $member) {
