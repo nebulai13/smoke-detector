@@ -160,6 +160,9 @@ final class UserDataTablesTest extends IntegrationTestCase
         'league_results.ranked_at' => 'leagueResults.*.rankedAt',
         'user_badges.badge_key' => 'badges.*.key',
         'user_badges.awarded_at' => 'badges.*.awardedAt',
+        'user_milestones.milestone_key' => 'healthMilestones.*.key',
+        'user_milestones.reached_at' => 'healthMilestones.*.reachedAt',
+        'user_settings.milestone_sharing' => 'settings.milestoneSharing',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -196,6 +199,8 @@ final class UserDataTablesTest extends IntegrationTestCase
         'league_results.user_id' => 'The user\'s own id, which is profile.id.',
         'league_results.check_at' => 'When the cron job looks at the result next, to rank it: its schedule, which says nothing about the user.',
         'user_badges.user_id' => 'The user\'s own id, which is profile.id.',
+        'user_milestones.user_id' => 'The user\'s own id, which is profile.id.',
+        'user_settings.user_id' => 'The user\'s own id, which is profile.id.',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
@@ -346,6 +351,12 @@ final class UserDataTablesTest extends IntegrationTestCase
                     ['key' => 'first_check_in', 'awardedAt' => '2026-11-04T23:00:20Z'],
                     ['key' => 'check_in_streak_7', 'awardedAt' => '2026-11-12T23:00:20Z'],
                 ],
+                // The health milestones reached for good, with their first moment, in the order of the cases.
+                'healthMilestones' => [
+                    ['key' => 'heart_rate', 'reachedAt' => '2026-11-01T08:20:00Z'],
+                    ['key' => 'circulation', 'reachedAt' => '2026-11-15T08:00:00Z'],
+                ],
+                'settings' => ['milestoneSharing' => 'all'],
             ],
             $export,
         );
@@ -361,11 +372,13 @@ final class UserDataTablesTest extends IntegrationTestCase
 
         $export = $this->service(UserDataRegistry::class)->export(TestData::userId(3));
 
-        // The lists are empty. What a user has once or not at all (plan, progress) is absent.
+        // The lists are empty. What a user has once or not at all (plan, progress) is absent. The
+        // settings are there with the defaults: who never chose has them.
         self::assertSame(
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
                 'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [], 'badges' => [],
+                'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'],
             ],
             $export,
         );

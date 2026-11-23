@@ -46,7 +46,9 @@ use SmokeDetector\Http\Action\Logging\SyncLogsAction;
 use SmokeDetector\Http\Action\Me\DeleteMeAction;
 use SmokeDetector\Http\Action\Me\ExportMeAction;
 use SmokeDetector\Http\Action\Me\SavePlanAction;
+use SmokeDetector\Http\Action\Me\SaveSettingsAction;
 use SmokeDetector\Http\Action\Me\ShowMeAction;
+use SmokeDetector\Http\Action\Me\ShowSettingsAction;
 use SmokeDetector\Http\Action\Me\UpdateMeAction;
 use SmokeDetector\Http\Middleware\AuthenticationMiddleware;
 
@@ -154,5 +156,9 @@ final readonly class Routes
         // Badges and health milestones (HLD §4.10): the user's own.
         $routes->get('/me/badges', ListBadgesAction::class);
         $routes->get('/me/health-milestones', ListHealthMilestonesAction::class);
+
+        // Settings (HLD §4.11): what friends see of the health milestones.
+        $routes->get('/me/settings', ShowSettingsAction::class);
+        $routes->put('/me/settings', SaveSettingsAction::class);
     }
 }
