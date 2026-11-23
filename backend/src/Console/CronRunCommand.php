@@ -12,8 +12,8 @@ use Throwable;
  * php bin/console cron:run: everything the cron job does, in one command (HLD §5.2, §8). The
  * hosting's cron calls the wrapper bin/cron every minute, and the wrapper calls this.
  *
- * It runs its steps one after the other (today: `mail:send`, `days:finalize`, then
- * `housekeeping:purge`). Each step stands for itself: one that fails does not keep the next from
+ * It runs its steps one after the other (today: `mail:send`, `days:finalize`,
+ * `competitions:finalize`, then `housekeeping:purge`). Each step stands for itself: one that fails does not keep the next from
  * running, because a mail server that is down must not stop the cleanup, and the other way round.
  * Then it prints ONE line that says what every step did, and fails (exit code 1) when a step failed.
  *

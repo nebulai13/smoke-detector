@@ -261,6 +261,38 @@ final readonly class Problem
     }
 
     /**
+     * The user has no duel with this id. The same for an id that does not exist (HLD §4.8).
+     */
+    public static function duelNotFound(): self
+    {
+        return new self('duel_not_found', 'Duel not found', 404, 'The user has no duel with this id.');
+    }
+
+    /**
+     * Not a proposal any more (answered, expired or taken back), or not for this user to do.
+     */
+    public static function duelNotOpen(): self
+    {
+        return new self('duel_not_open', 'Duel not open', 409, 'The duel is not a proposal this user can answer or take back.');
+    }
+
+    /**
+     * FR-COMP-05: one open duel per pair of friends, whoever proposed it.
+     */
+    public static function duelExists(): self
+    {
+        return new self('duel_exists', 'Duel exists', 409, 'There is an open duel with this friend already.');
+    }
+
+    /**
+     * FR-COMP-05: at most 5 open duels.
+     */
+    public static function duelLimitReached(): self
+    {
+        return new self('duel_limit_reached', 'Duel limit reached', 409, 'The limit of open duels is reached.');
+    }
+
+    /**
      * @param string|null $detail Only ever given outside production: it describes the exception.
      */
     public static function internalError(?string $detail = null): self
