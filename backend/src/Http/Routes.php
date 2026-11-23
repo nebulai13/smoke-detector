@@ -21,6 +21,8 @@ use SmokeDetector\Http\Action\Competition\DeclineDuelAction;
 use SmokeDetector\Http\Action\Competition\ListDuelsAction;
 use SmokeDetector\Http\Action\Competition\ProposeDuelAction;
 use SmokeDetector\Http\Action\Competition\ShowDuelAction;
+use SmokeDetector\Http\Action\Competition\ShowLeagueAction;
+use SmokeDetector\Http\Action\Competition\ShowXpLeagueAction;
 use SmokeDetector\Http\Action\Friends\AcceptFriendRequestAction;
 use SmokeDetector\Http\Action\Friends\BlockUserAction;
 use SmokeDetector\Http\Action\Friends\DeclineFriendRequestAction;
@@ -142,5 +144,9 @@ final readonly class Routes
         $routes->post('/duels/accept', AcceptDuelAction::class);
         $routes->post('/duels/decline', DeclineDuelAction::class);
         $routes->post('/duels/cancel', CancelDuelAction::class);
+
+        // Leagues (HLD §4.9). The kind of period and the period are in the query: they say nothing about a person.
+        $routes->get('/leagues', ShowLeagueAction::class);
+        $routes->get('/leagues/xp', ShowXpLeagueAction::class);
     }
 }

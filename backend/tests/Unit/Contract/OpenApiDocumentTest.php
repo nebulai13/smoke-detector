@@ -188,6 +188,7 @@ final class OpenApiDocumentTest extends TestCase
                 'DuelNotFound',
                 'DuelNotOpen',
                 'DuelRefused',
+                'LeagueNotFound',
             ],
             array_keys($responses),
         );
@@ -341,6 +342,8 @@ final class OpenApiDocumentTest extends TestCase
             // The two ends of a range of calendar days. Whose days they are is in the token, and how
             // the days went is in the answer.
             'GET /days' => ['from', 'to'],
+            // A kind of calendar period and one such period. Whose league it is is in the token.
+            'GET /leagues' => ['type', 'period'],
         ];
 
         $found = [];

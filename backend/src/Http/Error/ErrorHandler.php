@@ -16,6 +16,7 @@ use SmokeDetector\Application\Competition\DuelExists;
 use SmokeDetector\Application\Competition\DuelLimitReached;
 use SmokeDetector\Application\Competition\DuelNotFound;
 use SmokeDetector\Application\Competition\DuelNotOpen;
+use SmokeDetector\Application\Competition\LeagueNotFound;
 use SmokeDetector\Application\Friends\AlreadyFriends;
 use SmokeDetector\Application\Friends\BlockNotFound;
 use SmokeDetector\Application\Friends\FriendLimitReached;
@@ -51,7 +52,7 @@ use Throwable;
  * - The refusals of the friends operations: 404 invite_not_found, friend_request_not_found,
  *   friend_not_found and block_not_found; 409 own_invite, already_friends and friend_limit_reached.
  * - The refusals of the duel operations: 404 duel_not_found; 409 duel_not_open, duel_exists and
- *   duel_limit_reached.
+ *   duel_limit_reached. Of the leagues: 404 league_not_found.
  * - The framework's "no such route" and "wrong method": 404 and 405.
  * - Anything else is a bug or an outage: 500 internal_error, logged, and described in the response
  *   only outside production.
@@ -154,7 +155,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
     }
 
     /**
-     * The refusals of the friends and duel operations (HLD §4.7, §4.8), or null for any other exception.
+     * The refusals of the friends, duel and league operations (HLD §4.7, §4.8, §4.9), or null for any other exception.
      */
     private static function friendsProblem(Throwable $exception): ?Problem
     {
@@ -170,6 +171,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
             $exception instanceof DuelNotOpen => Problem::duelNotOpen(),
             $exception instanceof DuelExists => Problem::duelExists(),
             $exception instanceof DuelLimitReached => Problem::duelLimitReached(),
+            $exception instanceof LeagueNotFound => Problem::leagueNotFound(),
             default => null,
         };
     }

@@ -261,6 +261,27 @@ trait LoggingRepositoriesContract
         self::assertSame([], $this->progressRecords()->due(TestData::time('2026-11-20 09:59:59'), 10));
     }
 
+    public function test_FR_COMP_07_the_xp_of_a_time_span_is_the_sum_of_what_was_written_in_it(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        // Written at: the first instant of the span, inside it, its last second, and the instant it ends.
+        $this->xpLedger()->append(TestData::xpEvent(20, 1, '2026-11-14', XpSource::CheckIn, 10, null, '2026-11-15 23:00:00'));
+        $this->xpLedger()->append(TestData::xpEvent(21, 1, '2026-11-15', XpSource::StreakMilestone, 50, 7, '2026-11-17 23:00:30'));
+        $this->xpLedger()->append(TestData::xpEvent(22, 1, '2026-11-22', XpSource::Duel, 100, null, '2026-11-22 22:59:59'));
+        $this->xpLedger()->append(TestData::xpEvent(23, 1, '2026-11-22', XpSource::League, 150, 1, '2026-11-22 23:00:00'));
+        // Before the span, and somebody else's.
+        $this->xpLedger()->append(TestData::xpEvent(24, 1, '2026-11-13', XpSource::UnderLimit, 20, null, '2026-11-15 22:59:59'));
+        $this->xpLedger()->append(TestData::xpEvent(25, 2, '2026-11-16', XpSource::SmokeFree, 40, null, '2026-11-18 23:00:00'));
+        $from = TestData::time('2026-11-15 23:00:00');
+        $until = TestData::time('2026-11-22 23:00:00');
+
+        // By the time an entry was written, not by the day it belongs to.
+        self::assertSame(160, $this->xpLedger()->earnedBetween(TestData::userId(1), $from, $until));
+        self::assertSame(40, $this->xpLedger()->earnedBetween(TestData::userId(2), $from, $until));
+        self::assertSame(0, $this->xpLedger()->earnedBetween(TestData::userId(3), $from, $until));
+        self::assertSame(0, $this->xpLedger()->earnedBetween(TestData::userId(1), $until->modify('+1 second'), $until->modify('+1 week')));
+    }
+
     public function test_FR_GAME_01_xp_events_are_kept_and_read_by_day_and_then_in_the_order_of_their_ids(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

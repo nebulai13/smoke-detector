@@ -6,6 +6,7 @@ namespace SmokeDetector\Tests\Unit\Application;
 
 use SmokeDetector\Application\Account\TimeZone;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Competition\LeagueScores;
 use SmokeDetector\Application\Day\CheckIn;
 use SmokeDetector\Application\Day\DayRecord;
 use SmokeDetector\Application\Day\DayResult;
@@ -27,6 +28,7 @@ use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Domain\Streak\StreakState;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDayRecords;
+use SmokeDetector\Tests\Support\InMemory\InMemoryLeagueResults;
 use SmokeDetector\Tests\Support\InMemory\InMemorySmokeLogs;
 use SmokeDetector\Tests\Support\InMemory\InMemoryXpLedger;
 use SmokeDetector\Tests\Support\TestData;
@@ -44,6 +46,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
     protected InMemorySmokeLogs $smokeLogs;
     protected InMemoryDayRecords $dayRecords;
     protected InMemoryXpLedger $xpLedger;
+    protected InMemoryLeagueResults $leagueResults;
 
     protected function setUp(): void
     {
@@ -51,6 +54,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
         $this->smokeLogs = new InMemorySmokeLogs($this->transactions);
         $this->dayRecords = new InMemoryDayRecords($this->transactions);
         $this->xpLedger = new InMemoryXpLedger($this->transactions);
+        $this->leagueResults = new InMemoryLeagueResults($this->transactions);
     }
 
     protected function syncLogs(): SyncLogs
@@ -87,6 +91,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
             $this->baselines,
             $this->ids,
             $this->logger,
+            new LeagueScores($this->leagueResults, $this->dayRecords),
         );
     }
 
