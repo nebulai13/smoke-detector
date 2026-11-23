@@ -40,6 +40,7 @@ use SmokeDetector\Http\Action\Logging\CheckInAction;
 use SmokeDetector\Http\Action\Logging\ListDaysAction;
 use SmokeDetector\Http\Action\Logging\ShowBaselineHistoryAction;
 use SmokeDetector\Http\Action\Logging\ShowDashboardAction;
+use SmokeDetector\Http\Action\Feed\ShowFeedAction;
 use SmokeDetector\Http\Action\Progress\ListBadgesAction;
 use SmokeDetector\Http\Action\Progress\ListHealthMilestonesAction;
 use SmokeDetector\Http\Action\Logging\SyncLogsAction;
@@ -160,5 +161,8 @@ final readonly class Routes
         // Settings (HLD §4.11): what friends see of the health milestones.
         $routes->get('/me/settings', ShowSettingsAction::class);
         $routes->put('/me/settings', SaveSettingsAction::class);
+
+        // Activity feed (HLD §4.12): the user's and the friends' entries.
+        $routes->get('/feed', ShowFeedAction::class);
     }
 }
