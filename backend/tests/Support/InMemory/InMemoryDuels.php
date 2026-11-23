@@ -10,6 +10,7 @@ use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\Duels;
 use SmokeDetector\Application\Competition\DuelStatus;
 use SmokeDetector\Application\Competition\DuelWinner;
+use SmokeDetector\Application\Competition\SideResult;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Time\LocalDate;
 
@@ -62,9 +63,12 @@ final class InMemoryDuels implements Duels, InMemoryState
 
     public function wonBy(UserId $userId): int
     {
+        // Won with a reduction: a side that saved nothing wins no reward (HLD §4.8 "Score").
+        $reduced = static fn (?SideResult $side): bool => $side !== null && $side->actualTenths < $side->expectedTenths;
+
         return count($this->matching(static fn (Duel $duel): bool => $duel->decision !== null && (
-            ($duel->decision->winner === DuelWinner::Challenger && $duel->challengerId?->equals($userId) === true)
-            || ($duel->decision->winner === DuelWinner::Opponent && $duel->opponentId?->equals($userId) === true)
+            ($duel->decision->winner === DuelWinner::Challenger && $duel->challengerId?->equals($userId) === true && $reduced($duel->decision->challenger))
+            || ($duel->decision->winner === DuelWinner::Opponent && $duel->opponentId?->equals($userId) === true && $reduced($duel->decision->opponent))
         )));
     }
 

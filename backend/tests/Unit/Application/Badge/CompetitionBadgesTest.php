@@ -66,6 +66,20 @@ final class CompetitionBadgesTest extends LeaguesUseCaseTestCase
         self::assertSame([[], []], [$this->badgesOf($anna), $this->badgesOf($bob)]);
     }
 
+    public function test_FR_GAME_08_a_duel_won_without_a_reduction_earns_no_badge(): void
+    {
+        [$anna, $bob] = $this->givenTwoFriends();
+        // Anna smoked exactly her baseline, Bob more than his.
+        $this->givenRunning(1, $anna, $bob, '2026-11-03');
+        $this->givenDays($anna, '2026-11-03', [12, 12, 12, 12, 12, 12, 12]);
+        $this->givenDays($bob, '2026-11-03', [14, 14, 14, 14, 14, 14, 12]);
+
+        $this->decideDuels()->execute();
+
+        self::assertSame(DuelWinner::Challenger, $this->duels->find(TestData::uuid(1))?->decision?->winner);
+        self::assertSame([], $this->badgeRecords->all());
+    }
+
     public function test_FR_GAME_08_the_fifth_duel_won_earns_five_duels_won(): void
     {
         [$anna, $bob] = $this->givenTwoFriends();

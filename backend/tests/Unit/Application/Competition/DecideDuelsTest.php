@@ -77,7 +77,55 @@ final class DecideDuelsTest extends DuelsUseCaseTestCase
         // The opponent wins this one: 250 + 100 = 350 XP, and level 2 starts at 300.
         self::assertSame(DuelWinner::Opponent, $this->duels->find(TestData::uuid(1))?->decision?->winner);
         self::assertEquals(self::with($before, 350, 2), $this->progressOf($this->bob));
-        self::assertSame([['duel', '2026-11-17', 20, '2026-11-17 12:00:00']], $this->awards($this->anna));
+        // Anna did nothing in the duel: a duel that was lost and played to its end pays only for a reduction.
+        self::assertSame([], $this->awards($this->anna));
+    }
+
+    public function test_FR_COMP_03_two_who_did_nothing_draw_and_win_nothing(): void
+    {
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-03');
+        $before = [$this->progressOf($this->anna), $this->progressOf($this->bob)];
+
+        self::assertSame([0, 1, 0], self::report($this->decideDuels()->execute()));
+
+        // The duel is decided and stored: a draw, 84 of 84 for both, and no XP. Otherwise two friends
+        // could collect the XP of a draw week after week without doing anything.
+        $decision = $this->decisionOf(1);
+        self::assertSame(DuelWinner::Draw, $decision->winner);
+        self::assertEquals([new SideResult(120, 840, 840, 0, 0, 0), new SideResult(120, 840, 840, 0, 0, 0)], [$decision->challenger, $decision->opponent]);
+        self::assertSame([[], []], [$this->awards($this->anna), $this->awards($this->bob)]);
+        self::assertEquals($before, [$this->progressOf($this->anna), $this->progressOf($this->bob)]);
+    }
+
+    public function test_FR_COMP_03_the_xp_of_a_duel_is_paid_to_a_side_only_for_a_reduction_above_zero(): void
+    {
+        // Anna smoked exactly her baseline and checked in every day. Bob smoked more than his.
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-03');
+        $this->givenDays($this->anna, '2026-11-03', [12, 12, 12, 12, 12, 12, 12]);
+        $this->givenDays($this->bob, '2026-11-03', [14, 14, 14, 14, 14, 14, 12]);
+
+        $this->decideDuels()->execute();
+
+        // Anna wins the duel, and that is stored. Neither is paid.
+        $decision = $this->decisionOf(1);
+        self::assertSame(DuelWinner::Challenger, $decision->winner);
+        self::assertEquals([new SideResult(120, 840, 840, 0, 7, 0), new SideResult(120, 960, 840, 0, 7, 0)], [$decision->challenger, $decision->opponent]);
+        self::assertSame([[], []], [$this->awards($this->anna), $this->awards($this->bob)]);
+    }
+
+    public function test_FR_COMP_03_the_smallest_reduction_is_a_reduction(): void
+    {
+        // Bob's baseline is 1.3 on the first day of the duel: 9.1 sessions in seven days. He has 9.
+        $this->givenWeeklyBaseline($this->bob, '2026-11-03', 13);
+        $this->givenRunning(1, $this->anna, $this->bob, '2026-11-03');
+        $this->givenDays($this->anna, '2026-11-03', [6, 6, 6, 6, 6, 6, 6]);
+        $this->givenDays($this->bob, '2026-11-03', [2, 2, 1, 1, 1, 1, 1]);
+
+        $this->decideDuels()->execute();
+
+        // A tenth of a session saved: he lost against Anna's 50 %, and gets the XP of a duel played to its end.
+        self::assertEquals(new SideResult(13, 90, 91, 0, 7, 20), $this->decisionOf(1)->opponent);
+        self::assertSame([['duel', '2026-11-17', 20, '2026-11-17 12:00:00']], $this->awards($this->bob));
     }
 
     public function test_FR_COMP_03_a_day_without_a_check_in_counts_as_the_baseline_or_as_what_was_logged_when_that_is_more(): void
@@ -164,8 +212,8 @@ final class DecideDuelsTest extends DuelsUseCaseTestCase
         $this->decideDuels()->execute();
 
         $decision = $this->decisionOf(1);
-        // Anna against 12.0 on all seven days: 50 %. Bob against 6.0: 0 %.
-        self::assertEquals([new SideResult(120, 420, 840, 0, 7, 100), new SideResult(60, 420, 420, 0, 7, 20)], [$decision->challenger, $decision->opponent]);
+        // Anna against 12.0 on all seven days: 50 %. Bob against 6.0: 0 %, and so no XP.
+        self::assertEquals([new SideResult(120, 420, 840, 0, 7, 100), new SideResult(60, 420, 420, 0, 7, 0)], [$decision->challenger, $decision->opponent]);
     }
 
     public function test_FR_PLAN_07_no_side_is_scored_against_a_baseline_below_one(): void
@@ -223,6 +271,8 @@ final class DecideDuelsTest extends DuelsUseCaseTestCase
         $this->rules = RuleSet::fromArray($table);
         $this->givenRunning(1, $this->anna, $this->bob, '2026-11-03');
         $this->givenDays($this->anna, '2026-11-03', [6, 6, 6, 6, 6, 6, 6]);
+        // Bob has a reduction and loses: he would get the XP of a lost duel, which this table sets to 0.
+        $this->givenDays($this->bob, '2026-11-03', [10, 10, 10, 10, 10, 10, 10]);
         $before = $this->progressOf($this->bob);
 
         $this->decideDuels()->execute();
@@ -326,9 +376,10 @@ final class DecideDuelsTest extends DuelsUseCaseTestCase
         // Nothing of the damaged duel is stored, for neither side: a decision is one transaction.
         self::assertEquals($damaged, $this->duels->find($damaged->id));
         self::assertSame(DuelStatus::Completed, $this->duels->find(TestData::uuid(2))?->status);
-        // Anna and Bob both did nothing: a draw. That is all Anna earned.
-        self::assertSame([['duel', '2026-11-17', 50, '2026-11-17 12:00:00']], $this->awards($this->anna));
-        self::assertEquals(self::with($before, 50, 0), $this->progressOf($this->anna));
+        // Anna and Bob both did nothing: a draw, which pays nothing without a reduction.
+        self::assertSame(DuelWinner::Draw, $this->decisionOf(2)->winner);
+        self::assertSame([], $this->awards($this->anna));
+        self::assertEquals($before, $this->progressOf($this->anna));
         // The log says that it happened and what kind of failure it was, and nothing about whom.
         self::assertCount(1, $this->logger->records);
         self::assertSame(['level' => 'error', 'message' => 'A duel could not be decided.'], array_intersect_key($this->logger->records[0], ['level' => 1, 'message' => 1]));
