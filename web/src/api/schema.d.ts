@@ -699,7 +699,7 @@ export interface paths {
          * The league of the user and their friends for one period (SRS FR-COMP-06, FR-COMP-08)
          * @description The user and their friends of today, ranked by reduction over a calendar period: more reduction, then more smoke-free days, then more check-ins; equal on all three share a rank. Somebody without a day that counts is listed last, without a rank.
          *
-         *     While the user's rank for the period is not stored yet (`final` is `false`), a friend is shown as ahead of the user, level or behind, without a rank and without a percentage: figures that move every day could be calculated back to daily counts. The user's own rank and percentage are always there. Once `final` is `true`, everybody has a rank, and a friend with a final result over at least 7 days has a percentage.
+         *     While the user's rank for the period is not stored yet (`final` is `false`), a friend is shown as ahead of the user, level or behind, without a rank and without a percentage: figures that move every day could be calculated back to daily counts. Of a friend only final days are shown and compared (two days old, not to be changed any more), and the comparison uses the user's own final days. The user's own figures follow the logs at once. The user's own rank and percentage are always there. Once `final` is `true`, everybody has a rank, and a friend with a final result over at least 7 days has a percentage.
          */
         get: operations["showLeague"];
         put?: never;
@@ -1430,7 +1430,7 @@ export interface components {
          * @enum {string}
          */
         DuelStatus: "proposed" | "active" | "declined" | "expired" | "cancelled" | "completed" | "forfeited";
-        /** @description One side of a duel over the days that count so far. Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
+        /** @description One side of a duel. The user's own side counts the days up to yesterday, and today once it is checked in. The opponent's side counts FINAL days only (two days old, and not to be changed by anybody any more). Nothing in it tells how much was smoked: the reduction is relative to a baseline that is never shown, and is given in whole percent. */
         DuelSide: {
             /** @description `null` for the opponent while the duel runs: then only `standing` says who is ahead. A figure that moves every day could be calculated back, day by day. For the user's own side, and for both sides once the duel is decided: in whole percent, rounded (a half away from zero). Negative when more was smoked than the baseline. A day without a check-in counts as the baseline, or as what was logged when that is more (SRS FR-COMP-03). Whole numbers on purpose: an exact figure could be calculated back to the baseline and the counts. */
             reductionPercent: number | null;
@@ -1468,7 +1468,7 @@ export interface components {
             mine: components["schemas"]["DuelSide"] | null;
             /** @description As `mine`, and `null` whenever `opponent` is. */
             theirs: components["schemas"]["DuelSide"] | null;
-            /** @description Where the user stands in a running duel, once both sides have a day that counts. `null` before that, for every duel that is not running, and whenever `opponent` is. */
+            /** @description Where the user stands in a running duel, over the final days of both sides, once both have one. A user can still change the own open days, so they do not count here: otherwise the answer could be found out by trying. `null` before that, for every duel that is not running, and whenever `opponent` is. */
             standing: components["schemas"]["Standing"] | null;
             /**
              * @description Of a completed duel. More reduction wins, then more smoke-free days, then more check-ins.
@@ -1490,7 +1490,7 @@ export interface components {
                 day: number;
                 /** @description The level of that day. `null` while the day does not count yet. */
                 mine: components["schemas"]["DuelDayLevel"] | null;
-                /** @description As `mine`, and `null` whenever `opponent` is. */
+                /** @description As `mine`, for final days only, and `null` whenever `opponent` is. */
                 theirs: components["schemas"]["DuelDayLevel"] | null;
             }[];
         };
@@ -1561,7 +1561,7 @@ export interface components {
             award: components["schemas"]["LeagueAward"] | null;
         };
         LeagueEntry: {
-            /** @description While the league is not `final`: only the user's own entry has a rank, one more than the number of friends who are ahead. Once it is `final`: everybody with a result or a day that counts. `null` otherwise. */
+            /** @description While the league is not `final`: only the user's own entry has a rank, one more than the number of friends who are ahead, once the user has a final day. Once it is `final`: everybody with a final result. `null` otherwise. */
             rank: number | null;
             /** @description Of a friend while the league is not `final`: where the friend stands against the user. Friends are not ranked against each other then: a rank among chosen friends could be turned back into a percentage. `null` for the user's own entry, once the league is `final`, and while one of the two has no day that counts. */
             standing: components["schemas"]["Standing"] | null;

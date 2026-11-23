@@ -167,6 +167,29 @@ final class CalendarPeriodTest extends TestCase
         self::assertSame('9999-12-26', CalendarPeriod::fromKey(LeaguePeriod::Week, '9999-W51')->last()->value);
     }
 
+    public function test_FR_COMP_06_no_key_with_four_digits_ends_in_anything_but_a_period_or_a_refusal(): void
+    {
+        // Whatever the first and the last years of the calendar do to the arithmetic: the answer to a
+        // key is a period or InvalidValue, never another exception (which would be a server error).
+        $numbers = ['W00', 'W01', 'W02', 'W52', 'W53', '00', '01', '12', '13', 'Q0', 'Q1', 'Q4', 'Q5', 'H0', 'H1', 'H2', 'H3'];
+        $periods = 0;
+        foreach (['0000', '0001', '0002', '0999', '1000', '9998', '9999'] as $year) {
+            foreach (LeaguePeriod::cases() as $type) {
+                foreach ($numbers as $number) {
+                    try {
+                        $period = CalendarPeriod::fromKey($type, "{$year}-{$number}");
+                        self::assertSame("{$year}-{$number}", $period->key);
+                        self::assertFalse($period->first()->isAfter($period->last()));
+                        $periods++;
+                    } catch (InvalidValue) {
+                        $this->addToAssertionCount(1);
+                    }
+                }
+            }
+        }
+        self::assertGreaterThan(50, $periods);
+    }
+
     public function test_FR_COMP_06_week_53_exists_in_a_year_that_has_it(): void
     {
         self::assertSame('2026-12-28', CalendarPeriod::fromKey(LeaguePeriod::Week, '2026-W53')->first()->value);

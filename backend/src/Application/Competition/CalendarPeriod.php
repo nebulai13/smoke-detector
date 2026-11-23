@@ -6,6 +6,7 @@ namespace SmokeDetector\Application\Competition;
 
 use DateTimeImmutable;
 use DateTimeZone;
+use InvalidArgumentException;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\Validation\ErrorCode;
 use SmokeDetector\Application\Validation\InvalidValue;
@@ -52,7 +53,7 @@ final readonly class CalendarPeriod
      *
      * @throws InvalidValue invalid_format when the text is no key of this type; invalid_value when it
      *                      looks like one and there is no such period (week 53 of a year with 52,
-     *                      or a period that ends after 9999-12-31).
+     *                      or a period that begins before 0000-01-01 or ends after 9999-12-31).
      */
     public static function fromKey(LeaguePeriod $type, string $key): self
     {
@@ -74,7 +75,13 @@ final readonly class CalendarPeriod
         if (strlen($first->modify('+6 days')->format('Y')) > self::YEAR_DIGITS) {
             throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
         }
-        $period = self::containing($type, LocalDate::fromString($first->format('Y-m-d')));
+        try {
+            $monday = LocalDate::fromString($first->format('Y-m-d'));
+        } catch (InvalidArgumentException) {
+            // A week that begins before 0000-01-01 (week 1 of the year 0000): no date of four digits.
+            throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
+        }
+        $period = self::containing($type, $monday);
         if ($period->key !== $key) {
             throw new InvalidValue(ErrorCode::InvalidValue, self::NO_PERIOD);
         }

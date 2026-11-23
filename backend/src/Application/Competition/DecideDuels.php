@@ -57,7 +57,7 @@ final readonly class DecideDuels
         IdGenerator $ids,
         private LoggerInterface $logger,
     ) {
-        $this->sides = new DuelSides($calendars, $records);
+        $this->sides = new DuelSides($calendars, $records, $progress);
         $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
     }
 

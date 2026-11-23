@@ -13,6 +13,7 @@ use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Day\Calendar;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\DayRecords;
+use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Friends\FriendLinks;
 use SmokeDetector\Application\Friends\PublicProfile;
 use SmokeDetector\Application\Plan\PlanRequired;
@@ -26,8 +27,12 @@ use SmokeDetector\Domain\Xp\LeaguePeriod;
  * GET /leagues (FR-COMP-06, FR-COMP-08, FR-FRND-03; HLD §4.9 "What a user sees"): the user and their
  * friends of today over one calendar period.
  *
- * - Each member's score is the stored result where there is one; otherwise the days that count so
- *   far, as in a running duel (§4.8), from the first day of the period or of the plan.
+ * - Each member's score is the stored result where there is one. Otherwise the user's own entry is
+ *   live, the days that count so far as in a running duel (§4.8), and of a friend only the final days
+ *   count; both from the first day of the period or of the plan. Who is ahead, and the user's own
+ *   rank, are decided over the final days of both (HLD §4.8 "Of the other side, final days only"):
+ *   the user can still change the own open days, and could find a friend's reduction by trying.
+ * - A final league (the user's own result has its award) ranks stored results only.
  * - While the user's own rank is not stored, friends are not ranked against each other: each is
  *   ahead of the user, level or behind. Otherwise accounts of one's own as friends would show where
  *   a real friend stands among them every day, and so the friend's reduction.
@@ -53,6 +58,7 @@ final readonly class ShowLeague
         private FriendLinks $links,
         private Calendars $calendars,
         private DayRecords $records,
+        private ProgressRecords $progress,
         private LeagueResults $results,
     ) {
     }
@@ -93,31 +99,30 @@ final readonly class ShowLeague
     }
 
     /**
-     * One member with their score, if any, and whether the viewer may see their percentage.
+     * One member: the score shown, the score compared with (the same but for the user's own live
+     * entry, which is compared over the own final days), and whether the viewer may see the percentage.
      *
-     * @return array{PublicProfile, bool, CompetitionScore|null, bool}
+     * @return array{PublicProfile, bool, CompetitionScore|null, CompetitionScore|null, bool}
      */
     private function member(User $user, bool $you, ?Calendar $calendar, CalendarPeriod $league, bool $final, DateTimeImmutable $now): array
     {
+        $profile = PublicProfile::of($user);
         $stored = $this->results->find($user->id, $league);
         if ($stored !== null) {
-            return [PublicProfile::of($user), $you, $stored->score(), $you || ($final && $stored->countedDays >= self::MIN_DAYS_FOR_A_PERCENTAGE)];
+            $score = $stored->score();
+
+            return [$profile, $you, $score, $score, $you || ($final && $stored->countedDays >= self::MIN_DAYS_FOR_A_PERCENTAGE)];
         }
+        // A final league is made of stored results; the user's own is one (it holds the award).
+        if ($final || $calendar === null) {
+            return [$profile, $you, null, null, $you];
+        }
+        $start = $calendar->plan->startDate->isAfter($league->first()) ? $calendar->plan->startDate : $league->first();
+        $compared = DuelSides::readFinal($this->records, $this->progress, $calendar, $start, $league->last())->score();
+        // Of a friend nothing but the final days is read.
+        $shown = $you ? DuelSides::read($this->records, $calendar, $start, $league->last(), null, $now)->score() : $compared;
 
-        return [PublicProfile::of($user), $you, $calendar === null ? null : $this->scoreSoFar($calendar, $league, $now), $you];
-    }
-
-    /**
-     * The days of the period that count so far, from its first day or from the first day of the plan.
-     *
-     * @return CompetitionScore|null Null while no day counts.
-     */
-    private function scoreSoFar(Calendar $calendar, CalendarPeriod $league, DateTimeImmutable $now): ?CompetitionScore
-    {
-        $startDate = $calendar->plan->startDate;
-        $start = $startDate->isAfter($league->first()) ? $startDate : $league->first();
-
-        return DuelSides::read($this->records, $calendar, $start, $league->last(), null, $now)->score();
+        return [$profile, $you, $shown, $compared, $you];
     }
 
     /**
@@ -127,26 +132,27 @@ final readonly class ShowLeague
      * - Final: everybody with a score ranked, the same rank for equal scores, in ranking order.
      * - Not final: only the user ranked, by the friends who are ahead. Each friend ahead, level or
      *   behind the user, in that order around the user, and never ordered by score among each other.
-     *   Without a score of the user's own nobody is compared, and the friends with a score come first.
+     *   Without a final score of the user's own nobody is compared and the user has no rank: the
+     *   friends with a score come first, then everybody else, the user too.
      *
-     * @param list<array{PublicProfile, bool, CompetitionScore|null, bool}> $members The user first.
+     * @param list<array{PublicProfile, bool, CompetitionScore|null, CompetitionScore|null, bool}> $members The user first.
      *
      * @return list<LeagueEntry>
      */
     private static function entries(array $members, bool $final): array
     {
         $comparator = new CompetitionScoreComparator();
-        $own = $members[0][2];
+        $own = $members[0][3];
         // Not final: the friends who are ahead (or all with a score, while the user has none), the
         // user, those who are level, those who are behind. Final: everybody with a score in $ranked.
         [$ranked, $first, $you, $level, $behind, $unscored] = [[], [], [], [], [], []];
-        foreach ($members as [$profile, $isYou, $score, $showPercent]) {
+        foreach ($members as [$profile, $isYou, $score, $compared, $showPercent]) {
             if ($score === null) {
                 $unscored[] = new LeagueEntry($profile, $isYou, null, null, null, null, null, null);
                 continue;
             }
-            $rank = $final || ($isYou && $own !== null) ? 1 + self::better($members, $score, $comparator) : null;
-            $standing = $final || $isYou || $own === null ? null : DuelStanding::of($comparator->compare($score, $own));
+            $rank = $compared !== null && ($final || $isYou) ? 1 + self::better($members, $compared, $comparator) : null;
+            $standing = $final || $isYou || $own === null || $compared === null ? null : DuelStanding::of($comparator->compare($compared, $own));
             $entry = new LeagueEntry(
                 $profile,
                 $isYou,
@@ -161,6 +167,8 @@ final readonly class ShowLeague
                 $ranked[] = $entry;
             } elseif ($rank !== null) {
                 $you[] = $entry;
+            } elseif ($isYou) {
+                $unscored[] = $entry;
             } elseif ($standing === DuelStanding::Level) {
                 $level[] = $entry;
             } elseif ($standing === DuelStanding::Behind) {
@@ -187,14 +195,14 @@ final readonly class ShowLeague
     }
 
     /**
-     * How many members have a better score.
+     * How many members have a better score, each by the score compared with.
      *
-     * @param list<array{PublicProfile, bool, CompetitionScore|null, bool}> $members
+     * @param list<array{PublicProfile, bool, CompetitionScore|null, CompetitionScore|null, bool}> $members
      */
     private static function better(array $members, CompetitionScore $score, CompetitionScoreComparator $comparator): int
     {
         $better = 0;
-        foreach ($members as [, , $other]) {
+        foreach ($members as [, , , $other]) {
             $better += $other !== null && $comparator->compare($other, $score) > 0 ? 1 : 0;
         }
 
