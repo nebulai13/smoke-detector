@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Infrastructure\Repository;
 
+use DateTimeImmutable;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Logging\SmokeLogs;
@@ -91,5 +92,20 @@ final readonly class PdoSmokeLogs implements SmokeLogs
         );
 
         return (new Row(['sessions' => $sessions]))->int('sessions');
+    }
+
+    public function lastSessionAt(UserId $userId): ?DateTimeImmutable
+    {
+        $last = $this->sql->value('SELECT MAX(smoked_at) FROM smoke_logs WHERE user_id = ? AND deleted_at IS NULL', [$userId->value]);
+
+        return (new Row(['last' => $last]))->nullableTime('last');
+    }
+
+    public function productsOf(UserId $userId): array
+    {
+        $used = $this->sql->column('SELECT DISTINCT product_type FROM smoke_logs WHERE user_id = ? AND deleted_at IS NULL', [$userId->value]);
+
+        // In the order of the cases, whatever order the database finds them in.
+        return array_values(array_filter(ProductType::cases(), static fn (ProductType $type): bool => in_array($type->value, $used, true)));
     }
 }
