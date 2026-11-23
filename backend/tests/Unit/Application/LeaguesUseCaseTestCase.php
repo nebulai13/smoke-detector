@@ -106,16 +106,20 @@ abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
     }
 
     /**
-     * @return list<array{int|null, string, int|null, int|null, int|null, int|null}> Rank, name, percent,
-     *                                                                               smoke-free days,
-     *                                                                               check-ins and counted
-     *                                                                               days of every entry.
+     * @return list<array{int|string|null, string, int|null, int|null, int|null, int|null}> Of every entry: the
+     *                                                                                      rank, or where the
+     *                                                                                      friend stands against
+     *                                                                                      the user (ahead, level,
+     *                                                                                      behind), or null; then
+     *                                                                                      name, percent, smoke-free
+     *                                                                                      days, check-ins and
+     *                                                                                      counted days.
      */
     protected static function entries(LeagueView $view): array
     {
         return array_map(
             static fn (LeagueEntry $entry): array => [
-                $entry->rank, $entry->user->displayName->value . ($entry->you ? ' (you)' : ''), $entry->reductionPercent,
+                $entry->rank ?? $entry->standing?->value, $entry->user->displayName->value . ($entry->you ? ' (you)' : ''), $entry->reductionPercent,
                 $entry->smokeFreeDays, $entry->checkIns, $entry->countedDays,
             ],
             $view->entries,

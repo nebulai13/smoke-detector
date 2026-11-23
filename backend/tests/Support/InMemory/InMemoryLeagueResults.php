@@ -31,7 +31,12 @@ final class InMemoryLeagueResults implements LeagueResults, InMemoryState
 
     public function save(LeagueResult $result): void
     {
-        $this->results[self::key($result->userId, $result->period)] = $result;
+        $stored = $this->find($result->userId, $result->period);
+        // What was scored stays as it was scored, and a rank that was decided stays decided.
+        $this->results[self::key($result->userId, $result->period)] = $stored === null ? $result : new LeagueResult(
+            $stored->userId, $stored->period, $stored->b0Tenths, $stored->actualTenths, $stored->expectedTenths, $stored->smokeFreeDays, $stored->checkIns,
+            $stored->countedDays, $stored->rulesVersion, $stored->scoredAt, $result->checkAt, $stored->award ?? $result->award,
+        );
     }
 
     public function unranked(DateTimeImmutable $now, int $limit): array

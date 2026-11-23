@@ -16,7 +16,8 @@ use SmokeDetector\Infrastructure\Database\Sql;
 
 /**
  * The final results of the league periods in the `league_results` table (HLD §4.3): one row per
- * user, period type and period key; the rank in its four columns, NULL until it is decided.
+ * user, period type and period key; the rank in its four columns, NULL until it is decided. A stored
+ * score and a stored rank are never changed (HLD §4.9 "Stored for good").
  */
 final readonly class PdoLeagueResults implements LeagueResults
 {
@@ -40,11 +41,14 @@ final readonly class PdoLeagueResults implements LeagueResults
     public function save(LeagueResult $result): void
     {
         $names = explode(', ', self::COLUMNS);
-        $updates = array_map(static fn (string $name): string => "{$name} = VALUES({$name})", array_slice($names, 3));
+        // What was scored is never changed. The rank columns are set only while they are empty, each
+        // on its own, so that no assignment reads a column another one has already changed.
+        $updates = array_map(static fn (string $name): string => "{$name} = COALESCE({$name}, VALUES({$name}))", array_slice($names, 12));
         $award = $result->award;
+        // One statement: two runs at the same moment cannot both find the row missing or empty.
         $this->sql->execute(
             'INSERT INTO league_results (' . self::COLUMNS . ') VALUES (' . implode(', ', array_fill(0, count($names), '?')) . ') '
-            . 'ON DUPLICATE KEY UPDATE ' . implode(', ', $updates),
+            . 'ON DUPLICATE KEY UPDATE check_at = VALUES(check_at), ' . implode(', ', $updates),
             [
                 $result->userId->value,
                 $result->period->type->value,

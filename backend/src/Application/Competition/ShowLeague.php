@@ -24,13 +24,17 @@ use SmokeDetector\Domain\Xp\LeaguePeriod;
 
 /**
  * GET /leagues (FR-COMP-06, FR-COMP-08, FR-FRND-03; HLD §4.9 "What a user sees"): the user and their
- * friends of today over one calendar period, in ranking order.
+ * friends of today over one calendar period.
  *
  * - Each member's score is the stored result where there is one; otherwise the days that count so
  *   far, as in a running duel (§4.8), from the first day of the period or of the plan.
+ * - While the user's own rank is not stored, friends are not ranked against each other: each is
+ *   ahead of the user, level or behind. Otherwise accounts of one's own as friends would show where
+ *   a real friend stands among them every day, and so the friend's reduction.
  * - The user's own percentage is always shown. A friend's only once the user's own rank is stored,
- *   and only from the friend's stored result: a percentage that moves every day could be calculated
- *   back to daily counts. It is not even put into the view otherwise.
+ *   only from the friend's stored result and only over MIN_DAYS_FOR_A_PERCENTAGE counted days or
+ *   more: a percentage that moves every day, or one over a few days, could be calculated back to
+ *   daily counts. It is not even put into the view otherwise.
  *
  * Locks nothing and writes nothing: one transaction only so that everything is read from one snapshot.
  */
@@ -38,6 +42,9 @@ final readonly class ShowLeague
 {
     /** The period that holds the user's today. */
     public const string CURRENT = 'current';
+
+    /** A friend's final percentage is shown only for a result over this many counted days or more. */
+    public const int MIN_DAYS_FOR_A_PERCENTAGE = 7;
 
     public function __construct(
         private TransactionRunner $transactions,
@@ -81,7 +88,7 @@ final readonly class ShowLeague
                 }
             }
 
-            return new LeagueView($league, $final, self::entries($members), $award);
+            return new LeagueView($league, $final, self::entries($members, $final), $award);
         });
     }
 
@@ -94,7 +101,7 @@ final readonly class ShowLeague
     {
         $stored = $this->results->find($user->id, $league);
         if ($stored !== null) {
-            return [PublicProfile::of($user), $you, $stored->score(), $you || $final];
+            return [PublicProfile::of($user), $you, $stored->score(), $you || ($final && $stored->countedDays >= self::MIN_DAYS_FOR_A_PERCENTAGE)];
         }
 
         return [PublicProfile::of($user), $you, $calendar === null ? null : $this->scoreSoFar($calendar, $league, $now), $you];
@@ -114,42 +121,83 @@ final readonly class ShowLeague
     }
 
     /**
-     * Ranks the members and puts them in order: by rank, then by name without regard to capitals,
-     * then by id; those without a score last, by name.
+     * The entries in their order, each group by name without regard to capitals, then by id; those
+     * without a score last, by name.
      *
-     * @param list<array{PublicProfile, bool, CompetitionScore|null, bool}> $members
+     * - Final: everybody with a score ranked, the same rank for equal scores, in ranking order.
+     * - Not final: only the user ranked, by the friends who are ahead. Each friend ahead, level or
+     *   behind the user, in that order around the user, and never ordered by score among each other.
+     *   Without a score of the user's own nobody is compared, and the friends with a score come first.
+     *
+     * @param list<array{PublicProfile, bool, CompetitionScore|null, bool}> $members The user first.
      *
      * @return list<LeagueEntry>
      */
-    private static function entries(array $members): array
+    private static function entries(array $members, bool $final): array
     {
         $comparator = new CompetitionScoreComparator();
-        $entries = [];
-        foreach ($members as [$profile, $you, $score, $showPercent]) {
+        $own = $members[0][2];
+        // Not final: the friends who are ahead (or all with a score, while the user has none), the
+        // user, those who are level, those who are behind. Final: everybody with a score in $ranked.
+        [$ranked, $first, $you, $level, $behind, $unscored] = [[], [], [], [], [], []];
+        foreach ($members as [$profile, $isYou, $score, $showPercent]) {
             if ($score === null) {
-                $entries[] = new LeagueEntry($profile, $you, null, null, null, null, null);
+                $unscored[] = new LeagueEntry($profile, $isYou, null, null, null, null, null, null);
                 continue;
             }
-            $better = 0;
-            foreach ($members as [, , $other]) {
-                $better += $other !== null && $comparator->compare($other, $score) > 0 ? 1 : 0;
-            }
-            $entries[] = new LeagueEntry(
+            $rank = $final || ($isYou && $own !== null) ? 1 + self::better($members, $score, $comparator) : null;
+            $standing = $final || $isYou || $own === null ? null : DuelStanding::of($comparator->compare($score, $own));
+            $entry = new LeagueEntry(
                 $profile,
-                $you,
-                1 + $better,
+                $isYou,
+                $rank,
+                $standing,
                 $showPercent ? (int) $score->reduction->toPercent(0) : null,
                 $score->smokeFreeDays,
                 $score->checkIns,
                 $score->countedDays,
             );
+            if ($final) {
+                $ranked[] = $entry;
+            } elseif ($rank !== null) {
+                $you[] = $entry;
+            } elseif ($standing === DuelStanding::Level) {
+                $level[] = $entry;
+            } elseif ($standing === DuelStanding::Behind) {
+                $behind[] = $entry;
+            } else {
+                $first[] = $entry;
+            }
         }
-        usort(
-            $entries,
-            static fn (LeagueEntry $a, LeagueEntry $b): int => [$a->rank === null, $a->rank] <=> [$b->rank === null, $b->rank]
-                ?: PublicProfile::compareByName($a->user, $b->user),
-        );
+        usort($ranked, static fn (LeagueEntry $a, LeagueEntry $b): int => $a->rank <=> $b->rank ?: PublicProfile::compareByName($a->user, $b->user));
+
+        return [...$ranked, ...self::byName($first), ...$you, ...self::byName($level), ...self::byName($behind), ...self::byName($unscored)];
+    }
+
+    /**
+     * @param list<LeagueEntry> $entries
+     *
+     * @return list<LeagueEntry>
+     */
+    private static function byName(array $entries): array
+    {
+        usort($entries, static fn (LeagueEntry $a, LeagueEntry $b): int => PublicProfile::compareByName($a->user, $b->user));
 
         return $entries;
+    }
+
+    /**
+     * How many members have a better score.
+     *
+     * @param list<array{PublicProfile, bool, CompetitionScore|null, bool}> $members
+     */
+    private static function better(array $members, CompetitionScore $score, CompetitionScoreComparator $comparator): int
+    {
+        $better = 0;
+        foreach ($members as [, , $other]) {
+            $better += $other !== null && $comparator->compare($other, $score) > 0 ? 1 : 0;
+        }
+
+        return $better;
     }
 }

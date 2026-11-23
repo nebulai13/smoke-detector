@@ -699,7 +699,7 @@ export interface paths {
          * The league of the user and their friends for one period (SRS FR-COMP-06, FR-COMP-08)
          * @description The user and their friends of today, ranked by reduction over a calendar period: more reduction, then more smoke-free days, then more check-ins; equal on all three share a rank. Somebody without a day that counts is listed last, without a rank.
          *
-         *     While the user's rank for the period is not stored yet (`final` is `false`), friends are shown with their position and without a percentage: a percentage that moves every day could be calculated back to daily counts. The user's own percentage is always there. Once `final` is `true`, every friend with a final result has a percentage.
+         *     While the user's rank for the period is not stored yet (`final` is `false`), a friend is shown as ahead of the user, level or behind, without a rank and without a percentage: figures that move every day could be calculated back to daily counts. The user's own rank and percentage are always there. Once `final` is `true`, everybody has a rank, and a friend with a final result over at least 7 days has a percentage.
          */
         get: operations["showLeague"];
         put?: never;
@@ -1469,7 +1469,7 @@ export interface components {
             /** @description As `mine`, and `null` whenever `opponent` is. */
             theirs: components["schemas"]["DuelSide"] | null;
             /** @description Where the user stands in a running duel, once both sides have a day that counts. `null` before that, for every duel that is not running, and whenever `opponent` is. */
-            standing: components["schemas"]["DuelStanding"] | null;
+            standing: components["schemas"]["Standing"] | null;
             /**
              * @description Of a completed duel. More reduction wins, then more smoke-free days, then more check-ins.
              * @enum {string|null}
@@ -1498,7 +1498,7 @@ export interface components {
          * @description The user against the opponent over the days that count so far: more reduction is ahead (compared exactly, not as rounded percent), then more smoke-free days, then more check-ins. `level` when all three are equal.
          * @enum {string}
          */
-        DuelStanding: "ahead" | "level" | "behind";
+        Standing: "ahead" | "level" | "behind";
         /**
          * @description How a duel day went, in four levels and never as a number. `smoke_free`: checked in without a session. `well_under`: checked in with at most half of the frozen baseline. `under`: checked in below the baseline. `not_under`: at or over the baseline, or not checked in.
          * @enum {string}
@@ -1555,18 +1555,20 @@ export interface components {
             endsOn: string;
             /** @description `true` once the user's own rank for the period is stored. */
             final: boolean;
-            /** @description The user and their friends, in ranking order. Those without a rank come last, by name. */
+            /** @description The user and their friends. Once `final`: in ranking order. Before: the friends who are ahead, the user, the friends who are level, the friends who are behind, each group by name. Those without a day that counts come last, by name. */
             entries: components["schemas"]["LeagueEntry"][];
             /** @description The user's stored rank and reward. `null` until `final`. */
             award: components["schemas"]["LeagueAward"] | null;
         };
         LeagueEntry: {
-            /** @description `null` for somebody without a day that counts. */
+            /** @description While the league is not `final`: only the user's own entry has a rank, one more than the number of friends who are ahead. Once it is `final`: everybody with a result or a day that counts. `null` otherwise. */
             rank: number | null;
+            /** @description Of a friend while the league is not `final`: where the friend stands against the user. Friends are not ranked against each other then: a rank among chosen friends could be turned back into a percentage. `null` for the user's own entry, once the league is `final`, and while one of the two has no day that counts. */
+            standing: components["schemas"]["Standing"] | null;
             user: components["schemas"]["PublicUser"];
             /** @description `true` for the user's own entry. */
             you: boolean;
-            /** @description In whole percent. For a friend only once the league is `final` and the friend has a final result; `null` before, and for somebody without a rank. */
+            /** @description In whole percent. For a friend only once the league is `final` and the friend has a final result over at least 7 counted days; `null` otherwise. The user's own is always there when a day counts. */
             reductionPercent: number | null;
             smokeFreeDays: number | null;
             checkIns: number | null;

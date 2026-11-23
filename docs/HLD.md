@@ -786,15 +786,23 @@ not hold up everybody else for ever.
 
 | | While the result is not final | Once the user's rank is stored |
 |---|---|---|
-| Own entry | own reduction in whole percent, over the days that count so far | own final percent, rank, participants, XP |
-| Friends' entries | position only: the list is in ranking order with ranks. No percentage | percent of every friend with a stored result |
+| Own entry | own reduction in whole percent over the days that count so far, and own rank: one more than the number of friends who are ahead | own final percent, rank, and the stored reward |
+| A friend's entry | ahead of the user, level, or behind. No rank and no percentage | rank, and the percent of a stored result over at least 7 counted days |
 | Always | name, avatar, smoke-free days, check-ins, counted days | |
 
 - While a period runs, the days that count are the ones of §4.8: up to yesterday, and today once it is
-  checked in. Positions come from the exact comparison. The owner decided this for duels and leagues alike: a
-  percentage that moves every day could be calculated back to daily counts.
+  checked in. Who is ahead comes from the exact comparison.
+- **Friends are not ranked against each other while the result is not final.** An audit showed why: somebody
+  can add accounts of their own as friends, give each a result they choose, and read every day where a real
+  friend stands among them. With 48 such accounts that is the friend's reduction to two percentage points,
+  day by day: the moving percentage the owner ruled out for duels. Against the user alone it is one
+  comparison a day, as in a duel. The list is ordered by group (ahead, the user, level, behind) and by name
+  inside a group, so the order tells nothing more.
+- **A friend's final percentage needs 7 counted days.** Somebody who joined on the last days of a period has
+  a result over one to three days, and its percentage would be nearly the figure of a single day. Such a
+  friend has a rank and no percentage. The user's own percentage is always shown to the user.
 - A participant without a counted day (no plan, a plan that starts later, the first day not checked in yet)
-  is listed without a rank and without figures.
+  is listed last, without figures. While the user has no counted day, nobody is ahead or behind.
 - For a period that is over, a friend's stored result is used where there is one, also before the user's own
   rank is stored. The list shown later is ranked among the friends of today. The stored reward is the one of
   the moment it was decided, and the two can differ when friendships changed.
@@ -815,8 +823,20 @@ feed itself. XP is among the things friends see (FR-FRND-03), so the numbers are
 exact result, and deleting the account deletes them. A friend's stored rank is not changed when a user is
 deleted.
 
+**Stored for good.** The repository inserts a result once. Later writes change the time of the next look and
+set the rank, the participants and the XP while they are still empty, and nothing else: a period that was
+scored twice by mistake would keep its first score and its rank, and no reward could be paid twice (NFR-04).
+A result that fails to be ranked is looked at again 15 minutes later, like one that waits, so it is not the
+first of every run.
+
 **Known limits, accepted for the pilot:**
 
+- **What the final figures tell.** A new friend sees the user's final percentages of past periods, back to
+  the first one both have a result for. A final percentage over a week narrows the possible baselines and
+  totals without fixing them (§4.8). Smoke-free days and check-ins of a running period, looked at daily, tell
+  for each day whether it was checked in and whether it was smoke-free: less than the day levels of a duel,
+  but for every friend and on the same day.
+- **The stored number of participants** can include somebody who is no friend any more.
 - **A period whose last day is skipped** by a move across the date line (§4.6) gets no stored result.
 - **Ranks are among today's friends.** Adding friends who did badly shortly before a period is ranked improves
   the own rank. Accepted for a pilot among friends.

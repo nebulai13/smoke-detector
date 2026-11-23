@@ -13,7 +13,7 @@ use SmokeDetector\Application\Friends\PublicProfile;
 /**
  * Writes leagues as the schemas League and XpLeague of api/openapi.yaml.
  *
- * Built from LeagueView and XpLeagueView only: whole percentages, ranks and the tie-breakers, never
+ * Built from LeagueView and XpLeagueView only: whole percentages, ranks, standings and the tie-breakers, never
  * a baseline, a count or a total, so nothing else of another user can get into these answers
  * (HLD §4.9 "What a user sees").
  */
@@ -35,6 +35,8 @@ final readonly class LeaguesResponder
             'entries' => array_map(
                 static fn (LeagueEntry $entry): array => [
                     'rank' => $entry->rank,
+                    // Of a friend while the league is not final, instead of a rank (ShowLeague).
+                    'standing' => $entry->standing?->value,
                     'user' => self::user($entry->user),
                     'you' => $entry->you,
                     // Whole percent. Null for a friend while it may not be shown (ShowLeague).

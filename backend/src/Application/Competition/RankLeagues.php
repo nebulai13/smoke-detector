@@ -34,8 +34,8 @@ use Throwable;
  * - Per run at most BATCH_SIZE results. Each is one transaction that locks the account of its user
  *   and reads the result again: one that changed in the meantime (ranked by another run) or whose
  *   account is gone is left alone.
- * - A result that fails is rolled back and logged without any id, and the run goes on. The report
- *   counts it, so the command fails.
+ * - A result that fails is rolled back and logged without any id, looked at again RECHECK_MINUTES
+ *   later, and the run goes on. The report counts it, so the command fails.
  */
 final readonly class RankLeagues
 {
@@ -77,6 +77,7 @@ final readonly class RankLeagues
                 $ranked += $isRanked;
                 $waiting += $isWaiting;
             } catch (Throwable $failure) {
+                $this->recheckLater($result, $now);
                 // The class only: the message of a failure may hold a value of a row.
                 $this->logger->error('A league result could not be ranked.', ['exception' => $failure::class]);
                 $failed++;
@@ -115,7 +116,7 @@ final readonly class RankLeagues
         }
 
         if (!$settled && $result->scoredAt->add(new DateInterval('P' . self::MAX_WAIT_DAYS . 'D')) > $now) {
-            $this->results->save($result->checkedAgainAt($now->add(new DateInterval('PT' . self::RECHECK_MINUTES . 'M'))));
+            $this->results->save($result->checkedAgainAt(self::recheckAt($now)));
 
             return [0, 1];
         }
@@ -127,6 +128,25 @@ final readonly class RankLeagues
         $this->results->save($result->ranked(new LeagueAward($rank, $participants, $xp, $now)));
 
         return [1, 0];
+    }
+
+    /**
+     * After a failure: the result is looked at again RECHECK_MINUTES later, so that one that fails
+     * every time is not the first of every run. Saving keeps what was scored and a rank that was
+     * decided. If even this fails, it is logged and the run goes on.
+     */
+    private function recheckLater(LeagueResult $result, DateTimeImmutable $now): void
+    {
+        try {
+            $this->transactions->run(fn () => $this->results->save($result->checkedAgainAt(self::recheckAt($now))));
+        } catch (Throwable $failure) {
+            $this->logger->error('A league result that could not be ranked could not be put back either.', ['exception' => $failure::class]);
+        }
+    }
+
+    private static function recheckAt(DateTimeImmutable $now): DateTimeImmutable
+    {
+        return $now->add(new DateInterval('PT' . self::RECHECK_MINUTES . 'M'));
     }
 
     /**

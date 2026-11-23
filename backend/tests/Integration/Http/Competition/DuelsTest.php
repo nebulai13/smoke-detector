@@ -493,7 +493,7 @@ final class DuelsTest extends HttpTestCase
         self::assertSame(array_map(static fn (DayLevel $level): string => $level->value, DayLevel::cases()), $schema('DuelDayLevel', 'enum'));
         // Whole percent for a duel, a level for a day: nothing with a decimal that could be calculated back.
         self::assertSame(['integer', true], [$schema('DuelSide', 'properties', 'reductionPercent', 'type'), $schema('DuelSide', 'properties', 'reductionPercent', 'nullable')]);
-        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('DuelStanding', 'enum'));
+        self::assertSame(array_map(static fn (DuelStanding $standing): string => $standing->value, DuelStanding::cases()), $schema('Standing', 'enum'));
         self::assertSame(max(Duel::PERIODS), $schema('DuelDetail', 'properties', 'days', 'items', 'properties', 'day', 'maximum'));
         self::assertSame([72, 5], [Duel::OPEN_FOR_HOURS, DuelInvitations::MAX_OPEN]);
         $notes = self::at($document, 'paths', '/duels', 'post', 'description');
