@@ -129,6 +129,11 @@ tags:
     description: >
       The account of the logged-in user: profile, reduction plan, data export and deletion (HLD §4.5
       "Account"). The user is always the one the access token belongs to. No operation takes a user id.
+  - name: Logging
+    description: >
+      Logs, check-in and the days of the logged-in user (HLD §4.6). All of them need the onboarding:
+      before it they answer `409` `plan_required`. A day is a local day of the user, worked out by the
+      server. It is final 48 hours after it ended; until then its logs can be corrected.
 paths:
   /health:
     get:
@@ -699,6 +704,174 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /me/dashboard:
+    get:
+      operationId: getDashboard
+      tags: [Logging]
+      summary: Today's count against the limit, and streaks, XP and level
+      description: >
+        `today` is the user's local day. `progress` includes the days that are not final yet, as they
+        stand: it is `provisional` when that differs from what is stored for good (SRS FR-GAME-06).
+      responses:
+        "200":
+          description: The dashboard.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dashboard"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/PlanRequired"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /me/baseline-history:
+    get:
+      operationId: getBaselineHistory
+      tags: [Logging]
+      summary: Every baseline the user ever had, oldest first (SRS FR-PLAN-08)
+      description: Empty before the onboarding.
+      responses:
+        "200":
+          description: The baseline history.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BaselineHistory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /logs/sync:
+    post:
+      operationId: syncLogs
+      tags: [Logging]
+      summary: Send logs and deletions from the app's outbox (SRS FR-LOG-02, FR-LOG-03)
+      description: >
+        Up to 200 items, applied in order. An item with `smokedAt`, `productType` and `count` stores a
+        log under the id the app gave it, or corrects the log of that id. An item with `deleted: true`
+        and nothing else deletes the log of that id. Sending an item again changes nothing, so a batch
+        can be repeated until its answer has arrived.
+
+
+        Every item gets its own entry in `results`, in the order of the request: `accepted`, or
+        `rejected` with a `reason`. A rejected item will be rejected again: the app takes it out of its
+        outbox and tells the user why (SRS FR-LOG-07). `days` holds the days of the accepted items as
+        they are now, oldest first.
+
+
+        The server works out the local day of a log from `smokedAt`. A day holds at most 300 sessions.
+        A deleted log stays deleted: a later item for its id is accepted and changes nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogSyncRequest"
+      responses:
+        "200":
+          description: The answer for every item, and the days that were touched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogSyncResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/PlanRequired"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /days:
+    get:
+      operationId: listDays
+      tags: [Logging]
+      summary: The days of a range with count, limit and check-in
+      description: >
+        Every day from `from` to `to` (both included, at most 92 days) that the user has: from the first
+        day of the plan to today. A day without a log is listed with a count of 0.
+      parameters:
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The days, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/PlanRequired"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /days/{date}/check-in:
+    post:
+      operationId: checkInDay
+      tags: [Logging]
+      summary: Check a day in ("Done for today", SRS FR-LOG-04)
+      description: >
+        Confirms the count of the day. Possible for today and for every earlier day that is not final.
+        A second check-in of the same day changes nothing and gets the same kind of answer. The request
+        has no body.
+
+
+        The answer shows what the day gives as things stand: `events` to celebrate, and `progress` with
+        the open days counted in. Both are provisional: the logs of the day can still be corrected until
+        it is final, and the check-in stays.
+      parameters:
+        - name: date
+          in: path
+          required: true
+          description: The local day of the user to check in.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: The day is checked in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckInResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/DayNotOpen"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
 components:
   securitySchemes:
     bearerAuth:
@@ -1085,8 +1258,17 @@ components:
         dailyLimit:
           type: integer
           minimum: 0
-          description: Today's limit in sessions, derived from the baseline, the taper speed and the goal.
+          description: >
+            Today's limit in sessions, derived from the baseline and from the goal and taper speed that
+            are in force today.
           example: 5
+        pendingFrom:
+          type: string
+          format: date
+          description: >
+            Present after a change of goal or taper speed that is not in force yet: the local day from
+            which `goalMode`, `target` and `taperSpeed` count. Until then `dailyLimit` follows the plan
+            as it was (SRS FR-I18N-02).
     UpdateMeRequest:
       type: object
       additionalProperties: false
@@ -1135,10 +1317,24 @@ components:
     AccountExport:
       type: object
       additionalProperties: false
-      required: [formatVersion, exportedAt, profile, consents, baselineHistory, sessions, mailLinks, queuedMails]
+      required:
+        - formatVersion
+        - exportedAt
+        - profile
+        - consents
+        - planHistory
+        - baselineHistory
+        - timeZoneHistory
+        - smokeLogs
+        - days
+        - xpEvents
+        - sessions
+        - mailLinks
+        - queuedMails
       description: >
         Everything the server stores about the user. Every table with user data has its member here, and
-        a later version of the API adds members. Times are UTC. `plan` is absent before the onboarding.
+        a later version of the API adds members. Times are UTC. `plan` and `progress` are absent before
+        the onboarding.
       properties:
         formatVersion:
           type: integer
@@ -1154,11 +1350,42 @@ components:
             $ref: "#/components/schemas/ExportedConsent"
         plan:
           $ref: "#/components/schemas/ExportedPlan"
+        planHistory:
+          type: array
+          description: >
+            What the plan said from which local day on, oldest first. A change of goal or taper speed
+            counts from the next local day.
+          items:
+            $ref: "#/components/schemas/ExportedPlanTerms"
         baselineHistory:
           type: array
           description: Every baseline the user ever had, oldest first.
           items:
             $ref: "#/components/schemas/ExportedBaseline"
+        timeZoneHistory:
+          type: array
+          description: >
+            The time zones of the user since the onboarding, oldest first. The days of the user are
+            counted in them. A change counts from the next local day.
+          items:
+            $ref: "#/components/schemas/ExportedZoneChange"
+        smokeLogs:
+          type: array
+          description: Every log, in the order of `smokedAt`. A deleted log stays stored and has `deletedAt`.
+          items:
+            $ref: "#/components/schemas/ExportedSmokeLog"
+        days:
+          type: array
+          description: The days that have a log or a check-in, and every day that is final, oldest first.
+          items:
+            $ref: "#/components/schemas/ExportedDay"
+        progress:
+          $ref: "#/components/schemas/ExportedProgress"
+        xpEvents:
+          type: array
+          description: Every XP award, by day.
+          items:
+            $ref: "#/components/schemas/ExportedXpEvent"
         sessions:
           type: array
           description: The logins of the user's devices, one entry per login. At most 20 are kept per user.
@@ -1273,6 +1500,390 @@ components:
         rulesVersion:
           type: string
           description: The version of the rule table the value was calculated with.
+    Day:
+      type: object
+      additionalProperties: false
+      required: [date, count, limit, remaining, checkedIn, status]
+      properties:
+        date:
+          type: string
+          format: date
+          description: A local day of the user.
+        count:
+          type: integer
+          minimum: 0
+          description: Sessions of the day.
+        limit:
+          type: integer
+          minimum: 0
+          description: The limit of that day.
+        remaining:
+          type: integer
+          minimum: 0
+          description: What is left of the limit. 0 when the count is at or over it, never negative.
+        checkedIn:
+          type: boolean
+        status:
+          type: string
+          enum: [provisional, final]
+          description: "`final` 48 hours after the day ended: nothing about it changes any more."
+    DayList:
+      type: object
+      additionalProperties: false
+      required: [days]
+      properties:
+        days:
+          type: array
+          maxItems: 92
+          items:
+            $ref: "#/components/schemas/Day"
+    Streak:
+      type: object
+      additionalProperties: false
+      required: [current, longest]
+      properties:
+        current:
+          type: integer
+          minimum: 0
+        longest:
+          type: integer
+          minimum: 0
+    Progress:
+      type: object
+      additionalProperties: false
+      required: [checkInStreak, underLimitStreak, freezes, xp, level, provisional]
+      properties:
+        checkInStreak:
+          $ref: "#/components/schemas/Streak"
+        underLimitStreak:
+          $ref: "#/components/schemas/Streak"
+        freezes:
+          type: integer
+          minimum: 0
+          description: Streak freezes held.
+        xp:
+          type: integer
+          minimum: 0
+          description: The XP total.
+        level:
+          type: object
+          additionalProperties: false
+          required: [number, xpIntoLevel, xpForNextLevel]
+          properties:
+            number:
+              type: integer
+              minimum: 0
+            xpIntoLevel:
+              type: integer
+              minimum: 0
+              description: XP earned since this level was reached.
+            xpForNextLevel:
+              type: integer
+              minimum: 1
+              description: The whole distance from this level to the next one.
+        provisional:
+          type: boolean
+          description: >
+            `true` when days that are not final yet are counted in and change something. Their logs can
+            still be corrected, so these numbers can still move.
+    Dashboard:
+      type: object
+      additionalProperties: false
+      required: [today, progress]
+      properties:
+        today:
+          $ref: "#/components/schemas/Day"
+        progress:
+          $ref: "#/components/schemas/Progress"
+    CheckInResult:
+      type: object
+      additionalProperties: false
+      required: [day, events, progress]
+      properties:
+        day:
+          $ref: "#/components/schemas/Day"
+        events:
+          type: array
+          description: What the day gives to celebrate as things stand, in the order to play it.
+          items:
+            $ref: "#/components/schemas/DayEvent"
+        progress:
+          $ref: "#/components/schemas/Progress"
+    BaselineHistory:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportedBaseline"
+    LogItem:
+      type: object
+      additionalProperties: false
+      required: [id]
+      description: >
+        A log (`smokedAt`, `productType` and `count`, all three) or a deletion (`deleted: true` and
+        nothing else).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Made by the app when the log is made, and never used for another log.
+        smokedAt:
+          type: string
+          format: date-time
+          description: When it happened, with a UTC offset. Fractions of a second are dropped.
+          example: "2026-11-17T08:15:00Z"
+        productType:
+          $ref: "#/components/schemas/ProductType"
+        count:
+          type: integer
+          minimum: 1
+          maximum: 50
+          description: Sessions of this log.
+        deleted:
+          type: boolean
+          enum: [true]
+    LogSyncRequest:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/LogItem"
+    LogItemResult:
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, rejected]
+        reason:
+          type: string
+          enum: [day_finalized, in_future, before_start, day_full, not_yours]
+          description: >
+            Only with `rejected`. `day_finalized`: the day of the log (or the day it would move to) is
+            final. `in_future`: `smokedAt` is more than 5 minutes ahead of the server's clock.
+            `before_start`: before the first day of the plan. `day_full`: the day would hold more than
+            300 sessions. `not_yours`: the id cannot be used by this account.
+    LogSyncResult:
+      type: object
+      additionalProperties: false
+      required: [results, days]
+      properties:
+        results:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/LogItemResult"
+        days:
+          type: array
+          items:
+            $ref: "#/components/schemas/Day"
+    ExportedPlanTerms:
+      type: object
+      additionalProperties: false
+      required: [validFrom, goalMode, target, taperSpeed, rulesVersion]
+      properties:
+        validFrom:
+          type: string
+          format: date
+          description: The local day from which these terms count.
+        goalMode:
+          $ref: "#/components/schemas/GoalMode"
+        target:
+          $ref: "#/components/schemas/PlanTarget"
+        taperSpeed:
+          $ref: "#/components/schemas/TaperSpeed"
+        rulesVersion:
+          type: string
+    ExportedZoneChange:
+      type: object
+      additionalProperties: false
+      required: [validFrom, timeZone]
+      properties:
+        validFrom:
+          type: string
+          format: date
+          description: The local day from which the zone counts.
+        timeZone:
+          type: string
+          description: IANA time zone name.
+    ExportedSmokeLog:
+      type: object
+      additionalProperties: false
+      required: [id, smokedAt, localDate, productType, count, createdAt, updatedAt, deletedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The id the app gave the log.
+        smokedAt:
+          type: string
+          format: date-time
+        localDate:
+          type: string
+          format: date
+          description: The day of the user the log counts for, worked out by the server.
+        productType:
+          $ref: "#/components/schemas/ProductType"
+        count:
+          type: integer
+          minimum: 1
+          maximum: 50
+        createdAt:
+          type: string
+          format: date-time
+          description: When the server first stored the log.
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: string
+          format: date-time
+          nullable: true
+    DayEventType:
+      type: string
+      enum:
+        - checked_in
+        - under_limit_day
+        - smoke_free_day
+        - streak_extended
+        - streak_milestone
+        - freeze_earned
+        - freeze_used
+        - streak_broken
+        - level_up
+      description: >
+        What a day gives the user to see and hear. `under_limit_day`: value = the new under-limit streak.
+        `streak_extended`: the new check-in streak. `streak_milestone`: the milestone reached, in days.
+        `freeze_earned` and `freeze_used`: the freezes held afterwards. `streak_broken`: the length the
+        check-in streak had. `level_up`: the level reached, one event per level. `checked_in` and
+        `smoke_free_day` have no value. New values may be added: an app ignores what it does not know.
+    DayEvent:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          $ref: "#/components/schemas/DayEventType"
+        value:
+          type: integer
+          minimum: 0
+          description: Absent for the types that have none.
+    ExportedDay:
+      type: object
+      additionalProperties: false
+      required: [date, count, checkedInAt, dailyLimit, xp, events, freezeUsed, finalizedAt, rulesVersion]
+      description: >
+        One day of the user. `dailyLimit`, `xp`, `events`, `freezeUsed`, `finalizedAt` and `rulesVersion`
+        are written when the day becomes final, 48 hours after it ended, and are `null` before.
+      properties:
+        date:
+          type: string
+          format: date
+        count:
+          type: integer
+          minimum: 0
+          description: Sessions of the day, which is the sum of the counts of its logs that are not deleted.
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+        dailyLimit:
+          type: integer
+          minimum: 0
+          nullable: true
+        xp:
+          type: integer
+          minimum: 0
+          nullable: true
+        events:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/DayEvent"
+        freezeUsed:
+          type: boolean
+          nullable: true
+        finalizedAt:
+          type: string
+          format: date-time
+          nullable: true
+        rulesVersion:
+          type: string
+          nullable: true
+    ExportedProgress:
+      type: object
+      additionalProperties: false
+      required:
+        - checkInStreak
+        - longestCheckInStreak
+        - underLimitStreak
+        - longestUnderLimitStreak
+        - freezesHeld
+        - xpTotal
+        - level
+        - nextDayToFinalize
+      description: What the user has built up over the days that are final.
+      properties:
+        checkInStreak:
+          type: integer
+          minimum: 0
+        longestCheckInStreak:
+          type: integer
+          minimum: 0
+        underLimitStreak:
+          type: integer
+          minimum: 0
+        longestUnderLimitStreak:
+          type: integer
+          minimum: 0
+        freezesHeld:
+          type: integer
+          minimum: 0
+        xpTotal:
+          type: integer
+          minimum: 0
+        level:
+          type: integer
+          minimum: 0
+        nextDayToFinalize:
+          type: string
+          format: date
+          description: Every day before this one is final.
+    ExportedXpEvent:
+      type: object
+      additionalProperties: false
+      required: [date, source, amount, detail, createdAt]
+      properties:
+        date:
+          type: string
+          format: date
+          description: The day of the user the XP was earned on.
+        source:
+          type: string
+          enum: [check_in, under_limit, smoke_free, streak_milestone, duel, league, reaction]
+        amount:
+          type: integer
+          minimum: 1
+        detail:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: The streak length for `streak_milestone`, the rank for `league`. `null` otherwise.
+        createdAt:
+          type: string
+          format: date-time
     ExportedSession:
       type: object
       additionalProperties: false
@@ -1352,8 +1963,9 @@ components:
             `payload_too_large`, `unsupported_media_type`, `validation_failed`, `rate_limited`,
             `internal_error`, `service_unavailable`. Of the auth operations: `invalid_credentials`,
             `invalid_token`, `invalid_refresh_token`. `invalid_credentials` is also the
-            answer to a wrong password in `deleteMe` and in `verifyEmail`. New slugs may be added at any
-            time.
+            answer to a wrong password in `deleteMe` and in `verifyEmail`. Of the logging operations:
+            `plan_required`, `day_finalized`, `day_in_future`, `day_before_start`. New slugs may be
+            added at any time.
           example: not_found
         title:
           type: string
@@ -1521,6 +2133,21 @@ components:
           schema:
             type: integer
             minimum: 1
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PlanRequired:
+      description: "`plan_required`: the user has not done the onboarding (`PUT /me/plan`) yet."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    DayNotOpen:
+      description: >
+        The day cannot be checked in: `day_finalized` (it is final), `day_in_future` (it has not begun
+        for the user) or `day_before_start` (it is before the first day of the plan). Or `plan_required`:
+        the user has not done the onboarding yet.
       content:
         application/problem+json:
           schema:

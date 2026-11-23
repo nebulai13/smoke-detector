@@ -17,6 +17,11 @@ use SmokeDetector\Http\Action\Auth\ResendVerificationAction;
 use SmokeDetector\Http\Action\Auth\VerifyEmailAction;
 use SmokeDetector\Http\Action\HealthAction;
 use SmokeDetector\Http\Action\Legal\ShowConsentVersionsAction;
+use SmokeDetector\Http\Action\Logging\CheckInAction;
+use SmokeDetector\Http\Action\Logging\ListDaysAction;
+use SmokeDetector\Http\Action\Logging\ShowBaselineHistoryAction;
+use SmokeDetector\Http\Action\Logging\ShowDashboardAction;
+use SmokeDetector\Http\Action\Logging\SyncLogsAction;
 use SmokeDetector\Http\Action\Me\DeleteMeAction;
 use SmokeDetector\Http\Action\Me\ExportMeAction;
 use SmokeDetector\Http\Action\Me\SavePlanAction;
@@ -92,5 +97,12 @@ final readonly class Routes
         $routes->delete('/me', DeleteMeAction::class);
         $routes->put('/me/plan', SavePlanAction::class);
         $routes->get('/me/export', ExportMeAction::class);
+        $routes->get('/me/dashboard', ShowDashboardAction::class);
+        $routes->get('/me/baseline-history', ShowBaselineHistoryAction::class);
+
+        // Logging, check-in and days (HLD §4.6).
+        $routes->post('/logs/sync', SyncLogsAction::class);
+        $routes->get('/days', ListDaysAction::class);
+        $routes->post('/days/{date}/check-in', CheckInAction::class);
     }
 }

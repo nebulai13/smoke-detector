@@ -172,6 +172,8 @@ final class OpenApiDocumentTest extends TestCase
                 'TooManyRequests',
                 'InternalError',
                 'ServiceUnavailable',
+                'PlanRequired',
+                'DayNotOpen',
                 'InvalidToken',
                 'InvalidCredentials',
                 'WrongSignUpPassword',
@@ -323,16 +325,39 @@ final class OpenApiDocumentTest extends TestCase
 
     public function test_no_personal_or_health_data_travels_in_a_url(): void
     {
-        // Query strings end up in server logs, browser histories and referrers. Until an endpoint has
-        // a reviewed reason for one, the API has no query parameters at all.
+        // Query strings end up in server logs, browser histories and referrers. So the API has no
+        // query parameters, except the ones listed here with their reason. A new one is added only
+        // after the same question: does it say anything about a person?
+        $reviewed = [
+            // The two ends of a range of calendar days. Whose days they are is in the token, and how
+            // the days went is in the answer.
+            'GET /days' => ['from', 'to'],
+        ];
+
+        $found = [];
         foreach (self::operations() as $name => $operation) {
             $parameters = $operation['parameters'] ?? [];
             self::assertIsArray($parameters);
             foreach ($parameters as $parameter) {
-                self::assertNotSame('query', self::resolve($parameter)['in'] ?? null, "{$name} has a query parameter.");
+                $parameter = self::resolve($parameter);
+                if (($parameter['in'] ?? null) === 'query') {
+                    $found[$name][] = $parameter['name'] ?? null;
+                }
+                // A path is logged like a query string: nothing but a calendar day goes into one.
+                if (($parameter['in'] ?? null) === 'path') {
+                    self::assertSame(['date', 'date'], [$parameter['name'] ?? null, self::at($parameter, 'schema', 'format')], "{$name} has a path parameter that is not a date.");
+                }
             }
         }
-        $this->addToAssertionCount(1);
+
+        self::assertSame($reviewed, $found);
+        foreach ($reviewed['GET /days'] as $name) {
+            $parameter = array_values(array_filter(
+                array_map(self::resolve(...), (array) (self::operations()['GET /days']['parameters'] ?? [])),
+                static fn (array $parameter): bool => ($parameter['name'] ?? null) === $name,
+            ))[0] ?? [];
+            self::assertSame('date', self::at($parameter, 'schema', 'format'), "{$name} must be a date and nothing else.");
+        }
     }
 
     /**

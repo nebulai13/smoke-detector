@@ -44,6 +44,10 @@ final readonly class AccountResponder
                 'baseline' => $account->plan->baseline->toFloat(),
                 'dailyLimit' => $account->plan->dailyLimit,
             ];
+            // Absent while nothing waits for a later day.
+            if ($account->plan->pendingFrom !== null) {
+                $me['plan']['pendingFrom'] = $account->plan->pendingFrom->value;
+            }
         }
 
         return $this->responder->json($me);

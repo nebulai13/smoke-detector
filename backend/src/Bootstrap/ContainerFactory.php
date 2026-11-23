@@ -20,21 +20,27 @@ use SmokeDetector\Application\Auth\PasswordHasher;
 use SmokeDetector\Application\Auth\RefreshSecrets;
 use SmokeDetector\Application\Auth\RefreshTokenRepository;
 use SmokeDetector\Application\Auth\TokenGenerator;
+use SmokeDetector\Application\Day\DayRecords;
+use SmokeDetector\Application\Day\ProgressRecords;
+use SmokeDetector\Application\Day\XpLedger;
 use SmokeDetector\Application\Health\CheckHealth;
 use SmokeDetector\Application\Health\CronHeartbeat;
 use SmokeDetector\Application\Health\DatabaseProbe;
 use SmokeDetector\Application\Mail\AccountMails;
 use SmokeDetector\Application\IdGenerator;
+use SmokeDetector\Application\Logging\SmokeLogs;
 use SmokeDetector\Application\Mail\Mailer;
 use SmokeDetector\Application\Mail\MailOutbox;
 use SmokeDetector\Application\Mail\MailTemplates;
 use SmokeDetector\Application\Mail\MailValuesCipher;
 use SmokeDetector\Application\Plan\BaselineHistory;
+use SmokeDetector\Application\Plan\PlanHistory;
 use SmokeDetector\Application\Plan\PlanRepository;
 use SmokeDetector\Application\Plan\RuleSets;
 use SmokeDetector\Application\Privacy\UserDataRegistry;
 use SmokeDetector\Application\RateLimit\RateLimitCounters;
 use SmokeDetector\Application\RateLimit\RateLimitKeyHasher;
+use SmokeDetector\Application\Time\ZoneHistory;
 use SmokeDetector\Application\TransactionRunner;
 use SmokeDetector\Config\ConsentVersions;
 use SmokeDetector\Config\MailSettings;
@@ -42,6 +48,7 @@ use SmokeDetector\Config\Settings;
 use SmokeDetector\Console\Command;
 use SmokeDetector\Console\Console;
 use SmokeDetector\Console\CronRunCommand;
+use SmokeDetector\Console\FinalizeDaysCommand;
 use SmokeDetector\Console\MailSendCommand;
 use SmokeDetector\Console\MigrateCommand;
 use SmokeDetector\Console\PurgeCommand;
@@ -69,12 +76,18 @@ use SmokeDetector\Infrastructure\Privacy\UserDataTables;
 use SmokeDetector\Infrastructure\RateLimit\HmacRateLimitKeyHasher;
 use SmokeDetector\Infrastructure\Repository\PdoBaselineHistory;
 use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
+use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
 use SmokeDetector\Infrastructure\Repository\PdoMailOutbox;
 use SmokeDetector\Infrastructure\Repository\PdoOneTimeTokenRepository;
+use SmokeDetector\Infrastructure\Repository\PdoPlanHistory;
 use SmokeDetector\Infrastructure\Repository\PdoPlanRepository;
+use SmokeDetector\Infrastructure\Repository\PdoProgressRecords;
 use SmokeDetector\Infrastructure\Repository\PdoRateLimitCounters;
 use SmokeDetector\Infrastructure\Repository\PdoRefreshTokenRepository;
+use SmokeDetector\Infrastructure\Repository\PdoSmokeLogs;
 use SmokeDetector\Infrastructure\Repository\PdoUserRepository;
+use SmokeDetector\Infrastructure\Repository\PdoXpLedger;
+use SmokeDetector\Infrastructure\Repository\PdoZoneHistory;
 use SmokeDetector\Infrastructure\Rules\FileRuleSets;
 use Symfony\Component\Mailer\Transport;
 use Symfony\Component\Mailer\Transport\Smtp\SmtpTransport;
@@ -169,10 +182,18 @@ final readonly class ContainerFactory
             // Reduction plan (HLD §4.5 "Account")
             PlanRepository::class => autowire(PdoPlanRepository::class),
             BaselineHistory::class => autowire(PdoBaselineHistory::class),
+            PlanHistory::class => autowire(PdoPlanHistory::class),
             RuleSets::class => autowire(FileRuleSets::class)
                 // backend/config/rules in the repository, app/config/rules in a release.
                 ->constructorParameter('directory', dirname(__DIR__, 2) . '/config/rules')
                 ->constructorParameter('currentVersion', self::RULES_VERSION),
+
+            // Logging, check-in and day finalization (HLD §4.6)
+            ZoneHistory::class => autowire(PdoZoneHistory::class),
+            SmokeLogs::class => autowire(PdoSmokeLogs::class),
+            DayRecords::class => autowire(PdoDayRecords::class),
+            ProgressRecords::class => autowire(PdoProgressRecords::class),
+            XpLedger::class => autowire(PdoXpLedger::class),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),
@@ -203,17 +224,20 @@ final readonly class ContainerFactory
             // Console: every command of bin/console is listed here.
             Console::class => static function (ContainerInterface $container): Console {
                 $mailSend = self::command($container, MailSendCommand::class);
+                $finalizeDays = self::command($container, FinalizeDaysCommand::class);
                 $purge = self::command($container, PurgeCommand::class);
 
                 return new Console(
                     self::command($container, MigrateCommand::class),
                     $mailSend,
+                    $finalizeDays,
                     $purge,
                     // What the cron job runs every minute, in this order (HLD §5.2, §8).
                     new CronRunCommand(
                         self::service($container, CronHeartbeat::class),
                         self::service($container, ClockInterface::class),
                         $mailSend,
+                        $finalizeDays,
                         $purge,
                     ),
                 );

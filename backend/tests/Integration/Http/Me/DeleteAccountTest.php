@@ -21,6 +21,7 @@ use SmokeDetector\Tests\Support\Privacy\DatabaseContents;
 use SmokeDetector\Tests\Support\Privacy\UserDataFixture;
 use SmokeDetector\Tests\Support\RateLimitKey;
 use SmokeDetector\Tests\Support\TestAccounts;
+use SmokeDetector\Tests\Support\TestData;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -139,11 +140,18 @@ final class DeleteAccountTest extends HttpTestCase
             'PATCH /me' => ['locale' => 'en'],
             'PUT /me/plan' => ['startingBaseline' => 12, 'goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'normal', 'defaultProduct' => 'vape'],
             'GET /me/export' => null,
+            'GET /me/dashboard' => null,
+            'GET /me/baseline-history' => null,
+            'POST /logs/sync' => ['items' => [['id' => TestData::uuid(1), 'smokedAt' => '2026-11-17T08:15:00Z', 'productType' => 'cigarette', 'count' => 1]]],
+            'GET /days' => null,
+            'POST /days/{date}/check-in' => null,
         ];
+        // Where the path of the contract is a pattern or needs a query string: what is really called.
+        $paths = ['GET /days' => '/days?from=2026-11-17&to=2026-11-17', 'POST /days/{date}/check-in' => '/days/2026-11-17/check-in'];
         self::assertSame(self::operationsThatNeedAToken(), array_keys($bodies), 'A new operation needs a body here.');
         foreach ($bodies as $operation => $body) {
             [$method, $path] = explode(' ', $operation);
-            $response = $this->call($method, $path, $body, $headers);
+            $response = $this->call($method, $paths[$operation] ?? $path, $body, $headers);
 
             self::assertSame(['type' => 'unauthorized', 'title' => 'Unauthorized', 'status' => 401], $response->json(), $operation);
             self::assertSame('Bearer', $response->header('WWW-Authenticate'), $operation);
