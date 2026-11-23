@@ -778,6 +778,9 @@ not hold up everybody else for ever.
   is written to the ledger and to `user_progress` as the XP of a duel is (§4.8).
 - The rank is the user's rank among the friends of that moment. It is stored with the number of participants
   and the XP, and never recalculated.
+- Per run at most 50 results, each in one transaction that locks the account of its user and reads the result
+  again. A result that changed in the meantime, or whose account is gone, is left alone. A result that fails
+  is rolled back, logged without any id and counted, as a duel (§4.8).
 
 **What a user sees (FR-FRND-03, FR-COMP-08).** `GET /leagues?type=…&period=…` (`period` is a key, or `current`).
 
@@ -1095,7 +1098,7 @@ Known surviving mutants, all provably harmless:
 - `Application\Day\Projection` (a day without a row): the count 0 mutated to 1. Such a day has no check-in,
   so it is a missed day, and the rules ignore the count of a missed day.
 
-- `Application\Competition\DuelSides` (a duel day without a row): the count 0 mutated to 1. Such a day has no
+- `Application\Competition\DuelSides` (a duel or league day without a row): the count 0 mutated to 1. Such a day has no
   check-in, so it counts as the frozen baseline or as its count when that is more. The baseline is at least
   1.0, and a count of 1 is never more than that.
 
