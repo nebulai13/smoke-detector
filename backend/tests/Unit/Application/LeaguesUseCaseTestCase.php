@@ -42,6 +42,7 @@ abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
             $this->xpLedger,
             $this->ids,
             $this->logger,
+            $this->awardBadges(),
         );
     }
 

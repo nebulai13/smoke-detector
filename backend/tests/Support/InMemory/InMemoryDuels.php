@@ -9,6 +9,7 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\Duels;
 use SmokeDetector\Application\Competition\DuelStatus;
+use SmokeDetector\Application\Competition\DuelWinner;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Time\LocalDate;
 
@@ -57,6 +58,14 @@ final class InMemoryDuels implements Duels, InMemoryState
         usort($duels, static fn (Duel $a, Duel $b): int => [$a->createdAt, $a->id] <=> [$b->createdAt, $b->id]);
 
         return $duels;
+    }
+
+    public function wonBy(UserId $userId): int
+    {
+        return count($this->matching(static fn (Duel $duel): bool => $duel->decision !== null && (
+            ($duel->decision->winner === DuelWinner::Challenger && $duel->challengerId?->equals($userId) === true)
+            || ($duel->decision->winner === DuelWinner::Opponent && $duel->opponentId?->equals($userId) === true)
+        )));
     }
 
     public function expired(DateTimeImmutable $now, int $limit): array

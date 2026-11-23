@@ -142,7 +142,8 @@ final class LeaguesTest extends HttpTestCase
                 [
                     'user_id' => $carol->id->value, 'period_type' => 'week', 'period_key' => '2026-W47', 'b0_tenths' => 120, 'actual_tenths' => 720, 'expected_tenths' => 720,
                     'smoke_free_days' => 0, 'check_ins' => 6, 'counted_days' => 6, 'rules_version' => 'v1', 'scored_at' => '2026-11-24 23:00:00',
-                    'rank' => 3, 'participants' => 3, 'xp' => 50, 'ranked_at' => '2026-11-24 23:00:00',
+                    // Carol smoked exactly her baseline: a rank, and no reward without a reduction.
+                    'rank' => 3, 'participants' => 3, 'xp' => 0, 'ranked_at' => '2026-11-24 23:00:00',
                 ],
             ],
             $this->sql()->rows(
@@ -151,9 +152,9 @@ final class LeaguesTest extends HttpTestCase
             ),
         );
         // The XP is in the ledger with the rank, earned on the user's own today (the 25th in Berlin).
+        // Nothing for Carol: rank 3 pays 50 XP, but not without a reduction.
         self::assertEquals(
             [
-                ['user_id' => $carol->id->value, 'local_date' => '2026-11-25', 'amount' => 50, 'detail' => 3],
                 ['user_id' => $anna->id->value, 'local_date' => '2026-11-25', 'amount' => 100, 'detail' => 2],
                 ['user_id' => $bob->id->value, 'local_date' => '2026-11-25', 'amount' => 150, 'detail' => 1],
             ],
@@ -180,7 +181,7 @@ final class LeaguesTest extends HttpTestCase
         );
         // A second run ranks nothing twice.
         self::assertStringContainsString('ranked 0 league results.', $this->cronRun());
-        self::assertSame(3, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'league'"));
+        self::assertSame(2, $this->sql()->value("SELECT COUNT(*) FROM xp_events WHERE source = 'league'"));
     }
 
     public function test_FR_COMP_08_a_final_league_over_a_full_week_shows_the_percentage_of_every_friend(): void
@@ -196,7 +197,7 @@ final class LeaguesTest extends HttpTestCase
         $league = $this->call('GET', '/leagues?type=week&period=2026-W48', headers: $this->authorization($carol))->json();
 
         self::assertSame(
-            [true, [[1, 'Bob', 75], [2, 'Anna', 50], [3, 'Carol', 0]], ['rank' => 3, 'participants' => 3, 'xp' => 50]],
+            [true, [[1, 'Bob', 75], [2, 'Anna', 50], [3, 'Carol', 0]], ['rank' => 3, 'participants' => 3, 'xp' => 0]],
             [
                 $league['final'] ?? null,
                 array_map(static fn (mixed $entry): array => [self::at((array) $entry, 'rank'), self::at((array) $entry, 'user', 'displayName'), self::at((array) $entry, 'reductionPercent')], (array) ($league['entries'] ?? null)),
@@ -240,7 +241,8 @@ final class LeaguesTest extends HttpTestCase
 
         self::assertSame(['2026-W48', '2026-11-23', '2026-11-29'], [$second['period'] ?? null, $second['startsOn'] ?? null, $second['endsOn'] ?? null]);
         self::assertSame(
-            [[1, 'Bob', 500], [2, 'Anna', 250], [3, 'Carol', 100]],
+            // Carol: five checked-in days over the limit, and no league XP without a reduction.
+            [[1, 'Bob', 500], [2, 'Anna', 250], [3, 'Carol', 50]],
             array_map(static fn (mixed $entry): array => [self::at((array) $entry, 'rank'), self::at((array) $entry, 'user', 'displayName'), self::at((array) $entry, 'xp')], (array) ($second['entries'] ?? null)),
         );
     }

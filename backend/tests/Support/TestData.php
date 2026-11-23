@@ -17,6 +17,7 @@ use SmokeDetector\Application\Auth\DeviceLabel;
 use SmokeDetector\Application\Auth\OneTimeToken;
 use SmokeDetector\Application\Auth\RefreshToken;
 use SmokeDetector\Application\Auth\TokenPurpose;
+use SmokeDetector\Application\Badge\AwardedBadge;
 use SmokeDetector\Application\Competition\CalendarPeriod;
 use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\DuelDecision;
@@ -40,6 +41,7 @@ use SmokeDetector\Application\Plan\PlanTerms;
 use SmokeDetector\Application\Plan\ProductType;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\Time\ZoneChange;
+use SmokeDetector\Domain\Badge\Badge;
 use SmokeDetector\Domain\Day\DayEvent;
 use SmokeDetector\Domain\Day\UserProgress;
 use SmokeDetector\Domain\Plan\Baseline;
@@ -401,6 +403,14 @@ final class TestData
         string $rulesVersion = 'v1',
     ): DuelDecision {
         return new DuelDecision(self::time($decidedAt), $winner, $challenger, $opponent, $rulesVersion);
+    }
+
+    /**
+     * A badge of user $userNumber, awarded at noon of the 17th unless said otherwise.
+     */
+    public static function badge(int $userNumber, Badge $badge, string $awardedAt = '2026-11-17 12:00:00'): AwardedBadge
+    {
+        return new AwardedBadge(self::userId($userNumber), $badge, self::time($awardedAt));
     }
 
     /**

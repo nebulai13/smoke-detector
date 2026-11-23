@@ -11,6 +11,7 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Day\Calendars;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpLedger;
@@ -30,7 +31,8 @@ use Throwable;
  *   it is looked at again RECHECK_MINUTES later, and after MAX_WAIT_DAYS it is ranked with the
  *   results that are there.
  * - The rank is 1 plus the number of participants (the user and the friends with a result) who are
- *   better by CompetitionScoreComparator. The XP of the rank is paid as the XP of a duel.
+ *   better by CompetitionScoreComparator. The XP of the rank is paid as the XP of a duel; it and the
+ *   champion badge are given only for a result with a reduction above zero.
  * - Per run at most BATCH_SIZE results. Each is one transaction that locks the account of its user
  *   and reads the result again: one that changed in the meantime (ranked by another run) or whose
  *   account is gone is left alone.
@@ -61,6 +63,7 @@ final readonly class RankLeagues
         XpLedger $ledger,
         IdGenerator $ids,
         private LoggerInterface $logger,
+        private AwardBadges $badges,
     ) {
         $this->rewards = new CompetitionRewards($progress, $ledger, $ids);
     }
@@ -123,9 +126,19 @@ final readonly class RankLeagues
 
         $calendar = $this->calendars->of($userId) ?? throw new LogicException('A league result exists without a plan.');
         $rank = 1 + $better;
-        $award = (new XpCalculator($calendar->rules->xp))->forLeague($rank, $result->period->type, $participants);
-        $xp = $this->rewards->pay($userId, $calendar, $award, $now);
+        // A rank is rewarded only for a reduction: otherwise three friends who all do nothing would
+        // share rank 1 and its reward (HLD §4.9).
+        $hasReduction = $score->reduction->savedTenths() > 0;
+        $xp = 0;
+        if ($hasReduction) {
+            $award = (new XpCalculator($calendar->rules->xp))->forLeague($rank, $result->period->type, $participants);
+            $xp = $this->rewards->pay($userId, $calendar, $award, $now);
+        }
         $this->results->save($result->ranked(new LeagueAward($rank, $participants, $xp, $now)));
+        if ($hasReduction) {
+            // The champion badge (HLD §4.10), in the same transaction as the rank.
+            $this->badges->leagueRanked($userId, $result->period->type, $rank, $participants, $calendar, $now);
+        }
 
         return [1, 0];
     }

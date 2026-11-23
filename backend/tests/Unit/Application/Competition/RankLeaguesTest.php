@@ -27,7 +27,7 @@ final class RankLeaguesTest extends LeaguesUseCaseTestCase
         [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
         $this->givenResult($anna, 42);
         $this->givenResult($bob, 60, 2);
-        $this->givenResult($carol, 84);
+        $this->givenResult($carol, 72);
         $before = $this->progressRecords->find($anna->id) ?? self::fail('No progress.');
 
         $report = $this->rankLeagues()->execute();
@@ -48,6 +48,54 @@ final class RankLeaguesTest extends LeaguesUseCaseTestCase
         // A second run finds nothing to do.
         self::assertSame([0, 0, 0], self::report($this->rankLeagues()->execute()));
         self::assertCount(1, $this->awards($anna));
+    }
+
+    public function test_FR_COMP_08_a_result_without_a_reduction_has_a_rank_and_no_reward(): void
+    {
+        [$anna, $bob, $carol, $dave] = $this->givenFriendsAll('Anna', 'Bob', 'Carol', 'Dave');
+        $this->givenResult($anna, 42);
+        // Exactly the baseline, and more than the baseline.
+        $this->givenResult($bob, 84);
+        $this->givenResult($carol, 90);
+        $this->givenResult($dave, 84);
+        $before = $this->progressRecords->find($bob->id);
+
+        $this->rankLeagues()->execute();
+
+        // Everybody has a rank. Rank 2 pays 100 XP, but not for smoking as much as before or more.
+        self::assertSame(
+            [[1, 4, 150], [2, 4, 0], [4, 4, 0], [2, 4, 0]],
+            [$this->awardOf($anna), $this->awardOf($bob), $this->awardOf($carol), $this->awardOf($dave)],
+        );
+        self::assertSame([[], [], []], [$this->awards($bob), $this->awards($carol), $this->awards($dave)]);
+        self::assertEquals($before, $this->progressRecords->find($bob->id));
+    }
+
+    public function test_FR_COMP_08_three_who_did_nothing_share_rank_1_and_win_nothing(): void
+    {
+        [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
+        // No check-in in the whole week: every day counts as the baseline.
+        foreach ([$anna, $bob, $carol] as $user) {
+            $this->givenResult($user, 84, 0, 0);
+        }
+
+        self::assertSame([3, 0, 0], self::report($this->rankLeagues()->execute()));
+
+        self::assertSame([[1, 3, 0], [1, 3, 0], [1, 3, 0]], [$this->awardOf($anna), $this->awardOf($bob), $this->awardOf($carol)]);
+        self::assertSame([[], [], []], [$this->awards($anna), $this->awards($bob), $this->awards($carol)]);
+    }
+
+    public function test_FR_COMP_08_the_smallest_reduction_is_a_reduction(): void
+    {
+        [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
+        // A tenth of a session under 84: the totals are exact, in tenths.
+        $period = $this->givenResult($bob, 84)->period;
+        $this->givenResult($carol, 84);
+        $this->leagueResults->save(new LeagueResult($anna->id, $period, 120, 839, 840, 0, 7, 7, 'v1', TestData::time('2026-11-17 11:00:00'), TestData::time('2026-11-17 11:00:00')));
+
+        $this->rankLeagues()->execute();
+
+        self::assertSame([[1, 3, 150], [2, 3, 0], [2, 3, 0]], [$this->awardOf($anna), $this->awardOf($bob), $this->awardOf($carol)]);
     }
 
     public function test_FR_COMP_08_with_fewer_than_three_participants_there_is_a_rank_and_no_xp(): void
@@ -165,7 +213,7 @@ final class RankLeaguesTest extends LeaguesUseCaseTestCase
         self::assertSame([15, 7], [RankLeagues::RECHECK_MINUTES, RankLeagues::MAX_WAIT_DAYS]);
         [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
         $this->givenResult($anna, 42);
-        $this->givenResult($carol, 84);
+        $this->givenResult($carol, 72);
         // Bob's last day of the week is not final yet: he has a plan since October and no result.
 
         $report = $this->rankLeagues()->execute();

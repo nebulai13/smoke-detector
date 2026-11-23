@@ -13,6 +13,7 @@ use SmokeDetector\Application\Friends\InviteCode;
 use SmokeDetector\Application\Friends\PendingRequest;
 use SmokeDetector\Application\Friends\PublicProfile;
 use SmokeDetector\Application\Friends\SentRequest;
+use SmokeDetector\Domain\Badge\Badge;
 
 /**
  * Writes invite code, friends, requests and blocks as the schemas Invite, PublicUser, Friend,
@@ -63,6 +64,8 @@ final readonly class FriendsResponder
             'xp' => $friend->xp,
             'checkInStreak' => ['current' => $friend->checkInCurrent, 'longest' => $friend->checkInLongest],
             'underLimitStreak' => ['current' => $friend->underLimitCurrent, 'longest' => $friend->underLimitLongest],
+            // The keys only: when a badge was earned is not for friends.
+            'badges' => array_map(static fn (Badge $badge): string => $badge->value, $friend->badges),
         ];
     }
 

@@ -6,8 +6,11 @@ namespace SmokeDetector\Tests\Unit\Application\Friends;
 
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Badge\AwardedBadge;
 use SmokeDetector\Application\Friends\FriendNotFound;
 use SmokeDetector\Application\Friends\FriendView;
+use SmokeDetector\Domain\Badge\Badge;
+use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\FriendsUseCaseTestCase;
 
 /**
@@ -101,6 +104,46 @@ final class FriendListTest extends FriendsUseCaseTestCase
 
         // The open day is Bob's own business until it is final.
         self::assertSame([['Bob', '2026-11-16 08:00:00', 1, 260, [7, 7, 7, 7]]], array_map(self::friend(...), $overview->friends));
+    }
+
+    public function test_FR_FRND_03_a_friend_sees_which_badges_a_friend_holds_and_not_when_they_were_earned(): void
+    {
+        $bob = $this->givenNamed('Bob');
+        $carol = $this->givenNamed('Carol');
+        $stranger = $this->givenNamed('Stranger');
+        $this->givenFriends($this->anna, $bob);
+        $this->givenFriends($carol, $this->anna);
+        // Stored in another order than the badge cases have.
+        $this->badgeRecords->add(new AwardedBadge($bob->id, Badge::LimitHalved, TestData::time('2026-11-16 23:00:00')));
+        $this->badgeRecords->add(new AwardedBadge($bob->id, Badge::FirstCheckIn, TestData::time('2026-11-01 23:00:00')));
+        $this->badgeRecords->add(new AwardedBadge($this->anna->id, Badge::Cheerleader, TestData::time('2026-11-02 23:00:00')));
+        $this->badgeRecords->add(new AwardedBadge($stranger->id, Badge::FiveDuelsWon, TestData::time('2026-11-03 23:00:00')));
+
+        $overview = $this->friendList()->show($this->anna->id);
+
+        // The view of a friend holds the badges and no time. Carol has none; Anna's own are not Bob's.
+        self::assertSame(['Bob', 'Carol'], array_map(static fn (FriendView $friend): string => $friend->user->displayName->value, $overview->friends));
+        self::assertSame([[Badge::FirstCheckIn, Badge::LimitHalved], []], array_map(static fn (FriendView $friend): array => $friend->badges, $overview->friends));
+    }
+
+    public function test_FR_FRND_01_somebody_with_an_open_request_shows_no_badges(): void
+    {
+        $asker = $this->givenNamed('Asker');
+        $asked = $this->givenNamed('Asked');
+        $this->givenRequest($asker, $this->anna);
+        $this->givenRequest($this->anna, $asked);
+        $this->badgeRecords->add(new AwardedBadge($asker->id, Badge::FirstCheckIn, TestData::time('2026-11-01 23:00:00')));
+        $this->badgeRecords->add(new AwardedBadge($asked->id, Badge::FirstCheckIn, TestData::time('2026-11-01 23:00:00')));
+
+        $overview = $this->friendList()->show($this->anna->id);
+
+        // A request carries a public profile and a time, and nothing else: name and avatar only.
+        self::assertSame([], $overview->friends);
+        self::assertSame(
+            [['userId', 'displayName', 'avatar'], ['userId', 'displayName', 'avatar']],
+            [array_keys(get_object_vars($overview->incoming[0]->user)), array_keys(get_object_vars($overview->outgoing[0]->user))],
+        );
+        self::assertSame(['user', 'requestedAt'], array_keys(get_object_vars($overview->incoming[0])));
     }
 
     public function test_FR_FRND_01_open_requests_are_listed_apart_oldest_first_with_name_and_avatar_only(): void

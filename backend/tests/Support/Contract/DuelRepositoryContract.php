@@ -76,6 +76,38 @@ trait DuelRepositoryContract
         self::assertEquals([$forfeited, $completed], $this->duels()->ofUser(TestData::userId(1), 100));
     }
 
+    public function test_FR_GAME_08_the_duels_a_user_won_are_counted_from_both_sides(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2), TestData::userId(3));
+        $lost = new SideResult(120, 840, 840, 0, 7, 20);
+        $won = new SideResult(120, 630, 840, 1, 7, 100);
+        $duels = [
+            // User 1 won as the challenger, and as the opponent.
+            TestData::duel(1, 1, 2, 7, DuelStatus::Completed, '2026-10-01 08:00:00', '2026-10-02 09:00:00', '2026-10-03', '2026-10-03', TestData::decision()),
+            TestData::duel(2, 3, 1, 7, DuelStatus::Completed, '2026-10-02 08:00:00', '2026-10-03 09:00:00', '2026-10-04', '2026-10-04', TestData::decision(DuelWinner::Opponent, $lost, $won)),
+            // Won against somebody whose account is gone: it stays a duel that was won.
+            TestData::duel(3, 1, 0, 7, DuelStatus::Completed, '2026-10-03 08:00:00', '2026-10-04 09:00:00', '2026-10-05', null, TestData::decision(DuelWinner::Challenger, $won, null)),
+            // Lost, drawn, and the other side of a duel user 3 won.
+            TestData::duel(4, 1, 2, 7, DuelStatus::Completed, '2026-10-04 08:00:00', '2026-10-05 09:00:00', '2026-10-06', '2026-10-06', TestData::decision(DuelWinner::Opponent, $lost, $won)),
+            TestData::duel(5, 2, 1, 7, DuelStatus::Completed, '2026-10-05 08:00:00', '2026-10-06 09:00:00', '2026-10-07', '2026-10-07', TestData::decision(DuelWinner::Draw, $lost, $lost)),
+            TestData::duel(6, 3, 1, 7, DuelStatus::Completed, '2026-10-06 08:00:00', '2026-10-07 09:00:00', '2026-10-08', '2026-10-08', TestData::decision(DuelWinner::Challenger, $won, $lost)),
+            // Not decided: running, cancelled, and a forfeit after the other account was deleted.
+            TestData::duel(7, 1, 2, 7, DuelStatus::Active, '2026-11-10 08:00:00', '2026-11-11 09:00:00', '2026-11-12', '2026-11-12'),
+            TestData::duel(8, 1, 3, 7, DuelStatus::Cancelled, '2026-10-08 08:00:00', '2026-10-09 09:00:00', '2026-10-10', '2026-10-10'),
+            TestData::duel(9, 0, 1, 30, DuelStatus::Forfeited, '2026-10-09 08:00:00', '2026-10-10 09:00:00', null, '2026-10-11'),
+            TestData::duel(10, 1, 2, 7, DuelStatus::Proposed, '2026-11-17 08:00:00'),
+        ];
+        foreach ($duels as $duel) {
+            $this->duels()->save($duel);
+        }
+
+        self::assertSame(3, $this->duels()->wonBy(TestData::userId(1)));
+        // User 2 won duel 4. User 3 won duel 6.
+        self::assertSame(1, $this->duels()->wonBy(TestData::userId(2)));
+        self::assertSame(1, $this->duels()->wonBy(TestData::userId(3)));
+        self::assertSame(0, $this->duels()->wonBy(TestData::userId(4)));
+    }
+
     public function test_FR_COMP_01_a_deleted_duel_is_gone_and_deleting_nothing_does_nothing(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

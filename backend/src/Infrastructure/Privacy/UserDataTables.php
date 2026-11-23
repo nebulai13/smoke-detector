@@ -59,6 +59,8 @@ final readonly class UserDataTables
             new UserDataTable('duels', 'duels', new DuelsExporter($this->sql), new DuelsOfUser($this->sql)),
             // Leagues (HLD §4.9). A result belongs to its user alone. A friend's stored rank stays.
             new UserDataTable('league_results', 'leagueResults', new LeagueResultsExporter($this->sql), new RowsOfUser($this->sql, 'league_results')),
+            // Badges (HLD §4.10). A badge belongs to its user alone.
+            new UserDataTable('user_badges', 'badges', new BadgesExporter($this->sql), new RowsOfUser($this->sql, 'user_badges')),
         ]);
     }
 }

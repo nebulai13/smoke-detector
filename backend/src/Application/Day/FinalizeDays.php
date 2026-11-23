@@ -11,6 +11,7 @@ use Psr\Clock\ClockInterface;
 use Psr\Log\LoggerInterface;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Competition\LeagueScores;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\Logging\SmokeLogs;
@@ -62,6 +63,7 @@ final readonly class FinalizeDays
         private IdGenerator $ids,
         private LoggerInterface $logger,
         private LeagueScores $leagueScores,
+        private AwardBadges $badges,
     ) {
     }
 
@@ -169,6 +171,8 @@ final readonly class FinalizeDays
         )));
         // The last day of a league period stores the user's result for it (HLD §4.9 "Final scores").
         $this->leagueScores->dayFinalized($calendar, $date, $now);
+        // The badges a final day justifies (HLD §4.10), in the same transaction.
+        $this->badges->dayFinalized($calendar, $date, $outcome, $finalization->streaks, $now);
         foreach ($finalization->xpAwards as $award) {
             $this->ledger->append(new XpEvent($this->ids->next(), $userId, $date, $award->source, $award->amount, $award->detail, $now));
         }

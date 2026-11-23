@@ -142,6 +142,8 @@ final class DeleteAccountTest extends HttpTestCase
             'GET /me/export' => null,
             'GET /me/dashboard' => null,
             'GET /me/baseline-history' => null,
+            'GET /me/badges' => null,
+            'GET /me/health-milestones' => null,
             'POST /logs/sync' => ['items' => [['id' => TestData::uuid(1), 'smokedAt' => '2026-11-17T08:15:00Z', 'productType' => 'cigarette', 'count' => 1]]],
             'GET /days' => null,
             'POST /days/{date}/check-in' => null,

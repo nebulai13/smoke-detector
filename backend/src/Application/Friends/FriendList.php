@@ -7,6 +7,7 @@ namespace SmokeDetector\Application\Friends;
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
+use SmokeDetector\Application\Badge\BadgeRecords;
 use SmokeDetector\Application\Competition\EndDuels;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\TransactionRunner;
@@ -23,6 +24,7 @@ final readonly class FriendList
         private FriendLinks $links,
         private ProgressRecords $progress,
         private EndDuels $endDuels,
+        private BadgeRecords $badges,
     ) {
     }
 
@@ -37,7 +39,16 @@ final readonly class FriendList
             $friends = [];
             $incoming = [];
             $outgoing = [];
-            foreach ($this->links->ofUser($userId) as $link) {
+            $links = $this->links->ofUser($userId);
+            // The badges of all friends in one read. Somebody with an open request is not asked for.
+            $friendIds = [];
+            foreach ($links as $link) {
+                if ($link->acceptedAt !== null) {
+                    $friendIds[] = $link->other($userId);
+                }
+            }
+            $badges = $this->badges->heldBy($friendIds);
+            foreach ($links as $link) {
                 $otherId = $link->other($userId);
                 $other = $this->users->find($otherId);
                 if ($other === null) {
@@ -45,7 +56,7 @@ final readonly class FriendList
                 }
                 if ($link->acceptedAt !== null) {
                     // The stored progress, never the projection: a friend's open days are the friend's own business.
-                    $friends[] = FriendView::of($other, $link->acceptedAt, $this->progress->find($otherId));
+                    $friends[] = FriendView::of($other, $link->acceptedAt, $this->progress->find($otherId), $badges[$otherId->value] ?? []);
                 } elseif ($link->requester->equals($userId)) {
                     $outgoing[] = new PendingRequest(PublicProfile::of($other), $link->requestedAt);
                 } else {
