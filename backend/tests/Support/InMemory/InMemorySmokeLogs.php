@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Tests\Support\InMemory;
 
+use DateTimeImmutable;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Logging\SmokeLogs;
+use SmokeDetector\Application\Plan\ProductType;
 use SmokeDetector\Application\Time\LocalDate;
 
 /**
@@ -59,6 +61,30 @@ final class InMemorySmokeLogs implements SmokeLogs, InMemoryState
         }
 
         return $sessions;
+    }
+
+    public function lastSessionAt(UserId $userId): ?DateTimeImmutable
+    {
+        $last = null;
+        foreach ($this->logs as $log) {
+            if ($log->userId->equals($userId) && $log->deletedAt === null && ($last === null || $log->smokedAt > $last)) {
+                $last = $log->smokedAt;
+            }
+        }
+
+        return $last;
+    }
+
+    public function productsOf(UserId $userId): array
+    {
+        $used = [];
+        foreach ($this->logs as $log) {
+            if ($log->userId->equals($userId) && $log->deletedAt === null) {
+                $used[$log->productType->value] = true;
+            }
+        }
+
+        return array_values(array_filter(ProductType::cases(), static fn (ProductType $type): bool => isset($used[$type->value])));
     }
 
     /**
