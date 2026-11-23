@@ -312,6 +312,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The settings of the user */
+        get: operations["getMySettings"];
+        /**
+         * Change the settings
+         * @description Counts at once: friends see more or less of the health milestones from the next request on (SRS FR-GAME-09).
+         */
+        put: operations["saveMySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/badges": {
         parameters: {
             query?: never;
@@ -1056,6 +1077,9 @@ export interface components {
             leagueResults: components["schemas"]["ExportedLeagueResult"][];
             /** @description The badges of the user, in the order of `BadgeKey`. */
             badges: components["schemas"]["Badge"][];
+            /** @description The health milestones the user has reached at some time, as stored for what friends may see, in the order of `HealthMilestoneKey`. */
+            healthMilestones: components["schemas"]["ReachedHealthMilestone"][];
+            settings: components["schemas"]["Settings"];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1386,6 +1410,24 @@ export interface components {
             underLimitStreak: components["schemas"]["Streak"];
             /** @description The badges the friend holds, in the order of `BadgeKey`. Which ones, and never when they were earned: the day of a first smoke-free day would be a day with a known count. */
             badges: components["schemas"]["BadgeKey"][];
+            /** @description The health milestones the friend has reached at some time and lets friends see (the friend's own setting, `MilestoneSharing`), in the order of `HealthMilestoneKey`. Worked out from final days, kept for good and shown without a time: a session of today, or a relapse, cannot be read from it. */
+            healthMilestones: components["schemas"]["HealthMilestoneKey"][];
+        };
+        /**
+         * @description What friends see of the user's health milestones. `from_two_weeks` (the default): the milestones from two weeks on. `private`: none. `all`: also the two short ones (20 minutes, 12 hours).
+         * @enum {string}
+         */
+        MilestoneSharing: "from_two_weeks" | "private" | "all";
+        Settings: {
+            milestoneSharing: components["schemas"]["MilestoneSharing"];
+        };
+        ReachedHealthMilestone: {
+            key: components["schemas"]["HealthMilestoneKey"];
+            /**
+             * Format: date-time
+             * @description The moment the milestone was reached for the first time.
+             */
+            reachedAt: string;
         };
         /**
          * @description A badge (SRS Appendix B). `limit_halved`: a day kept at half the limit of the first day of the plan, or less. `target_reached`: a day kept at a limit that has arrived at the target of the plan, in a plan that began above it. `league_champion_*`: rank 1 among at least three, with a reduction above zero. The apps have a picture and a text for each. A later version of the API may add keys.
@@ -2510,6 +2552,60 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getMySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settings. Somebody who never chose has the defaults. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    saveMySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Settings"];
+            };
+        };
+        responses: {
+            /** @description The settings as they are now. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Settings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
