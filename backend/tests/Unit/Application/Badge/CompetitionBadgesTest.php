@@ -114,7 +114,7 @@ final class CompetitionBadgesTest extends LeaguesUseCaseTestCase
         [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
         $this->givenResult($anna, 42);
         $this->givenResult($bob, 60);
-        $this->givenResult($carol, 84);
+        $this->givenResult($carol, 72);
 
         $this->rankLeagues()->execute();
 
@@ -149,6 +149,20 @@ final class CompetitionBadgesTest extends LeaguesUseCaseTestCase
         $this->rankLeagues()->execute();
 
         self::assertSame([[1, 2, 0], [1, 1, 0]], [$this->awardOf($anna), $this->awardOf($loner)]);
+        self::assertSame([], $this->badgeRecords->all());
+    }
+
+    public function test_FR_COMP_08_three_who_did_nothing_share_rank_1_and_are_no_champions(): void
+    {
+        [$anna, $bob, $carol] = $this->givenFriendsAll('Anna', 'Bob', 'Carol');
+        foreach ([$anna, $bob, $carol] as $user) {
+            $this->givenResult($user, 84, 0, 0);
+        }
+
+        $this->rankLeagues()->execute();
+
+        // A title needs a reduction, like the XP of a rank.
+        self::assertSame([[1, 3, 0], [1, 3, 0], [1, 3, 0]], [$this->awardOf($anna), $this->awardOf($bob), $this->awardOf($carol)]);
         self::assertSame([], $this->badgeRecords->all());
     }
 
