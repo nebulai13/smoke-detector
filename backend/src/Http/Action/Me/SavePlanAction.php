@@ -18,6 +18,7 @@ use SmokeDetector\Application\Validation\InvalidValue;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Http\Auth\AuthenticatedUser;
+use SmokeDetector\Http\Input\DateField;
 use SmokeDetector\Http\Input\Fields;
 use SmokeDetector\Http\Me\AccountResponder;
 use SmokeDetector\Http\RequestBody;
@@ -41,7 +42,7 @@ final readonly class SavePlanAction
     {
         $userId = AuthenticatedUser::id($request);
 
-        $fields = new Fields(RequestBody::of($request), ['startingBaseline', 'goalMode', 'target', 'taperSpeed', 'defaultProduct']);
+        $fields = new Fields(RequestBody::of($request), ['startingBaseline', 'goalMode', 'target', 'taperSpeed', 'defaultProduct', 'lastSessionBefore']);
 
         $startingBaseline = $fields->optionalInteger('startingBaseline');
         if ($startingBaseline !== null) {
@@ -64,12 +65,14 @@ final readonly class SavePlanAction
 
         $taperSpeed = $fields->enum('taperSpeed', TaperSpeed::class);
         $defaultProduct = $fields->enum('defaultProduct', ProductType::class);
+        // Whether the day is before the plan is checked by the use case, which knows its first day.
+        $lastSessionBefore = $fields->makeOptional('lastSessionBefore', DateField::fromInput(...));
 
         if ($goal === null || $taperSpeed === null || $defaultProduct === null || $fields->hasErrors()) {
             throw $fields->failure();
         }
 
-        $this->savePlan->execute($userId, new PlanChoice($startingBaseline, $goal, $taperSpeed, $defaultProduct));
+        $this->savePlan->execute($userId, new PlanChoice($startingBaseline, $goal, $taperSpeed, $defaultProduct, $lastSessionBefore));
 
         return $this->responder->respond($this->showAccount->execute($userId));
     }

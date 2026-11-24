@@ -71,7 +71,7 @@ final class PlanTest extends HttpTestCase
         $this->call('PUT', '/me/plan', self::PLAN, $this->authorization($anna));
 
         self::assertSame(
-            [['user_id' => $anna->id->value, 'goal_mode' => 'reduce', 'target' => 5, 'taper_speed' => 'normal', 'default_product' => 'rolled', 'start_date' => '2026-11-17', 'rules_version' => 'v1']],
+            [['user_id' => $anna->id->value, 'goal_mode' => 'reduce', 'target' => 5, 'taper_speed' => 'normal', 'default_product' => 'rolled', 'start_date' => '2026-11-17', 'rules_version' => 'v1', 'last_session_before' => null]],
             $this->sql()->rows('SELECT * FROM plans'),
         );
         self::assertSame(
@@ -131,6 +131,41 @@ final class PlanTest extends HttpTestCase
         $plan = self::plan($this->call('GET', '/me', headers: $this->authorization($anna))->json());
         // 80 % of 5.1 is 4.08, but the target is 5.
         self::assertSame([5.1, 5], [$plan['baseline'] ?? null, $plan['dailyLimit'] ?? null]);
+    }
+
+    public function test_FR_GAME_09_the_plan_can_name_the_day_of_the_last_session_before_joining(): void
+    {
+        $anna = $this->givenUser();
+
+        $response = $this->call('PUT', '/me/plan', ['goalMode' => 'quit', 'target' => 0, 'lastSessionBefore' => '2026-10-31'] + self::PLAN, $this->authorization($anna));
+
+        self::assertSame(200, $response->status());
+        self::assertSame('2026-10-31', self::plan($response->json())['lastSessionBefore'] ?? null);
+        self::assertSame([['last_session_before' => '2026-10-31']], $this->sql()->rows('SELECT last_session_before FROM plans'));
+        $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
+        self::assertSame('2026-10-31', self::at($export, 'plan', 'lastSessionBefore'));
+
+        // A plan sent without it has none: it is left out of the answer and the export.
+        $changed = $this->call('PUT', '/me/plan', ['goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'fast', 'defaultProduct' => 'rolled'], $this->authorization($anna));
+        self::assertArrayNotHasKey('lastSessionBefore', self::plan($changed->json()));
+        self::assertSame([['last_session_before' => null]], $this->sql()->rows('SELECT last_session_before FROM plans'));
+        $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
+        self::assertNull(self::at($export, 'plan', 'lastSessionBefore'));
+    }
+
+    public function test_FR_GAME_09_the_last_session_before_joining_is_a_day_before_the_first_day_of_the_plan(): void
+    {
+        $anna = $this->givenUser();
+
+        // Today, the 17th, is the first day of the plan.
+        foreach (['2026-11-17' => 'out_of_range', '1899-12-31' => 'out_of_range', 'last year' => 'invalid_format', '2026-02-30' => 'invalid_format'] as $day => $code) {
+            // A day that is no day breaks the contract; one that is a day only breaks the rule.
+            $response = $code === 'invalid_format'
+                ? $this->callInvalid('PUT', '/me/plan', ['lastSessionBefore' => $day] + self::PLAN, $this->authorization($anna))
+                : $this->call('PUT', '/me/plan', ['lastSessionBefore' => $day] + self::PLAN, $this->authorization($anna));
+            self::assertSame([['field' => 'lastSessionBefore', 'code' => $code]], self::fieldCodes(self::assertProblem(422, 'validation_failed', $response)), $day);
+        }
+        self::assertSame(0, $this->sql()->value('SELECT COUNT(*) FROM plans'));
     }
 
     public function test_FR_ACC_06_goal_target_taper_speed_and_product_can_be_changed_later(): void

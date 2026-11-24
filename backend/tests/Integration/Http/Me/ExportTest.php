@@ -53,7 +53,7 @@ final class ExportTest extends HttpTestCase
         self::assertIsArray($export['consents']);
         self::assertSame(['type' => 'age18', 'version' => 'age-v1', 'grantedAt' => '2026-11-01T08:00:00Z'], $export['consents'][0] ?? null);
         self::assertSame(
-            ['goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'defaultProduct' => 'rolled', 'startDate' => '2026-11-02', 'rulesVersion' => 'v1'],
+            ['goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'defaultProduct' => 'rolled', 'startDate' => '2026-11-02', 'rulesVersion' => 'v1', 'lastSessionBefore' => '2026-10-01'],
             $export['plan'],
         );
         $lists = [
