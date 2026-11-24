@@ -62,6 +62,20 @@ trait FeedEventsContract
         self::assertEquals([$third], $this->feedEvents()->newestOf([$three], 10));
         self::assertSame([], $this->feedEvents()->newestOf([TestData::userId(4)], 10));
         self::assertSame([], $this->feedEvents()->newestOf([], 10));
+        // The entries after the newest ones, to read on where a first read ended.
+        self::assertEquals([$second, $first], $this->feedEvents()->newestOf([$one, $two, $three], 2, 2));
+        self::assertEquals([$third, $second, $first], $this->feedEvents()->newestOf([$one, $two, $three], 10, 1));
+        self::assertEquals([$first], $this->feedEvents()->newestOf([$two, $one], 5, 2));
+        self::assertSame([], $this->feedEvents()->newestOf([$one, $two, $three], 10, 4));
+        self::assertSame([], $this->feedEvents()->newestOf([], 10, 1));
+        // A negative number to skip is a mistake of the caller, and never an answer.
+        $refused = false;
+        try {
+            $this->feedEvents()->newestOf([$one], 10, -1);
+        } catch (\Throwable) {
+            $refused = true;
+        }
+        self::assertTrue($refused);
     }
 
     public function test_FR_ACC_07_the_entries_of_one_user_come_oldest_first(): void

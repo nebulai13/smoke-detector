@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Tests\Support\InMemory;
 
+use InvalidArgumentException;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Feed\FeedEvent;
 use SmokeDetector\Application\Feed\FeedEvents;
@@ -38,13 +39,17 @@ final class InMemoryFeedEvents implements FeedEvents, InMemoryState
         return null;
     }
 
-    public function newestOf(array $userIds, int $limit): array
+    public function newestOf(array $userIds, int $limit, int $skip = 0): array
     {
+        if ($limit < 0 || $skip < 0) {
+            // The database refuses a negative LIMIT or OFFSET. array_slice would count from the end.
+            throw new InvalidArgumentException('A limit and a number to skip cannot be negative.');
+        }
         $wanted = array_map(static fn (UserId $userId): string => $userId->value, $userIds);
         $events = array_values(array_filter($this->events, static fn (FeedEvent $event): bool => in_array($event->userId->value, $wanted, true)));
 
         // The one written last comes first, whatever the clock said.
-        return array_slice(array_reverse($events), 0, $limit);
+        return array_slice(array_reverse($events), $skip, $limit);
     }
 
     public function ofUser(UserId $userId): array
