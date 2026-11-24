@@ -72,6 +72,90 @@ final class UserDataRegistryTest extends TestCase
         );
     }
 
+    public function test_FR_ACC_07_a_table_whose_rows_a_user_has_in_two_roles_gives_the_export_a_second_member(): void
+    {
+        // A nudge the user sent and a nudge the user received are rows of one table (HLD §4.14).
+        $sent = new RecordingUserData('nudges sent', $this->log, [['userId' => 'b']]);
+        $received = new RecordingUserData('nudges received', $this->log, [['userId' => 'c', 'delivered' => true]]);
+        $registry = new UserDataRegistry([
+            $this->table('consents', 'consents', [['type' => 'age18']]),
+            new UserDataTable('nudges', 'nudgesSent', $sent, $sent, ['nudgesReceived' => $received]),
+            $this->table('plans', 'plan', null),
+        ]);
+
+        $export = $registry->export(TestData::userId(7));
+
+        // In the order of registration, the members of one table in their order. Null leaves a member out.
+        self::assertSame(
+            ['consents' => [['type' => 'age18']], 'nudgesSent' => [['userId' => 'b']], 'nudgesReceived' => [['userId' => 'c', 'delivered' => true]]],
+            $export,
+        );
+        self::assertSame(['consents', 'nudgesSent', 'nudgesReceived'], array_keys($export));
+        self::assertSame(
+            ['export consents ' . TestData::uuid(7), 'export nudges sent ' . TestData::uuid(7), 'export nudges received ' . TestData::uuid(7), 'export plans ' . TestData::uuid(7)],
+            $this->log->getArrayCopy(),
+        );
+
+        // The table is erased once, by its own eraser.
+        $this->log->exchangeArray([]);
+        $registry->erase(TestData::userId(7));
+        self::assertSame(['erase consents ' . TestData::uuid(7), 'erase nudges sent ' . TestData::uuid(7), 'erase plans ' . TestData::uuid(7)], $this->log->getArrayCopy());
+        self::assertSame(['consents', 'nudges', 'plans'], $registry->tables());
+    }
+
+    public function test_FR_ACC_07_a_second_member_that_has_nothing_to_export_as_one_object_is_left_out(): void
+    {
+        $first = new RecordingUserData('settings', $this->log, ['milestoneSharing' => 'all']);
+        $second = new RecordingUserData('settings history', $this->log, null);
+
+        self::assertSame(
+            ['settings' => ['milestoneSharing' => 'all']],
+            (new UserDataRegistry([new UserDataTable('user_settings', 'settings', $first, $first, ['settingsHistory' => $second])]))->export(TestData::userId(1)),
+        );
+    }
+
+    public function test_a_second_member_cannot_have_the_name_of_the_first(): void
+    {
+        // It would replace the first one in the export without a word.
+        $data = new RecordingUserData('nudges', $this->log);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The export member "nudges" is used twice.');
+
+        new UserDataTable('nudges', 'nudges', $data, $data, ['nudges' => $data]);
+    }
+
+    public function test_a_second_member_cannot_be_the_member_of_another_table(): void
+    {
+        $data = new RecordingUserData('nudges', $this->log);
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('The export member "sessions" is used twice.');
+
+        new UserDataRegistry([$this->table('refresh_tokens', 'sessions'), new UserDataTable('nudges', 'nudgesSent', $data, $data, ['sessions' => $data])]);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function badSecondMembers(): iterable
+    {
+        yield 'reserved' => ['profile'];
+        yield 'in snake case' => ['nudges_received'];
+        yield 'starting in upper case' => ['NudgesReceived'];
+        yield 'empty' => [''];
+    }
+
+    #[DataProvider('badSecondMembers')]
+    public function test_a_second_member_follows_the_rules_of_every_member(string $member): void
+    {
+        $data = new RecordingUserData('nudges', $this->log);
+
+        $this->expectException(InvalidArgumentException::class);
+
+        new UserDataTable('nudges', 'nudgesSent', $data, $data, [$member => $data]);
+    }
+
     public function test_the_registry_names_its_tables(): void
     {
         $registry = new UserDataRegistry([$this->table('refresh_tokens', 'sessions'), $this->table('plans', 'plan')]);

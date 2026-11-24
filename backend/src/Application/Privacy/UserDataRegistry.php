@@ -38,11 +38,13 @@ final readonly class UserDataRegistry
             if (in_array($table->table, $names, true)) {
                 throw new InvalidArgumentException("The table \"{$table->table}\" is registered twice.");
             }
-            if (in_array($table->exportMember, $members, true)) {
-                throw new InvalidArgumentException("The export member \"{$table->exportMember}\" is used twice.");
+            foreach (array_keys($table->exporters()) as $member) {
+                if (in_array($member, $members, true)) {
+                    throw new InvalidArgumentException("The export member \"{$member}\" is used twice.");
+                }
+                $members[] = $member;
             }
             $names[] = $table->table;
-            $members[] = $table->exportMember;
         }
 
         $this->tables = $tables;
@@ -65,9 +67,11 @@ final readonly class UserDataRegistry
     {
         $export = [];
         foreach ($this->tables as $table) {
-            $data = $table->exporter->export($userId);
-            if ($data !== null) {
-                $export[$table->exportMember] = $data;
+            foreach ($table->exporters() as $member => $exporter) {
+                $data = $exporter->export($userId);
+                if ($data !== null) {
+                    $export[$member] = $data;
+                }
             }
         }
 

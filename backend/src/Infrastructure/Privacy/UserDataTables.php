@@ -22,7 +22,8 @@ use SmokeDetector\Infrastructure\Database\Sql;
  * - an exporter: a small class next to this one that selects the user's rows and names the columns
  *   as the schema does (never a secret column),
  * - an eraser: RowsOfUser when every row belongs to one user alone, RowsOfEitherUser when a row
- *   belongs to two users in two columns (a friendship, a block), otherwise a class of its own.
+ *   belongs to two users in two columns (a friendship, a block), otherwise a class of its own,
+ * - for a table whose rows a user has in two roles, further members with their exporters (nudges).
  *
  * The order is the order of erasure: a table comes before the tables its rows refer to.
  * UserDataGuardTest fails for a table that refers to users and is not listed here, and
@@ -70,6 +71,16 @@ final readonly class UserDataTables
             // Activity feed (HLD §4.12). An entry belongs to its user; another user's entry that names
             // the user as the opponent of a duel stays and forgets the id.
             new UserDataTable('feed_events', 'feedEvents', new FeedEventsExporter($this->sql), new FeedEventsOfUser($this->sql)),
+            // Nudges (HLD §4.14). A nudge belongs to its sender and to its receiver: deleting an account
+            // deletes the ones it sent and received. Two members: the nudges the user sent, without
+            // whether they were delivered, and those the user received, with it.
+            new UserDataTable(
+                'nudges',
+                'nudgesSent',
+                new NudgesSentExporter($this->sql),
+                new RowsOfEitherUser($this->sql, 'nudges', 'from_user_id', 'to_user_id'),
+                ['nudgesReceived' => new NudgesReceivedExporter($this->sql)],
+            ),
         ]);
     }
 }

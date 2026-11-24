@@ -252,6 +252,22 @@ trait LoggingRepositoriesContract
         self::assertEquals(TestData::day(2, '2026-11-17', 9), $this->dayRecords()->find(TestData::userId(2), TestData::date('2026-11-17')));
     }
 
+    public function test_FR_SOC_03_whether_a_day_of_a_user_is_checked_in(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        $this->dayRecords()->save(TestData::day(1, '2026-11-16', 0, '2026-11-16 21:00:00'));
+        // Logged, and not checked in.
+        $this->dayRecords()->save(TestData::day(1, '2026-11-17', 3));
+        $this->dayRecords()->save(TestData::day(2, '2026-11-17', 0, '2026-11-17 08:00:00'));
+
+        self::assertTrue($this->dayRecords()->isCheckedInOn(TestData::userId(1), TestData::date('2026-11-16')));
+        self::assertFalse($this->dayRecords()->isCheckedInOn(TestData::userId(1), TestData::date('2026-11-17')));
+        // No row at all: no check-in either.
+        self::assertFalse($this->dayRecords()->isCheckedInOn(TestData::userId(1), TestData::date('2026-11-18')));
+        self::assertTrue($this->dayRecords()->isCheckedInOn(TestData::userId(2), TestData::date('2026-11-17')));
+        self::assertFalse($this->dayRecords()->isCheckedInOn(TestData::userId(3), TestData::date('2026-11-17')));
+    }
+
     public function test_FR_GAME_09_the_last_day_without_a_check_in_up_to_a_day(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

@@ -43,6 +43,11 @@ final class InMemoryDayRecords implements DayRecords, InMemoryState
         return $days;
     }
 
+    public function isCheckedInOn(UserId $userId, LocalDate $date): bool
+    {
+        return $this->find($userId, $date)?->isCheckedIn() ?? false;
+    }
+
     public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate
     {
         $last = null;
