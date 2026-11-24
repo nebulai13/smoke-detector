@@ -481,7 +481,7 @@ final class LockingTest extends IntegrationTestCase
     {
         $userId = TestData::userId(1);
         (new PdoUserRepository($this->sql()))->add(TestData::user(1, passwordHash: TestAccounts::PASSWORD_HASH, createdAt: self::NOW));
-        $this->sql()->execute("INSERT INTO plans VALUES (?, 'quit', 0, 'normal', 'cigarette', '2026-11-10', 'v1')", [$userId->value]);
+        $this->sql()->execute("INSERT INTO plans VALUES (?, 'quit', 0, 'normal', 'cigarette', '2026-11-10', 'v1', NULL)", [$userId->value]);
         $this->sql()->execute("INSERT INTO baseline_history VALUES (?, '2026-11-10', 12.0, 'onboarding', NULL, NULL, NULL, NULL, 'v1')", [$userId->value]);
         $this->sql()->execute("INSERT INTO plan_history VALUES (?, '2026-11-10', 'quit', 0, 'normal', 'v1')", [$userId->value]);
         $this->sql()->execute("INSERT INTO timezone_history VALUES (?, '2026-11-10', 'Europe/Berlin')", [$userId->value]);

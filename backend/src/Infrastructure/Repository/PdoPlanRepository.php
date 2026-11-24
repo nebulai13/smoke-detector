@@ -28,7 +28,7 @@ final readonly class PdoPlanRepository implements PlanRepository
     public function find(UserId $userId): ?Plan
     {
         $columns = $this->sql->row(
-            'SELECT user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version '
+            'SELECT user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version, last_session_before '
             . 'FROM plans WHERE user_id = ?',
             [$userId->value],
         );
@@ -44,6 +44,7 @@ final readonly class PdoPlanRepository implements PlanRepository
             ProductType::from($row->string('default_product')),
             LocalDate::fromString($row->string('start_date')),
             $row->string('rules_version'),
+            self::date($row->nullableString('last_session_before')),
         );
     }
 
@@ -51,11 +52,12 @@ final readonly class PdoPlanRepository implements PlanRepository
     {
         // One statement, so two requests that save at the same moment cannot both insert.
         $this->sql->execute(
-            'INSERT INTO plans (user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version) '
-            . 'VALUES (?, ?, ?, ?, ?, ?, ?) '
+            'INSERT INTO plans (user_id, goal_mode, target, taper_speed, default_product, start_date, rules_version, last_session_before) '
+            . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?) '
             . 'ON DUPLICATE KEY UPDATE goal_mode = VALUES(goal_mode), target = VALUES(target), '
             . 'taper_speed = VALUES(taper_speed), default_product = VALUES(default_product), '
-            . 'start_date = VALUES(start_date), rules_version = VALUES(rules_version)',
+            . 'start_date = VALUES(start_date), rules_version = VALUES(rules_version), '
+            . 'last_session_before = VALUES(last_session_before)',
             [
                 $plan->userId->value,
                 GoalMode::of($plan->goal)->value,
@@ -64,8 +66,14 @@ final readonly class PdoPlanRepository implements PlanRepository
                 $plan->defaultProduct->value,
                 $plan->startDate->value,
                 $plan->rulesVersion,
+                $plan->lastSessionBefore?->value,
             ],
         );
+    }
+
+    private static function date(?string $value): ?LocalDate
+    {
+        return $value === null ? null : LocalDate::fromString($value);
     }
 
     /**

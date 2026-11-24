@@ -26,6 +26,7 @@ final class PlanSchemaTest extends IntegrationTestCase
                 'default_product' => ['varchar(32)', 'NO', 'utf8mb4_bin'],
                 'start_date' => ['date', 'NO', null],
                 'rules_version' => ['varchar(32)', 'NO', 'utf8mb4_bin'],
+                'last_session_before' => ['date', 'YES', null],
             ],
             $this->columns('plans'),
         );

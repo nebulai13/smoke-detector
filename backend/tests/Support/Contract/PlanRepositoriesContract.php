@@ -40,6 +40,19 @@ trait PlanRepositoriesContract
         self::assertEquals($quit, $this->plans()->find(TestData::userId(2)));
     }
 
+    public function test_FR_GAME_09_the_day_of_the_last_session_before_joining_is_kept_with_the_plan(): void
+    {
+        $this->givenUsers(TestData::userId(1));
+        $quitter = TestData::plan(1, Goal::quit(), TaperSpeed::Fast, ProductType::Cigarette, '2026-11-17', 'v1', '2019-03-31');
+
+        $this->plans()->save($quitter);
+        self::assertEquals($quitter, $this->plans()->find(TestData::userId(1)));
+
+        // And taken away again.
+        $this->plans()->save(TestData::plan(1, Goal::quit(), TaperSpeed::Fast, ProductType::Cigarette, '2026-11-17', 'v1'));
+        self::assertNull($this->plans()->find(TestData::userId(1))?->lastSessionBefore);
+    }
+
     public function test_a_user_without_a_plan_has_none(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));

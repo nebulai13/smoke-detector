@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Application\Plan;
 
+use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Plan\Goal;
 use SmokeDetector\Domain\Plan\TaperSpeed;
 
@@ -24,6 +25,8 @@ final readonly class PlanChoice
         public Goal $goal,
         public TaperSpeed $taperSpeed,
         public ProductType $defaultProduct,
+        /** The day of the last session before joining, for somebody who quit before (HLD §4.10). */
+        public ?LocalDate $lastSessionBefore = null,
     ) {
     }
 }
