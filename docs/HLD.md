@@ -167,7 +167,7 @@ erDiagram
 | `user_settings` | user_id (one row per user, made by the first choice), milestone_sharing (from_two_weeks / private / all). No row means the defaults |
 | `user_badges` | user_id, badge_key (the domain's `Badge`), primary key together: a user holds a badge once. awarded_at (UTC): when it was stored, which is when the day, the duel or the rank became final. The first award stays; a row is never changed |
 | `feed_events` | position (the order of writing, never sent), id (a random UUID: what a client gets says nothing about the time), user_id, type (level_up / badge_earned / duel_won / duel_draw / health_milestone), detail (the level, the badge or the milestone; NULL for a duel), other_user_id (the opponent of a duel; set to NULL when that account goes), created_at. Written from final data only (§4.12). Index (user_id, position) |
-| `reactions` | reaction_key, from_user. With the reactions, the next slice of step 6 |
+| `feed_reactions` | event_id (the feed entry), user_id (who reacted), primary key together: a user has one reaction to an entry. reaction (cheer / strong / keep_going), created_at (the first time; a changed reaction keeps it). Goes with its entry and with its user (§4.13) |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
 | `mail_outbox` | id (UUIDv7), user_id (`ON DELETE CASCADE`), template (confirm_email / already_registered / reset_password), locale, recipient, sealed_values (the links of the mail, encrypted with `sodium_crypto_secretbox`: random nonce per row, key derived from `jwt.secret` by HKDF-SHA256 with its own label), created_at, not_before (the next try, or the end of a run's 10-minute hold), attempts (failed tries). A row is deleted as soon as the mail server has the mail. Deliberately no index on not_before (two runs could deadlock on it) |
@@ -185,7 +185,7 @@ erDiagram
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges`, `GET /me/health-milestones` (§4.10) |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
-| Social | `GET /feed` (§4.12). To come: `POST /feed/reactions` and `POST /friends/nudge`, with the ids in the body (§4.7) |
+| Social | `GET /feed` (§4.12), `POST /feed/reactions` (§4.13). To come: `POST /friends/nudge`. The ids are in the body (§4.7) |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
 
 ### 4.5 Auth & account design (step 3)
@@ -1068,10 +1068,43 @@ may see, the newest first.
   the level thresholds changed: the reward compares with the stored level. To settle with the first new
   rule version (§4.6).
 - **Entries are kept for good.** A clean-up of old entries can come with the housekeeping job.
-- **Reactions and nudges** (FR-SOC-02 to -04) are the next slices.
+- **Nudges** (FR-SOC-03) are the next slice.
 
 **Export and deletion.** `feed_events` is registered with exporter and eraser. The export member `feedEvents`
 holds the user's own entries with their time, of an opponent the id only.
+
+### 4.13 Reactions (step 6, second part)
+
+**What a reaction is (FR-SOC-02).** One of three preset keys, `cheer`, `strong` and `keep_going`, on a feed
+entry of a friend. No text. `POST /feed/reactions {entryId, reaction}`:
+
+| Rule | |
+|---|---|
+| To what | an entry the user sees in the feed at that moment (§4.12), and never an own one. Everything else is `feed_entry_not_found`, whether the entry exists or not; an own entry is `own_feed_entry` |
+| How many | one per user and entry. Sent again, it changes its key and keeps its time. It cannot be taken back |
+| XP (FR-GAME-01) | a new reaction earns `XpCalculator::forReaction` XP (2, at most 10 a day in v1), booked on the user's own day and added to the progress at once: it is no smoking data, so it does not wait for a day to be final. A changed reaction earns nothing. Before the onboarding there is no day and no progress, so nothing is earned |
+| Level | reaction XP can reach a level, which is an entry of the feed (§4.12) |
+| Badge | the 50th reaction a user sent earns `cheerleader` (§4.10). A changed reaction is not one more |
+| Limit (FR-SOC-04) | reactions and nudges together: 30 a day per user (`social.actions`, the rate limiter of §4.5, a day in UTC). The 31st is `429 rate_limited`. A changed reaction counts, and so does one that is refused |
+
+**Who sees a reaction.** The sender sees the own reaction on the entry (`myReaction`). The owner of the entry
+sees who reacted (`reactions`: name, avatar and key, oldest first), of those who are friends now. Nobody else
+sees anything of it: not who reacted to a friend's entry, and not how many did.
+
+**Locks.** The step locks the account of the sender, as every step that changes the progress does (§4.5).
+
+**Known limits.**
+
+- **A reaction tells its receiver that the sender read the feed,** and roughly when: the receiver sees it at
+  the next request. That is what it is for.
+- **XP by reacting** is 10 a day at most, for five taps. Accepted: it is the Duolingo-style reward for being
+  there for friends, and it is capped.
+- **Reactions to entries that left the feed stay stored** and count for the badge.
+
+**Export and deletion.** `feed_reactions` is registered with exporter and eraser. The export has the reactions
+the user sent (`reactionsSent`: the id of the user whose entry it was, the key, the time) and, with every own
+feed entry, the reactions to it (who, key, time). Deleting an account deletes the reactions it sent and those
+to its entries.
 
 ---
 

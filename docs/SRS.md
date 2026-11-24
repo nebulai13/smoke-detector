@@ -156,9 +156,9 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | ID | Pri | Requirement |
 |---|---|---|
 | FR-SOC-01 | M | Friend activity feed: level-ups, badges, streak milestones, duel results, health milestones. An entry is written when what it tells is final, and is shown without a time. The streak milestones are in the feed as their badges. A health milestone of a friend is in it as far as that friend's setting allows (FR-GAME-09). A duel that was won or drawn with a reduction is announced, a lost one is not, and the opponent is named only to the opponent and to friends of the opponent. |
-| FR-SOC-02 | M | Users can react to feed items with a preset reaction (👏 cheer, 💪 strong, 🔥 keep going). No free-text chat. |
+| FR-SOC-02 | M | Users can react to feed items with a preset reaction (👏 cheer, 💪 strong, 🔥 keep going). No free-text chat. One reaction per user and item, which can change. Only an item the user sees in the feed can be reacted to, and never an own one. The sender sees the own reaction, and the owner of the item sees who reacted; nobody else sees either. |
 | FR-SOC-03 | M | Users can **nudge** a friend who hasn't checked in today (max 1 nudge per friend per day). |
-| FR-SOC-04 | M | Reactions and nudges are rate-limited (max 30 per user per day). |
+| FR-SOC-04 | M | Reactions and nudges are rate-limited (max 30 per user per day, together; a day in UTC). |
 
 ### 3.8 Notifications (NOTIF)
 | ID | Pri | Requirement |
