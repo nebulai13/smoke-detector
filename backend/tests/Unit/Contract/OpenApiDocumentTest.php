@@ -183,6 +183,8 @@ final class OpenApiDocumentTest extends TestCase
                 'FriendRequestRefused',
                 'FriendLimitReached',
                 'FriendRequestNotFound',
+                'FeedEntryNotFound',
+                'OwnFeedEntry',
                 'FriendNotFound',
                 'BlockNotFound',
                 'DuelNotFound',
