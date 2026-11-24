@@ -1148,8 +1148,13 @@ one per friend and day needs them, and the sender must not be able to tell the t
 - **A nudge tells its receiver that the sender thought of them now.** That is what it is for.
 - **A nudge that is not delivered is still stored about the receiver.** The receiver's data export has it,
   with `delivered: false`. The sender's export has the nudges the sender sent without that value.
-- **Timing:** both cases do the same reads and one insert. A difference in response time that could tell them
-  apart was not measured.
+- **Timing:** the check-in of every friend is read with one query that always answers one row, whether the
+  friend checked in, logged without a check-in, has no day yet or has no plan (an outside audit found that
+  reading the stored day made different work before the same answer). What remains, not measured: the plan
+  of a friend is read in full only when there is one, which could tell whether the friend did the onboarding
+  (not whether they checked in); and for somebody who is no friend the existence of the account is not read.
+- **A friend who deletes the account at the same moment** can answer a nudge with a server error instead of
+  "not found", as for reactions (§4.13). The request changes nothing.
 - **The day of the sender follows the zone of the account,** not the zone history (§4.6): after a change of
   the time zone a second nudge to a friend can be possible within one day.
 - **Old nudges are kept.** A clean-up can come with the housekeeping job.
