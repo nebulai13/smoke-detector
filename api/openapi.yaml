@@ -1282,6 +1282,63 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /friends/nudge:
+    post:
+      operationId: nudgeFriend
+      tags: [Social]
+      summary: Nudge a friend to check in (SRS FR-SOC-03)
+      description: >
+        Once per friend and day. A nudge can always be sent: it is delivered only if the friend has not
+        checked in today, and the answer is the same either way, so that nobody learns from it whether a
+        friend has checked in. Reactions and nudges together are limited to 30 a day (SRS FR-SOC-04).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserReference"
+      responses:
+        "204":
+          description: Taken. It says nothing about whether the friend will see it.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FriendNotFound"
+        "409":
+          $ref: "#/components/responses/AlreadyNudged"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /nudges:
+    get:
+      operationId: listNudges
+      tags: [Social]
+      summary: Who nudged the user today
+      description: >
+        The friends whose nudges of the user's own today were delivered, the first one first. Empty once
+        the user has checked in today, and before the onboarding.
+      responses:
+        "200":
+          description: The nudges of today.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Nudges"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /friends/block:
     post:
       operationId: blockUser
@@ -2095,6 +2152,8 @@ components:
         - settings
         - feedEvents
         - reactionsSent
+        - nudgesSent
+        - nudgesReceived
         - sessions
         - mailLinks
         - queuedMails
@@ -2219,6 +2278,16 @@ components:
           description: The reactions the user sent, oldest first, each with the id of the user whose entry it was.
           items:
             $ref: "#/components/schemas/ExportedReaction"
+        nudgesSent:
+          type: array
+          description: The nudges the user sent, oldest first. Without `delivered`.
+          items:
+            $ref: "#/components/schemas/ExportedNudge"
+        nudgesReceived:
+          type: array
+          description: The nudges sent to the user, oldest first, also those that were not shown.
+          items:
+            $ref: "#/components/schemas/ExportedNudge"
     ExportedProfile:
       type: object
       additionalProperties: false
@@ -2895,6 +2964,41 @@ components:
             users who are friends now. Empty on every entry of somebody else.
           items:
             $ref: "#/components/schemas/FeedReaction"
+    Nudges:
+      type: object
+      additionalProperties: false
+      required: [nudges]
+      properties:
+        nudges:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/ReceivedNudge"
+    ReceivedNudge:
+      type: object
+      additionalProperties: false
+      required: [user]
+      description: A nudge has no time and no text.
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+    ExportedNudge:
+      type: object
+      additionalProperties: false
+      required: [userId, createdAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: In `nudgesSent`, whom the user nudged. In `nudgesReceived`, who nudged the user.
+        createdAt:
+          type: string
+          format: date-time
+        delivered:
+          type: boolean
+          description: >
+            In `nudgesReceived` only: whether the user had not checked in that day, so that the nudge
+            was shown. What became of a nudge the user sent is not in the export of the sender.
     ReactionKey:
       type: string
       description: "`cheer` (👏), `strong` (💪), `keep_going` (🔥). There is no free text (SRS FR-SOC-02)."
@@ -3950,6 +4054,12 @@ components:
             $ref: "#/components/schemas/Problem"
     FriendRequestNotFound:
       description: "`friend_request_not_found`: there is no open friend request between the two in this direction."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    AlreadyNudged:
+      description: "`already_nudged`: the user has nudged this friend today already."
       content:
         application/problem+json:
           schema:
