@@ -56,8 +56,8 @@ final class UserDataGuardTest extends IntegrationTestCase
 
         self::assertSame(
             [
-                'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'feed_events', 'friendships', 'invite_codes', 'league_results', 'mail_outbox',
-                'one_time_tokens', 'plan_history', 'plans', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_badges', 'user_milestones', 'user_progress',
+                'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'feed_events', 'feed_reactions', 'friendships', 'invite_codes', 'league_results',
+                'mail_outbox', 'one_time_tokens', 'plan_history', 'plans', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_badges', 'user_milestones', 'user_progress',
                 'user_settings', 'xp_events',
             ],
             $registered,
@@ -179,12 +179,16 @@ final class UserDataGuardTest extends IntegrationTestCase
 
         // In the order of the database, which sorts "s" before "_".
         $tables = [
-            'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'feed_events', 'friendships', 'invite_codes', 'league_results', 'mail_outbox', 'one_time_tokens', 'plans',
-            'plan_history', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_badges', 'user_milestones', 'user_progress', 'user_settings', 'xp_events',
+            'baseline_history', 'blocks', 'consents', 'day_summaries', 'duels', 'feed_events', 'feed_reactions', 'friendships', 'invite_codes', 'league_results', 'mail_outbox',
+            'one_time_tokens', 'plans', 'plan_history', 'refresh_tokens', 'smoke_logs', 'timezone_history', 'user_badges', 'user_milestones', 'user_progress', 'user_settings', 'xp_events',
         ];
         // The tables two users share have no column "user_id": they name both users. A feed entry has
-        // one, and names the opponent of a duel too: the guard reports that foreign key first.
-        $shared = ['blocks' => 'blocked_id', 'duels' => 'challenger_id', 'feed_events' => 'other_user_id', 'friendships' => 'user_a'];
+        // one, and names the opponent of a duel too: the guard reports that foreign key first. A
+        // reaction has one, and its entry leads to users as well: the guard reports that way first.
+        $shared = [
+            'blocks' => 'blocked_id', 'duels' => 'challenger_id', 'feed_events' => 'other_user_id', 'feed_reactions' => 'event_id → feed_events.other_user_id',
+            'friendships' => 'user_a',
+        ];
         self::assertCount(count($tables), $violations);
         foreach ($tables as $index => $table) {
             self::assertStringStartsWith("Table `{$table}` is neither registered", $violations[$index]);
