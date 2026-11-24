@@ -148,7 +148,7 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | FR-COMP-04 | M | The duel result is decided after the last day of **both** users is finalized. Both users are notified. |
 | FR-COMP-05 | M | A user may have at most 1 open duel per friend (proposed or running, whoever proposed it) and 5 open duels in total. Running duels and own proposals count. Proposals from others count once they are accepted. |
 | FR-COMP-06 | M | **League (all friends):** for each calendar-aligned period (ISO week, calendar month, calendar quarter, calendar half-year) there is a leaderboard of the user and their friends, ranked by reduction %. Users who join mid-period are rated over the days since joining. A participant with no rated day yet is listed without a rank. |
-| FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). |
+| FR-COMP-07 | M | A separate **weekly XP leaderboard** ranks friends by XP earned this ISO week (the classic Duolingo-style ranking). The XP of a day counts when the day is final; the XP of a reaction (FR-SOC-02) counts at once. |
 | FR-COMP-08 | M | Leaderboards show provisional standings during the period and final standings once the period is finalized. Winners get XP + a badge, but only for a result with a reduction above zero: who smoked as much as the baseline or more, or never checked in, has a rank and wins nothing (otherwise friends who all do nothing would share rank 1 and its reward). While a duel or a period runs, a user sees of each other user only whether that user is ahead, level or behind, not a percentage and not a rank among the others: figures that move every day could be calculated back to daily counts. Ranks and percentages of others are shown once the result is final, a percentage only for a result over at least 7 days. Everything shown about another user while a duel or a period runs, and the comparison itself, covers final days only (FR-LOG-03: a day is final 48 hours after it ended): a user's own open days can still be changed and must not move what is shown about others. |
 | FR-COMP-09 | S | Duel detail screen: day-by-day comparison in four levels per day (smoke-free, well under the baseline, under, not under). Not percentages per day and not timestamps: an exact daily percentage could be calculated back to the baseline and the count. |
 
@@ -156,9 +156,9 @@ Priority: **M** = must (v1), **S** = should (v1 if time permits), **C** = could 
 | ID | Pri | Requirement |
 |---|---|---|
 | FR-SOC-01 | M | Friend activity feed: level-ups, badges, streak milestones, duel results, health milestones. An entry is written when what it tells is final, and is shown without a time. The streak milestones are in the feed as their badges. A health milestone of a friend is in it as far as that friend's setting allows (FR-GAME-09). A duel that was won or drawn with a reduction is announced, a lost one is not, and the opponent is named only to the opponent and to friends of the opponent. |
-| FR-SOC-02 | M | Users can react to feed items with a preset reaction (👏 cheer, 💪 strong, 🔥 keep going). No free-text chat. |
+| FR-SOC-02 | M | Users can react to feed items with a preset reaction (👏 cheer, 💪 strong, 🔥 keep going). No free-text chat. One reaction per user and item, which can change. Only an item the user sees in the feed can be reacted to, and never an own one. The sender sees the own reaction, and the owner of the item sees who reacted; nobody else sees either. |
 | FR-SOC-03 | M | Users can **nudge** a friend who hasn't checked in today (max 1 nudge per friend per day). |
-| FR-SOC-04 | M | Reactions and nudges are rate-limited (max 30 per user per day). |
+| FR-SOC-04 | M | Reactions and nudges are rate-limited (max 30 per user per day, together; a day in UTC). |
 
 ### 3.8 Notifications (NOTIF)
 | ID | Pri | Requirement |

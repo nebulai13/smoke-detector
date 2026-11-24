@@ -61,6 +61,17 @@ final readonly class PdoXpLedger implements XpLedger
         return $events;
     }
 
+    public function earnedOn(UserId $userId, LocalDate $date, XpSource $source): int
+    {
+        // On the index (user_id, local_date).
+        $xp = $this->sql->value(
+            'SELECT CAST(COALESCE(SUM(amount), 0) AS UNSIGNED) FROM xp_events WHERE user_id = ? AND local_date = ? AND source = ?',
+            [$userId->value, $date->value, $source->value],
+        );
+
+        return (new Row(['xp' => $xp]))->int('xp');
+    }
+
     public function earnedBetween(UserId $userId, DateTimeImmutable $from, DateTimeImmutable $until): int
     {
         // Read on the index (user_id, local_date) by its first column: a user's ledger is short.

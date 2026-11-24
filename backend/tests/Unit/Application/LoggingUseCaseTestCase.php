@@ -40,6 +40,7 @@ use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
 use SmokeDetector\Tests\Support\InMemory\InMemoryFeedEvents;
 use SmokeDetector\Tests\Support\InMemory\InMemoryLeagueResults;
 use SmokeDetector\Tests\Support\InMemory\InMemoryMilestoneRecords;
+use SmokeDetector\Tests\Support\InMemory\InMemoryReactions;
 use SmokeDetector\Tests\Support\InMemory\InMemorySmokeLogs;
 use SmokeDetector\Tests\Support\InMemory\InMemoryUserSettings;
 use SmokeDetector\Tests\Support\InMemory\InMemoryXpLedger;
@@ -64,6 +65,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
     protected InMemoryUserSettings $userSettings;
     protected InMemoryFeedEvents $feedEvents;
     protected SequenceFeedIds $feedIds;
+    protected InMemoryReactions $reactions;
     /** Here and not with the duel tests: the badges of the duels are awarded from what is stored of them. */
     protected InMemoryDuels $duels;
 
@@ -79,6 +81,7 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
         $this->userSettings = new InMemoryUserSettings($this->transactions);
         $this->feedEvents = new InMemoryFeedEvents($this->transactions);
         $this->feedIds = new SequenceFeedIds();
+        $this->reactions = new InMemoryReactions($this->transactions);
         $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 

@@ -786,6 +786,49 @@ paths:
           $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/ServiceUnavailable"
+  /feed/reactions:
+    post:
+      operationId: reactToFeedEntry
+      tags: [Social]
+      summary: React to an entry of a friend (SRS FR-SOC-02)
+      description: >
+        One of three preset reactions, and no text. A user has one reaction to an entry: sent again, it
+        changes. A new reaction earns XP, up to a daily maximum (SRS Appendix A). Only an entry the user
+        sees in the feed can be reacted to, and never an own one. Reactions and nudges together are limited
+        to 30 a day (SRS FR-SOC-04).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReactionRequest"
+      responses:
+        "200":
+          description: The reaction as it is stored now, and what it earned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReactionResult"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/FeedEntryNotFound"
+        "409":
+          $ref: "#/components/responses/OwnFeedEntry"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "422":
+          $ref: "#/components/responses/ValidationFailed"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
   /me/settings:
     get:
       operationId: getMySettings
@@ -2051,6 +2094,7 @@ components:
         - healthMilestones
         - settings
         - feedEvents
+        - reactionsSent
         - sessions
         - mailLinks
         - queuedMails
@@ -2170,6 +2214,11 @@ components:
           description: The entries of the activity feed about the user, oldest first.
           items:
             $ref: "#/components/schemas/ExportedFeedEvent"
+        reactionsSent:
+          type: array
+          description: The reactions the user sent, oldest first, each with the id of the user whose entry it was.
+          items:
+            $ref: "#/components/schemas/ExportedReaction"
     ExportedProfile:
       type: object
       additionalProperties: false
@@ -2799,7 +2848,7 @@ components:
     FeedEntry:
       type: object
       additionalProperties: false
-      required: [id, type, user, mine, level, badge, milestone, opponent]
+      required: [id, type, user, mine, level, badge, milestone, opponent, myReaction, reactions]
       description: One thing somebody reached. It has no time on purpose (SRS FR-FRND-03).
       properties:
         id:
@@ -2833,6 +2882,72 @@ components:
           description: >
             Of a duel: the other user, if that is the user who asks or a friend of theirs. `null`
             otherwise, and when the other account does not exist any more.
+        myReaction:
+          allOf:
+            - $ref: "#/components/schemas/ReactionKey"
+          nullable: true
+          description: The reaction of the user who asks to this entry, if there is one.
+        reactions:
+          type: array
+          maxItems: 50
+          description: >
+            Who reacted, oldest first: only on an entry of the user who asks, and only reactions of
+            users who are friends now. Empty on every entry of somebody else.
+          items:
+            $ref: "#/components/schemas/FeedReaction"
+    ReactionKey:
+      type: string
+      description: "`cheer` (👏), `strong` (💪), `keep_going` (🔥). There is no free text (SRS FR-SOC-02)."
+      enum: [cheer, strong, keep_going]
+    FeedReaction:
+      type: object
+      additionalProperties: false
+      required: [user, reaction]
+      properties:
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        reaction:
+          $ref: "#/components/schemas/ReactionKey"
+    ReactionRequest:
+      type: object
+      additionalProperties: false
+      required: [entryId, reaction]
+      properties:
+        entryId:
+          type: string
+          format: uuid
+          description: The `id` of an entry of `GET /feed`. In the body, like every id (HLD §4.7).
+        reaction:
+          $ref: "#/components/schemas/ReactionKey"
+    ReactionResult:
+      type: object
+      additionalProperties: false
+      required: [reaction, xp]
+      properties:
+        reaction:
+          $ref: "#/components/schemas/ReactionKey"
+        xp:
+          type: integer
+          minimum: 0
+          description: >
+            What this reaction earned: 0 for a changed reaction, above the daily maximum, and before the
+            onboarding.
+    ExportedReaction:
+      type: object
+      additionalProperties: false
+      required: [userId, reaction, createdAt]
+      properties:
+        userId:
+          type: string
+          format: uuid
+          description: >
+            In `reactionsSent`: whose entry it was. In the `reactions` of an exported feed entry: who
+            reacted.
+        reaction:
+          $ref: "#/components/schemas/ReactionKey"
+        createdAt:
+          type: string
+          format: date-time
     Feed:
       type: object
       additionalProperties: false
@@ -2846,7 +2961,7 @@ components:
     ExportedFeedEvent:
       type: object
       additionalProperties: false
-      required: [type, detail, opponentId, createdAt]
+      required: [type, detail, opponentId, createdAt, reactions]
       properties:
         type:
           $ref: "#/components/schemas/FeedEntryType"
@@ -2862,6 +2977,11 @@ components:
         createdAt:
           type: string
           format: date-time
+        reactions:
+          type: array
+          description: The reactions to this entry, oldest first, each with the id of who reacted.
+          items:
+            $ref: "#/components/schemas/ExportedReaction"
     MilestoneSharing:
       type: string
       description: >
@@ -3830,6 +3950,20 @@ components:
             $ref: "#/components/schemas/Problem"
     FriendRequestNotFound:
       description: "`friend_request_not_found`: there is no open friend request between the two in this direction."
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    FeedEntryNotFound:
+      description: >
+        `feed_entry_not_found`: there is no such entry in the feed of the user. The answer is the same
+        for an entry that does not exist and for one the user may not see.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    OwnFeedEntry:
+      description: "`own_feed_entry`: nobody reacts to an own entry."
       content:
         application/problem+json:
           schema:

@@ -20,7 +20,8 @@ use SmokeDetector\Domain\Xp\LeaguePeriod;
 
 /**
  * Stores the badges that something which has just become final justifies (HLD §4.10 "When a badge is
- * awarded", SRS FR-GAME-08): a day, a decided duel, a league rank. BadgeEvaluator says which ones.
+ * awarded", SRS FR-GAME-08): a day, a decided duel, a league rank, a reaction sent. BadgeEvaluator
+ * says which ones.
  *
  * It runs inside the transaction of the step that made the thing final, so a step that is rolled back
  * leaves no badge behind. A badge the user holds already is not stored again: the first award stays.
@@ -79,6 +80,16 @@ final readonly class AwardBadges
     public function leagueRanked(UserId $userId, LeaguePeriod $type, int $rank, int $participants, Calendar $calendar, DateTimeImmutable $now): void
     {
         $this->award($userId, BadgeEvaluator::forLeague($type, $rank, $participants, $calendar->rules->xp->leagueMinParticipants), $now);
+    }
+
+    /**
+     * After a reaction was stored that the user did not have before (HLD §4.13).
+     *
+     * @param int $sent The reactions the user has sent, this one included.
+     */
+    public function reactionSent(UserId $userId, int $sent, DateTimeImmutable $now): void
+    {
+        $this->award($userId, BadgeEvaluator::forReactionsSent($sent), $now);
     }
 
     /**

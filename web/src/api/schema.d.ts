@@ -332,6 +332,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/feed/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * React to an entry of a friend (SRS FR-SOC-02)
+         * @description One of three preset reactions, and no text. A user has one reaction to an entry: sent again, it changes. A new reaction earns XP, up to a daily maximum (SRS Appendix A). Only an entry the user sees in the feed can be reacted to, and never an own one. Reactions and nudges together are limited to 30 a day (SRS FR-SOC-04).
+         */
+        post: operations["reactToFeedEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/settings": {
         parameters: {
             query?: never;
@@ -1102,6 +1122,8 @@ export interface components {
             settings: components["schemas"]["Settings"];
             /** @description The entries of the activity feed about the user, oldest first. */
             feedEvents: components["schemas"]["ExportedFeedEvent"][];
+            /** @description The reactions the user sent, oldest first, each with the id of the user whose entry it was. */
+            reactionsSent: components["schemas"]["ExportedReaction"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1457,6 +1479,42 @@ export interface components {
             milestone: components["schemas"]["HealthMilestoneKey"] | null;
             /** @description Of a duel: the other user, if that is the user who asks or a friend of theirs. `null` otherwise, and when the other account does not exist any more. */
             opponent: components["schemas"]["PublicUser"] | null;
+            /** @description The reaction of the user who asks to this entry, if there is one. */
+            myReaction: components["schemas"]["ReactionKey"] | null;
+            /** @description Who reacted, oldest first: only on an entry of the user who asks, and only reactions of users who are friends now. Empty on every entry of somebody else. */
+            reactions: components["schemas"]["FeedReaction"][];
+        };
+        /**
+         * @description `cheer` (👏), `strong` (💪), `keep_going` (🔥). There is no free text (SRS FR-SOC-02).
+         * @enum {string}
+         */
+        ReactionKey: "cheer" | "strong" | "keep_going";
+        FeedReaction: {
+            user: components["schemas"]["PublicUser"];
+            reaction: components["schemas"]["ReactionKey"];
+        };
+        ReactionRequest: {
+            /**
+             * Format: uuid
+             * @description The `id` of an entry of `GET /feed`. In the body, like every id (HLD §4.7).
+             */
+            entryId: string;
+            reaction: components["schemas"]["ReactionKey"];
+        };
+        ReactionResult: {
+            reaction: components["schemas"]["ReactionKey"];
+            /** @description What this reaction earned: 0 for a changed reaction, above the daily maximum, and before the onboarding. */
+            xp: number;
+        };
+        ExportedReaction: {
+            /**
+             * Format: uuid
+             * @description In `reactionsSent`: whose entry it was. In the `reactions` of an exported feed entry: who reacted.
+             */
+            userId: string;
+            reaction: components["schemas"]["ReactionKey"];
+            /** Format: date-time */
+            createdAt: string;
         };
         Feed: {
             entries: components["schemas"]["FeedEntry"][];
@@ -1472,6 +1530,8 @@ export interface components {
             opponentId: string | null;
             /** Format: date-time */
             createdAt: string;
+            /** @description The reactions to this entry, oldest first, each with the id of who reacted. */
+            reactions: components["schemas"]["ExportedReaction"][];
         };
         /**
          * @description What friends see of the user's health milestones. `from_two_weeks` (the default): the milestones from two weeks on. `private`: none. `all`: also the two short ones (20 minutes, 12 hours).
@@ -2062,6 +2122,24 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description `feed_entry_not_found`: there is no such entry in the feed of the user. The answer is the same for an entry that does not exist and for one the user may not see. */
+        FeedEntryNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `own_feed_entry`: nobody reacts to an own entry. */
+        OwnFeedEntry: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description `friend_not_found`: the user is not a friend (and, for a block, has no open request with this user either). The answer for a user id that does not exist is the same. */
         FriendNotFound: {
             headers: {
@@ -2635,6 +2713,40 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    reactToFeedEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReactionRequest"];
+            };
+        };
+        responses: {
+            /** @description The reaction as it is stored now, and what it earned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReactionResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FeedEntryNotFound"];
+            409: components["responses"]["OwnFeedEntry"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

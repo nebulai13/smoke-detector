@@ -95,7 +95,7 @@ final class FeedTest extends HttpTestCase
         }
         self::assertCount(8, $ids);
         foreach ($entries as $entry) {
-            self::assertSame(['id', 'type', 'user', 'mine', 'level', 'badge', 'milestone', 'opponent'], array_keys((array) $entry));
+            self::assertSame(['id', 'type', 'user', 'mine', 'level', 'badge', 'milestone', 'opponent', 'myReaction', 'reactions'], array_keys((array) $entry));
         }
     }
 
@@ -124,7 +124,7 @@ final class FeedTest extends HttpTestCase
 
         $export = $this->call('GET', '/me/export', headers: $this->authorization($anna))->json();
 
-        $at = ['opponentId' => null, 'createdAt' => '2026-11-24T23:00:00Z'];
+        $at = ['opponentId' => null, 'createdAt' => '2026-11-24T23:00:00Z', 'reactions' => []];
         self::assertEqualsCanonicalizing(
             [
                 ['type' => 'badge_earned', 'detail' => 'first_check_in'] + $at,

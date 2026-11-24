@@ -5,10 +5,13 @@ declare(strict_types=1);
 namespace SmokeDetector\Http\Feed;
 
 use SmokeDetector\Application\Feed\FeedEntry;
+use SmokeDetector\Application\Feed\ReactionResult;
+use SmokeDetector\Application\Feed\ReactionView;
 use SmokeDetector\Application\Friends\PublicProfile;
 
 /**
- * Writes the activity feed as the schema Feed of api/openapi.yaml (HLD §4.12). No entry has a time.
+ * Writes the activity feed as the schema Feed of api/openapi.yaml (HLD §4.12), and the answer to a
+ * reaction as the schema ReactionResult (HLD §4.13). No entry has a time.
  */
 final readonly class FeedResponder
 {
@@ -30,10 +33,23 @@ final readonly class FeedResponder
                     'badge' => $entry->badge?->value,
                     'milestone' => $entry->milestone?->value,
                     'opponent' => $entry->opponent === null ? null : self::profile($entry->opponent),
+                    'myReaction' => $entry->myReaction?->value,
+                    'reactions' => array_map(
+                        static fn (ReactionView $reaction): array => ['user' => self::profile($reaction->user), 'reaction' => $reaction->reaction->value],
+                        $entry->reactions,
+                    ),
                 ],
                 $entries,
             ),
         ];
+    }
+
+    /**
+     * @return array{reaction: string, xp: int}
+     */
+    public function reaction(ReactionResult $result): array
+    {
+        return ['reaction' => $result->reaction->value, 'xp' => $result->xp];
     }
 
     /**

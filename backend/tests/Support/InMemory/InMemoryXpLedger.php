@@ -9,6 +9,8 @@ use LogicException;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Day\XpEvent;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Time\LocalDate;
+use SmokeDetector\Domain\Xp\XpSource;
 
 /**
  * The XP ledger, in memory. Behaves like PdoXpLedger (both pass LoggingRepositoriesContract).
@@ -38,6 +40,18 @@ final class InMemoryXpLedger implements XpLedger, InMemoryState
         usort($events, static fn (XpEvent $a, XpEvent $b): int => [$a->date->value, $a->id] <=> [$b->date->value, $b->id]);
 
         return $events;
+    }
+
+    public function earnedOn(UserId $userId, LocalDate $date, XpSource $source): int
+    {
+        $sum = 0;
+        foreach ($this->events as $event) {
+            if ($event->userId->equals($userId) && $event->date->equals($date) && $event->source === $source) {
+                $sum += $event->amount;
+            }
+        }
+
+        return $sum;
     }
 
     public function earnedBetween(UserId $userId, DateTimeImmutable $from, DateTimeImmutable $until): int
