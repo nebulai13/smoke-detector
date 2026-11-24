@@ -184,6 +184,7 @@ final class TestData
         ProductType $defaultProduct = ProductType::Cigarette,
         string $startDate = '2026-11-17',
         string $rulesVersion = 'v1',
+        ?string $lastSessionBefore = null,
     ): Plan {
         return new Plan(
             self::userId($userNumber),
@@ -192,6 +193,7 @@ final class TestData
             $defaultProduct,
             LocalDate::fromString($startDate),
             $rulesVersion,
+            $lastSessionBefore === null ? null : LocalDate::fromString($lastSessionBefore),
         );
     }
 

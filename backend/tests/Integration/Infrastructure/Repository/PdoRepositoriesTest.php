@@ -241,8 +241,8 @@ final class PdoRepositoriesTest extends IntegrationTestCase
 
         self::assertSame(
             [
-                ['user_id' => TestData::uuid(1), 'goal_mode' => 'reduce', 'target' => 5, 'taper_speed' => 'gentle', 'default_product' => 'heated_tobacco', 'start_date' => '2026-11-17', 'rules_version' => 'v1'],
-                ['user_id' => TestData::uuid(2), 'goal_mode' => 'quit', 'target' => 0, 'taper_speed' => 'fast', 'default_product' => 'shisha', 'start_date' => '2026-11-18', 'rules_version' => 'v1'],
+                ['user_id' => TestData::uuid(1), 'goal_mode' => 'reduce', 'target' => 5, 'taper_speed' => 'gentle', 'default_product' => 'heated_tobacco', 'start_date' => '2026-11-17', 'rules_version' => 'v1', 'last_session_before' => null],
+                ['user_id' => TestData::uuid(2), 'goal_mode' => 'quit', 'target' => 0, 'taper_speed' => 'fast', 'default_product' => 'shisha', 'start_date' => '2026-11-18', 'rules_version' => 'v1', 'last_session_before' => null],
             ],
             $this->sql()->rows('SELECT * FROM plans ORDER BY user_id'),
         );

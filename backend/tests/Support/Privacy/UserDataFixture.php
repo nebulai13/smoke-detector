@@ -92,7 +92,7 @@ final readonly class UserDataFixture
         ));
 
         (new PdoPlanRepository($this->sql))->save(new Plan(
-            $userId, Goal::reduceTo(5), TaperSpeed::Gentle, ProductType::Rolled, LocalDate::fromString('2026-11-02'), 'v1',
+            $userId, Goal::reduceTo(5), TaperSpeed::Gentle, ProductType::Rolled, LocalDate::fromString('2026-11-02'), 'v1', LocalDate::fromString('2026-10-01'),
         ));
 
         $baselines = new PdoBaselineHistory($this->sql);

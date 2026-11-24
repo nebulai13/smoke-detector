@@ -25,14 +25,20 @@ final readonly class Plan
         public LocalDate $startDate,
         /** The version of the rule table that was in force when the plan was made. */
         public string $rulesVersion,
+        /**
+         * The user's local day of the last session before joining, for somebody who quit before
+         * (HLD §4.10): always before the start date. Null when the user names none.
+         */
+        public ?LocalDate $lastSessionBefore = null,
     ) {
     }
 
     /**
-     * What the user may change later (FR-ACC-06, FR-PLAN-03). Everything else stays as it is.
+     * What the user may change later (FR-ACC-06, FR-PLAN-03). Everything else stays as it is. The day
+     * before joining is replaced like the rest: a plan sent without one has none.
      */
-    public function changedTo(Goal $goal, TaperSpeed $taperSpeed, ProductType $defaultProduct): self
+    public function changedTo(Goal $goal, TaperSpeed $taperSpeed, ProductType $defaultProduct, ?LocalDate $lastSessionBefore = null): self
     {
-        return new self($this->userId, $goal, $taperSpeed, $defaultProduct, $this->startDate, $this->rulesVersion);
+        return new self($this->userId, $goal, $taperSpeed, $defaultProduct, $this->startDate, $this->rulesVersion, $lastSessionBefore);
     }
 }
