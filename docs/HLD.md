@@ -150,7 +150,7 @@ erDiagram
 |---|---|
 | `users` | id (UUIDv7, native `UUID` column), email (unique, lower-cased), password_hash, display_name, avatar_key, locale, timezone, email_verified_at (NULL = registration not confirmed yet), token_version (raised by a password reset; an access token is accepted only with the account's current number), created_at (for an unconfirmed registration: when its newest confirmation link was mailed) |
 | `consents` | user_id, type (age18, art9, privacy), version, granted_at. Primary key (user_id, type, version) |
-| `plans` | user_id (one row per user), goal_mode, target, taper_speed, default_product, start_date, rules_version (the version at onboarding) |
+| `plans` | user_id (one row per user), goal_mode, target, taper_speed, default_product, start_date, rules_version (the version at onboarding), last_session_before (the local day of the last session before joining, if the user names one; §4.10) |
 | `baseline_history` | user_id, valid_from (local date), value DECIMAL(4,1), source (onboarding/weekly/unchanged_low_data/capped), w_mean, m_mean, w_days, m_days (all four NULL for the onboarding entry), rules_version. Primary key (user_id, valid_from). Append-only, never recalculated. The current baseline is the entry with the latest valid_from |
 | `smoke_logs` | **id = client UUID** (idempotency), user_id, smoked_at (UTC), local_date (worked out by the server, §4.6), product_type (enum: cigarette, rolled, cigar, pipe, shisha, vape, heated_tobacco, other), count (1–50), created_at (when the server first stored the log; never changes), updated_at, deleted_at (tombstone: a deleted log stays stored and stays deleted). Index (user_id, local_date). A log never changes its owner |
 | `day_summaries` | user_id, local_date (primary key together), count (the sum of the day's logs that are not deleted, kept in step by every sync), checked_in_at, and what finalization writes, NULL before it: daily_limit, xp, events (the celebration events as JSON text), freeze_used, finalized_at, rules_version. A day is final when finalized_at is set (there is no status column that could contradict it). A row exists from the first log or check-in of the day; finalization creates the rows of days nobody touched |
@@ -931,8 +931,14 @@ the activity feed (second part of step 6) announces badges to friends by design 
 fixed span needs no calendar and no time zone. `GET /me/health-milestones` works them out at the moment of the
 request from the user's last log that is not deleted (`smoked_at`), and stores nothing:
 
-- **No logged session, nothing to count from:** `since` is null and the list is empty. The app does not know
-  when somebody smoked last who never logged a session, and the day of the onboarding would be a guess.
+- **No logged session:** the milestones count from the end of the day of the last session before joining,
+  if the user names it in the plan (`lastSessionBefore` of `PUT /me/plan`, decided by the owner on
+  2026-11-24): somebody who quit before joining would otherwise see none. The end of the day, so that the count
+  never says more than the user did. Without that day `since` is null and the list is empty: the app does not
+  know when somebody smoked last who never logged a session.
+- **The named day** is before the first day of the plan (a session of a day of the plan is logged) and not
+  before 1900. It can be named, changed or taken away with every `PUT /me/plan`: a plan sent without it has
+  none. It is the user's own statement and moves nothing a friend sees beyond what §4.11 says.
 - **A new session starts the count again.** A deleted log is no session.
 - **Vaping only** (`vapingOnly`): every logged session was vaping, or, without a log, the plan names vaping.
   The apps then say that the evidence differs. The texts, their sources and the disclaimer (LEG-04) are in
@@ -977,7 +983,10 @@ at some time:
 - `days:finalize` stores them in the transaction that makes a day final (`AwardMilestones`): from the last
   session logged for that day or a day before it, to the end of that day. A session of a day that is not final
   does not count (§4.8: of another user only final days are shown).
-- **Only confirmed time counts.** A day without a check-in is not a day without a session (FR-LOG-03, as for
+- **A day named before joining** (§4.10) counts for friends from the first day of the plan only: the days
+  before it are the user's word, the days of the plan are confirmed by check-ins. Without a logged session and
+  without a named day nothing is stored, because nothing says that the user does not smoke.
+- **Only confirmed time counts** (confirmed by the owner on 2026-11-24). A day without a check-in is not a day without a session (FR-LOG-03, as for
   the smoke-free day and the under-limit streak): the count begins again at the end of the last day without
   a check-in, if that is later than the last session. So a day without a check-in stores nothing, and an
   account that logs one session and is never opened again reaches nothing for friends. An audit found that
@@ -1098,8 +1107,9 @@ sees who reacted to a friend's entry, or how many did.
 **What friends can tell from the XP.** The XP of a reaction is added to the sender's total at once. So the
 sender's friends can see the XP on the friend list and in the weekly XP ranking (§4.9) go up by 2 at that
 moment, and a level that it reaches as an entry of the feed: that somebody reacted to something just now, not
-to what or to whom. It tells nothing about smoking. An audit pointed it out; the alternatives are to leave
-reaction XP out of the weekly ranking, or to book it with the next final day.
+to what or to whom. It tells nothing about smoking. An audit pointed it out; the owner decided on 2026-11-24 to
+keep it so (the alternatives were to leave reaction XP out of the weekly ranking, or to book it with the next
+final day).
 
 **Locks.** The step locks the account of the sender, as every step that changes the progress does (§4.5).
 
