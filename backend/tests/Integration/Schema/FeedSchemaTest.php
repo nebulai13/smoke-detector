@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SmokeDetector\Tests\Integration\Schema;
 
 use SmokeDetector\Application\Feed\FeedEventType;
+use SmokeDetector\Application\Feed\ReactionKey;
 use SmokeDetector\Domain\Badge\Badge;
 use SmokeDetector\Domain\Recovery\HealthMilestone;
 use SmokeDetector\Tests\Support\IntegrationTestCase;
@@ -60,10 +61,44 @@ final class FeedSchemaTest extends IntegrationTestCase
         );
     }
 
+    public function test_FR_SOC_02_the_table_of_the_reactions_has_the_columns_and_the_keys_of_the_design(): void
+    {
+        self::assertSame(
+            [
+                'event_id' => ['uuid', 'NO', null],
+                'user_id' => ['uuid', 'NO', null],
+                'reaction' => ['varchar(16)', 'NO', self::BIN],
+                'created_at' => ['datetime', 'NO', null],
+            ],
+            $this->columns('feed_reactions'),
+        );
+        $indexes = $this->indexes('feed_reactions');
+        // A user has one reaction to an entry.
+        self::assertSame(['event_id', 'user_id'], $indexes['PRIMARY'] ?? null);
+        // What a user sent is counted for a badge and exported.
+        self::assertContains('user_id', array_map(static fn (array $columns): mixed => $columns[0], array_values($indexes)));
+        self::assertSame(
+            [
+                ['column' => 'event_id', 'refers_to' => 'feed_events', 'on_delete' => 'CASCADE'],
+                ['column' => 'user_id', 'refers_to' => 'users', 'on_delete' => 'CASCADE'],
+            ],
+            $this->sql()->rows(
+                'SELECT k.COLUMN_NAME AS `column`, k.REFERENCED_TABLE_NAME AS refers_to, r.DELETE_RULE AS on_delete '
+                . 'FROM information_schema.KEY_COLUMN_USAGE k '
+                . 'JOIN information_schema.REFERENTIAL_CONSTRAINTS r '
+                . 'ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME AND r.TABLE_NAME = k.TABLE_NAME '
+                . "WHERE k.TABLE_SCHEMA = DATABASE() AND k.TABLE_NAME = 'feed_reactions' AND k.REFERENCED_TABLE_NAME IS NOT NULL ORDER BY k.COLUMN_NAME",
+            ),
+        );
+    }
+
     public function test_every_value_the_code_can_store_fits_its_column(): void
     {
         foreach (FeedEventType::cases() as $type) {
             self::assertLessThanOrEqual(24, strlen($type->value));
+        }
+        foreach (ReactionKey::cases() as $reaction) {
+            self::assertLessThanOrEqual(16, strlen($reaction->value));
         }
         foreach ([...Badge::cases(), ...HealthMilestone::cases()] as $detail) {
             self::assertLessThanOrEqual(32, strlen($detail->value));

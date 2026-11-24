@@ -6,6 +6,8 @@ namespace SmokeDetector\Application\Day;
 
 use DateTimeImmutable;
 use SmokeDetector\Application\Account\UserId;
+use SmokeDetector\Application\Time\LocalDate;
+use SmokeDetector\Domain\Xp\XpSource;
 
 /**
  * Every XP award of every user (HLD §4.3 "xp_events"). Append-only: written at finalization and
@@ -19,6 +21,11 @@ interface XpLedger
      * @return list<XpEvent> By date, then by id.
      */
     public function ofUser(UserId $userId): array;
+
+    /**
+     * The XP of one source on one local day of the user (HLD §4.13: the daily maximum of reactions).
+     */
+    public function earnedOn(UserId $userId, LocalDate $date, XpSource $source): int;
 
     /**
      * The XP of the user written to the ledger from $from on and before $until (HLD §4.9 "Weekly XP

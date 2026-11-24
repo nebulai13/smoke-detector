@@ -195,6 +195,9 @@ final readonly class UserDataFixture
         // earlier duel, naming the user.
         $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 42), $user, 'duel_won', null, $friend->value, '2026-10-30 23:00:40']);
         $this->insert('feed_events', [null, TestData::uuid($number * 1000 + 43), $friend->value, 'duel_won', null, $user, '2026-10-09 23:00:40']);
+        // The friend reacted to the user's entry, and the user to the friend's.
+        $this->insert('feed_reactions', [TestData::uuid($number * 1000 + 42), $friend->value, 'strong', '2026-10-31 07:00:00']);
+        $this->insert('feed_reactions', [TestData::uuid($number * 1000 + 43), $user, 'cheer', '2026-10-31 08:00:00']);
     }
 
     /**

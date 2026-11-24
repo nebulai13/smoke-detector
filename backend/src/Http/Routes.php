@@ -40,6 +40,7 @@ use SmokeDetector\Http\Action\Logging\CheckInAction;
 use SmokeDetector\Http\Action\Logging\ListDaysAction;
 use SmokeDetector\Http\Action\Logging\ShowBaselineHistoryAction;
 use SmokeDetector\Http\Action\Logging\ShowDashboardAction;
+use SmokeDetector\Http\Action\Feed\ReactAction;
 use SmokeDetector\Http\Action\Feed\ShowFeedAction;
 use SmokeDetector\Http\Action\Progress\ListBadgesAction;
 use SmokeDetector\Http\Action\Progress\ListHealthMilestonesAction;
@@ -162,7 +163,9 @@ final readonly class Routes
         $routes->get('/me/settings', ShowSettingsAction::class);
         $routes->put('/me/settings', SaveSettingsAction::class);
 
-        // Activity feed (HLD §4.12): the user's and the friends' entries.
+        // Activity feed (HLD §4.12): the user's and the friends' entries. Reactions (HLD §4.13): the
+        // id of the entry is in the body, never in the path.
         $routes->get('/feed', ShowFeedAction::class);
+        $routes->post('/feed/reactions', ReactAction::class);
     }
 }
