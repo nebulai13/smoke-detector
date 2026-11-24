@@ -850,7 +850,8 @@ about a person (§4.4).
 **Weekly XP ranking (FR-COMP-07).** `GET /leagues/xp`: the user and their friends by the XP that became
 theirs in the current ISO week. The week is the viewer's: from the start of the viewer's Monday to the end of
 the viewer's Sunday, as two instants, for everybody in the list. It is the sum of the ledger entries written
-in that time. So it counts final XP only, like everything friends see of each other's progress (§4.7): the XP of
+in that time. So it counts final XP only, like everything friends see of each other's progress (§4.7), with one exception:
+the XP of a reaction (§4.13, at most 10 a day) is booked and counted at once. The XP of
 a day appears when the day is final, two days later. There is no reward for this ranking: XP for XP would
 feed itself. XP is among the things friends see (FR-FRND-03), so the numbers are shown.
 
@@ -1089,7 +1090,13 @@ entry of a friend. No text. `POST /feed/reactions {entryId, reaction}`:
 
 **Who sees a reaction.** The sender sees the own reaction on the entry (`myReaction`). The owner of the entry
 sees who reacted (`reactions`: name, avatar and key, oldest first), of those who are friends now. Nobody else
-sees anything of it: not who reacted to a friend's entry, and not how many did.
+sees who reacted to a friend's entry, or how many did.
+
+**What friends can tell from the XP.** The XP of a reaction is added to the sender's total at once. So the
+sender's friends can see the XP on the friend list and in the weekly XP ranking (§4.9) go up by 2 at that
+moment, and a level that it reaches as an entry of the feed: that somebody reacted to something just now, not
+to what or to whom. It tells nothing about smoking. An audit pointed it out; the alternatives are to leave
+reaction XP out of the weekly ranking, or to book it with the next final day.
 
 **Locks.** The step locks the account of the sender, as every step that changes the progress does (§4.5).
 
@@ -1100,6 +1107,11 @@ sees anything of it: not who reacted to a friend's entry, and not how many did.
 - **XP by reacting** is 10 a day at most, for five taps. Accepted: it is the Duolingo-style reward for being
   there for friends, and it is capped.
 - **Reactions to entries that left the feed stay stored** and count for the badge.
+- **The weekly XP ranking can be moved by reacting:** up to 70 XP a week, against up to 70 XP for one
+  smoke-free day.
+- **An entry whose owner deletes the account at the same moment** can answer a reaction with a server error
+  instead of "not found". The request changes nothing.
+- **A move across the date line** gives two local days within 24 hours, and so twice the daily maximum once.
 
 **Export and deletion.** `feed_reactions` is registered with exporter and eraser. The export has the reactions
 the user sent (`reactionsSent`: the id of the user whose entry it was, the key, the time) and, with every own

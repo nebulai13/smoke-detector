@@ -123,6 +123,74 @@ final class ReactTest extends LeaguesUseCaseTestCase
         self::assertSame(2, $this->react()->execute($this->anna->id, $this->givenEntry($carol, FeedEventType::LevelUp, '3'), ReactionKey::Cheer)->xp);
     }
 
+    public function test_FR_SOC_02_an_entry_of_a_friend_who_was_removed_or_blocked_takes_no_reaction_any_more(): void
+    {
+        $carol = $this->givenPlayer('Carol');
+        $this->givenFriends($this->anna, $carol);
+        $carols = $this->givenEntry($carol, FeedEventType::LevelUp, '3');
+        $this->react()->execute($this->anna->id, $carols, ReactionKey::Cheer);
+
+        // Anna removes Carol, and blocks Bob (which ends the friendship).
+        $this->friendList()->remove($this->anna->id, $carol->id);
+        $this->blocking()->block($this->anna->id, $this->bob->id);
+
+        foreach ([$carols, SequenceFeedIds::id(7)] as $entryId) {
+            try {
+                $this->react()->execute($this->anna->id, $entryId, ReactionKey::Strong);
+                self::fail('An entry of somebody who is no friend any more took a reaction.');
+            } catch (FeedEntryNotFound) {
+                // The reaction that was sent before stays as it was.
+            }
+        }
+        self::assertEquals([new Reaction($carols, $this->anna->id, ReactionKey::Cheer, $this->now())], $this->reactions->all());
+    }
+
+    public function test_FR_SOC_02_a_health_milestone_its_owner_shows_can_be_reacted_to(): void
+    {
+        $circulation = $this->givenEntry($this->bob, FeedEventType::HealthMilestone, 'circulation');
+        $short = $this->givenEntry($this->bob, FeedEventType::HealthMilestone, 'carbon_monoxide');
+
+        // Bob never chose: the milestones from two weeks on.
+        self::assertSame(ReactionKey::Cheer, $this->react()->execute($this->anna->id, $circulation, ReactionKey::Cheer)->reaction);
+        try {
+            $this->react()->execute($this->anna->id, $short, ReactionKey::Cheer);
+            self::fail('A milestone that is not shown took a reaction.');
+        } catch (FeedEntryNotFound) {
+            self::assertCount(1, $this->reactions->all());
+        }
+    }
+
+    public function test_FR_SOC_04_a_request_that_is_refused_is_one_of_the_thirty(): void
+    {
+        // Otherwise the ids of entries could be tried without end.
+        for ($try = 1; $try <= 30; $try++) {
+            try {
+                $this->react()->execute($this->anna->id, SequenceFeedIds::id(9000 + $try), ReactionKey::Cheer);
+                self::fail('An entry that does not exist took a reaction.');
+            } catch (FeedEntryNotFound) {
+                // Counted.
+            }
+        }
+
+        $this->expectException(RateLimitExceeded::class);
+
+        $this->react()->execute($this->anna->id, SequenceFeedIds::id(7), ReactionKey::Cheer);
+    }
+
+    public function test_FR_COMP_07_the_xp_of_a_reaction_counts_in_the_weekly_xp_ranking_at_once(): void
+    {
+        $this->react()->execute($this->anna->id, SequenceFeedIds::id(7), ReactionKey::Cheer);
+
+        // Unlike the XP of a day, which waits until the day is final: a reaction is no smoking data.
+        // So friends can see that somebody reacted to something just now, and not to what.
+        $xp = [];
+        foreach ($this->showXpLeague()->show($this->bob->id)->entries as $entry) {
+            $xp[$entry->user->displayName->value] = $entry->xp;
+        }
+        ksort($xp);
+        self::assertSame(['Anna' => 2, 'Bob' => 0], $xp);
+    }
+
     public function test_FR_SOC_02_nobody_reacts_to_an_own_entry(): void
     {
         $own = $this->givenEntry($this->anna, FeedEventType::LevelUp, '1');
