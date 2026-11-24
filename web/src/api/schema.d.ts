@@ -1079,6 +1079,11 @@ export interface components {
              */
             startDate: string;
             /**
+             * Format: date
+             * @description The day of the last session before joining, if the user named one.
+             */
+            lastSessionBefore?: string;
+            /**
              * @description The current baseline: the user's reference number of sessions per day, with one decimal place. It starts as the `startingBaseline` of the onboarding and follows the weekly update.
              * @example 7.4
              */
@@ -1110,6 +1115,11 @@ export interface components {
             target: components["schemas"]["PlanTarget"];
             taperSpeed: components["schemas"]["TaperSpeed"];
             defaultProduct: components["schemas"]["ProductType"];
+            /**
+             * Format: date
+             * @description For somebody who quit before joining: the local day of the last session, before the first day of the plan and not before 1900. The health milestones of the user count from the end of that day until a session is logged; for friends only the days since the first day of the plan count (SRS FR-GAME-09). Left out, the plan has none: a later call that leaves it out takes it away.
+             */
+            lastSessionBefore?: string;
         };
         DeleteMeRequest: {
             /**
@@ -1197,6 +1207,11 @@ export interface components {
             defaultProduct: components["schemas"]["ProductType"];
             /** Format: date */
             startDate: string;
+            /**
+             * Format: date
+             * @description The day of the last session before joining, if the user named one.
+             */
+            lastSessionBefore?: string;
             /** @description The version of the rule table that was in force when the plan was made. */
             rulesVersion: string;
         };
