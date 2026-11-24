@@ -8,6 +8,9 @@ use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Feed\FeedEntry;
 use SmokeDetector\Application\Feed\FeedEvent;
 use SmokeDetector\Application\Feed\FeedEventType;
+use SmokeDetector\Application\Feed\Reaction;
+use SmokeDetector\Application\Feed\ReactionKey;
+use SmokeDetector\Application\Feed\ReactionView;
 use SmokeDetector\Application\Feed\ShowFeed;
 use SmokeDetector\Application\Settings\Settings;
 use SmokeDetector\Domain\Badge\Badge;
@@ -65,7 +68,35 @@ final class ShowFeedTest extends FriendsUseCaseTestCase
         $entry = $this->showFeed()->show($this->anna->id)[0];
 
         // When a badge was earned is nobody's business but the owner's (HLD §4.10). The order is all there is.
-        self::assertSame(['id', 'type', 'user', 'mine', 'level', 'badge', 'milestone', 'opponent'], array_keys(get_object_vars($entry)));
+        self::assertSame(['id', 'type', 'user', 'mine', 'level', 'badge', 'milestone', 'opponent', 'myReaction', 'reactions'], array_keys(get_object_vars($entry)));
+    }
+
+    public function test_FR_SOC_02_an_entry_shows_the_users_own_reaction_and_the_owner_sees_who_reacted(): void
+    {
+        $carol = $this->givenNamed('Carol');
+        $dave = $this->givenNamed('Dave');
+        $this->givenFriends($this->bob, $carol);
+        $this->givenFriends($this->bob, $dave);
+        $this->givenFriends($this->anna, $carol);
+        $this->givenEvent($this->bob, FeedEventType::LevelUp, '2');
+        $this->givenEvent($this->bob, FeedEventType::LevelUp, '3');
+        // To Bob's level 2: Carol first, then Anna, then Dave, whom Bob removes afterwards.
+        $this->reactions->save(new Reaction(SequenceFeedIds::id(1), $carol->id, ReactionKey::Strong, TestData::time('2026-11-17 12:00:01')));
+        $this->reactions->save(new Reaction(SequenceFeedIds::id(1), $this->anna->id, ReactionKey::Cheer, TestData::time('2026-11-17 12:00:02')));
+        $this->reactions->save(new Reaction(SequenceFeedIds::id(1), $dave->id, ReactionKey::KeepGoing, TestData::time('2026-11-17 12:00:03')));
+        $this->friendLinks->delete($this->bob->id, $dave->id);
+
+        $reactions = static fn (FeedEntry $entry): array => array_map(
+            static fn (ReactionView $reaction): array => [$reaction->user->displayName->value, $reaction->reaction->value],
+            $entry->reactions,
+        );
+
+        // Bob, whose entries they are: who reacted, oldest first, of those who are his friends now.
+        $bobs = $this->showFeed()->show($this->bob->id);
+        self::assertSame([[3, null, []], [2, null, [['Carol', 'strong'], ['Anna', 'cheer']]]], array_map(static fn (FeedEntry $entry): array => [$entry->level, $entry->myReaction?->value, $reactions($entry)], $bobs));
+        // Anna sees her own reaction, and not who else reacted to Bob's entry.
+        $annas = $this->showFeed()->show($this->anna->id);
+        self::assertSame([[3, null, []], [2, 'cheer', []]], array_map(static fn (FeedEntry $entry): array => [$entry->level, $entry->myReaction?->value, $reactions($entry)], $annas));
     }
 
     public function test_FR_SOC_01_only_friends_are_in_the_feed(): void
@@ -251,7 +282,7 @@ final class ShowFeedTest extends FriendsUseCaseTestCase
 
     private function showFeed(): ShowFeed
     {
-        return new ShowFeed($this->transactions, $this->users, $this->friendLinks, $this->feedEvents, $this->userSettings);
+        return new ShowFeed($this->transactions, $this->users, $this->friendLinks, $this->feedEvents, $this->userSettings, $this->reactions);
     }
 
     private function givenEvent(User $user, FeedEventType $type, ?string $detail = null, ?User $other = null): void
