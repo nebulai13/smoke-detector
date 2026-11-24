@@ -353,6 +353,24 @@ trait LoggingRepositoriesContract
         self::assertSame([], $this->progressRecords()->due(TestData::time('2026-11-20 09:59:59'), 10));
     }
 
+    public function test_FR_GAME_01_the_xp_of_one_source_on_one_day_of_the_user(): void
+    {
+        $this->givenUsers(TestData::userId(1), TestData::userId(2));
+        $this->xpLedger()->append(TestData::xpEvent(20, 1, '2026-11-17', XpSource::Reaction, 2));
+        $this->xpLedger()->append(TestData::xpEvent(21, 1, '2026-11-17', XpSource::Reaction, 2));
+        // Another source on that day, another day, another user.
+        $this->xpLedger()->append(TestData::xpEvent(22, 1, '2026-11-17', XpSource::CheckIn, 10));
+        $this->xpLedger()->append(TestData::xpEvent(23, 1, '2026-11-16', XpSource::Reaction, 2));
+        $this->xpLedger()->append(TestData::xpEvent(24, 2, '2026-11-17', XpSource::Reaction, 1));
+
+        self::assertSame(4, $this->xpLedger()->earnedOn(TestData::userId(1), TestData::date('2026-11-17'), XpSource::Reaction));
+        self::assertSame(10, $this->xpLedger()->earnedOn(TestData::userId(1), TestData::date('2026-11-17'), XpSource::CheckIn));
+        self::assertSame(2, $this->xpLedger()->earnedOn(TestData::userId(1), TestData::date('2026-11-16'), XpSource::Reaction));
+        self::assertSame(1, $this->xpLedger()->earnedOn(TestData::userId(2), TestData::date('2026-11-17'), XpSource::Reaction));
+        self::assertSame(0, $this->xpLedger()->earnedOn(TestData::userId(1), TestData::date('2026-11-18'), XpSource::Reaction));
+        self::assertSame(0, $this->xpLedger()->earnedOn(TestData::userId(3), TestData::date('2026-11-17'), XpSource::Reaction));
+    }
+
     public function test_FR_COMP_07_the_xp_of_a_time_span_is_the_sum_of_what_was_written_in_it(): void
     {
         $this->givenUsers(TestData::userId(1), TestData::userId(2));
