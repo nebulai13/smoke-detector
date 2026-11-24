@@ -169,7 +169,8 @@ erDiagram
 | `feed_events` | position (the order of writing, never sent), id (a random UUID: what a client gets says nothing about the time), user_id, type (level_up / badge_earned / duel_won / duel_draw / health_milestone), detail (the level, the badge or the milestone; NULL for a duel), other_user_id (the opponent of a duel; set to NULL when that account goes), created_at. Written from final data only (§4.12). Index (user_id, position) |
 | `nudges` | from_user_id, to_user_id, day (the local day of the sender), primary key together: one nudge per friend and day. created_at, delivered (whether the receiver had not checked in that day; never told to the sender). Goes with either account (§4.14). Index (to_user_id, created_at) |
 | `feed_reactions` | event_id (the feed entry), user_id (who reacted), primary key together: a user has one reaction to an entry. reaction (cheer / strong / keep_going), created_at (the first time; a changed reaction keeps it). Goes with its entry and with its user (§4.13) |
-| `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
+| `devices` | device_id (made by the app, primary key), user_id, platform (ios/android/web), token (the APNs or FCM token, or the Web Push subscription as JSON; never sent back, never logged, not exported), token_hash (unique: a token moves to the account that registers it last), registered_at, updated_at (§4.15) |
+| `notification_settings` | user_id (one row per user, made by the first `PUT`), one column per type of notification, reminder_time, quiet_from, quiet_until. No row means the defaults (§4.15) |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
 | `mail_outbox` | id (UUIDv7), user_id (`ON DELETE CASCADE`), template (confirm_email / already_registered / reset_password), locale, recipient, sealed_values (the links of the mail, encrypted with `sodium_crypto_secretbox`: random nonce per row, key derived from `jwt.secret` by HKDF-SHA256 with its own label), created_at, not_before (the next try, or the end of a run's 10-minute hold), attempts (failed tries). A row is deleted as soon as the mail server has the mail. Deliberately no index on not_before (two runs could deadlock on it) |
 | `refresh_tokens` | id (the session: one row per login/device), user_id, key_hash and token_hash (SHA-256 of the session key and of the current token), device_label, created_at, generation (0 at login, +1 per refresh; a token's secret is derived from the session key and this number), rotated_at, expires_at, revoked_at. At most 20 live (not revoked) sessions per user; revoked rows are deleted by the cleanup |
@@ -187,7 +188,7 @@ erDiagram
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
 | Social | `GET /feed` (§4.12), `POST /feed/reactions` (§4.13), `POST /friends/nudge` and `GET /nudges` (§4.14). The ids are in the body (§4.7) |
-| Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
+| Devices | `POST /devices` (register or update, the device id in the body), `POST /devices/remove`, `GET/PUT /me/notification-settings` (§4.15) |
 
 ### 4.5 Auth & account design (step 3)
 
@@ -1177,6 +1178,61 @@ one per friend and day needs them, and the sender must not be able to tell the t
 **Export and deletion.** `nudges` is registered with exporter and eraser. The export members are `nudgesSent`
 (whom, when) and `nudgesReceived` (who, when, delivered). Deleting an account deletes the nudges it sent and
 received.
+
+### 4.15 Notifications (step 7)
+
+Built in parts: devices and notification settings first (this part), then the outbox and the senders, then
+the events that write to the outbox. Built against fake push services: the real APNs, FCM and Web Push
+credentials come with the first deployment (decided by the owner on 2026-11-24).
+
+**Devices (FR-NOTIF-01).** A device that may receive push is registered by the app after the user allowed
+notifications on it: the operating system's permission is the opt-in. `POST /devices {deviceId, platform,
+token | subscription}`:
+
+| Rule | |
+|---|---|
+| Id | made by the app, a UUID, like the id of a log. It names the installation, not the user; it is in the body (§4.7: no id in a path) |
+| Platform | `ios` (an APNs device token, 64 to 200 hex characters), `android` (an FCM registration token, 1 to 4096 characters of the token alphabet), `web` (a Web Push subscription: an `https` endpoint of at most 1024 characters, and the keys `p256dh` and `auth` in base64url) |
+| Again | registering the same id again replaces token and platform (tokens change). A token or endpoint that another account registered is moved to this one: one phone, one user at a time, so a user never gets the pushes of the previous user of the phone |
+| How many | at most 10 devices per user; the eleventh replaces the one registered longest ago |
+| Removing | `POST /devices/remove {deviceId}` (the app calls it at logout and when the user takes the permission back). Removing an id that is not the user's, or none, changes nothing and answers the same |
+
+A push service that answers "this token is gone" (APNs 410, FCM `UNREGISTERED`, Web Push 404/410) deletes the
+device: that comes with the senders.
+
+**What is stored.** `devices`: device_id (primary key), user_id, platform, token (the APNs or FCM token, or the
+whole Web Push subscription as JSON), registered_at, updated_at. A unique key on a hash of the token, so that
+moving it is one statement. The token is a credential for pushing to that phone: it is never sent back to any
+client, never logged, and not in the export (the export lists the device id, the platform and the two times,
+as it lists sessions without their hashes).
+
+**Notification settings (FR-NOTIF-02, FR-NOTIF-03, FR-ACC-09).** `GET/PUT /me/notification-settings`:
+
+| Setting | Default |
+|---|---|
+| `checkInReminder` on/off, `reminderTime` (local, HH:MM, in steps of 15 minutes) | on, 20:00 |
+| `streakAtRisk` (no check-in by 21:00 local) | on |
+| `duels` (invitation, start, result) | on |
+| `leagues` (overtaken in a league) | on |
+| `reactions` (a reaction to an own entry) | on |
+| `nudges` (a friend nudged) | on |
+| `badges` (a badge earned) | on |
+| `quietHours` from, until (local, HH:MM) | 22:00 to 08:00 |
+
+Stored in `notification_settings`, one row per user, made by the first `PUT`: no row means the defaults.
+`PUT` replaces all of them. A notification due in the quiet hours waits until they end (with the senders).
+The reminder time may lie in the quiet hours: then the reminder comes when they end.
+
+**Payloads (FR-NOTIF-04).** No counts, no limits, no times of logs, no health milestone: a type, the name of
+a friend where there is one ("Anna sent you a cheer"), and ids the app opens. That comes with the outbox.
+
+**Export and deletion.** `devices` (member `devices`: id, platform, registered, updated; never the token) and
+`notification_settings` (member `notificationSettings`, always present, the defaults when no row) are
+registered with exporter and eraser.
+
+**Still open (put to the owner):** whether the text of a notification is written by the server in German or
+English, or sent as keys that the apps translate; and whether "overtaken in a league" stays in v1, since
+standings change only when a day becomes final, two days late.
 
 ---
 
