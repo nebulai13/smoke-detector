@@ -1037,7 +1037,8 @@ may see, the newest first.
   request (§4.11). The own ones always.
 - **The opponent of a duel** is named to the opponent and to friends of the opponent (decided by the owner
   on 2026-11-23). Everybody else reads "won a duel".
-- An entry with a value this version of the code does not know (after a roll-back) is left out.
+- An entry with a value this version of the code does not know (after a roll-back) is left out. Only a duel
+  entry has an opponent, whatever a row says.
 
 **Known limits.**
 
@@ -1045,8 +1046,27 @@ may see, the newest first.
   who reads the feed often sees it appear. That is what a feed is for; what the badges and milestones tell
   with their day is in §4.10 and §4.11. Nobody has to be in a feed: there is no setting for it yet, except
   the one for health milestones. To settle with the pilot.
-- **The newest 200 entries are read** to find 50 the user may see. With more than 150 hidden health
-  milestones in a row at the top, fewer than 50 are shown.
+- **Entries the user may not see never shorten the feed:** the entries are read 200 at a time until 50 are
+  found or none are left (an audit found that friends who all begin in the same week have hundreds of hidden
+  health milestones among them).
+- **After a roll-back** a row whose type this version does not know is left out when it is read from the
+  database, so a page of 200 can come back short and end the reading early: the feed can then be shorter
+  than 50 until newer entries arrive. Accepted for a state that should not last.
+- **A lost duel is not announced by the loser's entry, but it can be read:** somebody who is a friend of both
+  sees "won a duel against" the loser in the winner's entry. That follows from naming the opponent to the
+  opponent's friends.
+- **Duel results are new to friends.** The friend list does not show them. An entry says that a user won or
+  drew a duel with a reduction of their own: no count, no limit, no baseline.
+- **A new friend sees the newest 50 entries,** also those from before the friendship, as the friend list shows
+  every badge from before it.
+- **The order tells a little:** entries of one step are written together (badges, then milestones, then the
+  level), so entries next to each other are probably from the same day, and a level next to a duel entry
+  probably came from the XP of that duel.
+- **The accounts of the friends are read one by one,** as in the friend list: about 55 queries for a user
+  with 50 friends. To settle with the pilot's numbers.
+- **A level entry after a new rule version** could be written or left out by the first reward under it, if
+  the level thresholds changed: the reward compares with the stored level. To settle with the first new
+  rule version (§4.6).
 - **Entries are kept for good.** A clean-up of old entries can come with the housekeeping job.
 - **Reactions and nudges** (FR-SOC-02 to -04) are the next slices.
 
