@@ -169,6 +169,53 @@ final class ShowFeedTest extends FriendsUseCaseTestCase
         self::assertSame(range(55, 6), array_map(static fn (FeedEntry $entry): ?int => $entry->level, $entries));
     }
 
+    public function test_FR_SOC_01_entries_the_user_may_not_see_never_shorten_the_feed(): void
+    {
+        // An audit found this: a group of friends who all begin in the same week have hundreds of
+        // health milestones among them that the others may not see, all newer than what they may.
+        $this->userSettings->save($this->bob->id, new Settings(MilestoneSharing::Private));
+        for ($level = 1; $level <= 60; $level++) {
+            $this->givenEvent($this->bob, FeedEventType::LevelUp, (string) $level);
+        }
+        for ($hidden = 0; $hidden < 450; $hidden++) {
+            $this->givenEvent($this->bob, FeedEventType::HealthMilestone, 'circulation');
+        }
+
+        self::assertSame(
+            range(60, 11),
+            array_map(static fn (FeedEntry $entry): ?int => $entry->level, $this->showFeed()->show($this->anna->id)),
+        );
+        // And a feed that has fewer than fifty is complete, however much is hidden in between.
+        $carol = $this->givenNamed('Carol');
+        $this->givenFriends($carol, $this->bob);
+        $this->givenEvent($carol, FeedEventType::LevelUp, '1');
+        for ($hidden = 0; $hidden < 250; $hidden++) {
+            $this->givenEvent($this->bob, FeedEventType::HealthMilestone, 'circulation');
+        }
+        $this->givenEvent($carol, FeedEventType::LevelUp, '2');
+        $dave = $this->givenNamed('Dave');
+        $this->givenFriends($dave, $carol);
+
+        self::assertSame([2, 1], array_map(static fn (FeedEntry $entry): ?int => $entry->level, $this->showFeed()->show($dave->id)));
+    }
+
+    public function test_FR_SOC_01_only_a_duel_has_an_opponent(): void
+    {
+        $carol = $this->givenNamed('Carol');
+        $this->givenFriends($this->anna, $carol);
+        // Damaged rows: entries that are no duels and name another user all the same.
+        $this->givenEvent($this->bob, FeedEventType::LevelUp, '2', $carol);
+        $this->givenEvent($this->bob, FeedEventType::BadgeEarned, 'first_check_in', $this->anna);
+        $this->givenEvent($this->bob, FeedEventType::HealthMilestone, 'circulation', $carol);
+        $this->givenEvent($this->bob, FeedEventType::DuelDraw, null, $carol);
+
+        // Carol is Anna's friend, and Anna is the viewer: a duel would name them.
+        self::assertSame(
+            [['Bob', 'duel_draw', 'Carol'], ['Bob', 'health_milestone', null], ['Bob', 'badge_earned', null], ['Bob', 'level_up', null]],
+            self::opponents($this->showFeed()->show($this->anna->id)),
+        );
+    }
+
     public function test_an_entry_with_a_value_the_code_does_not_know_is_left_out(): void
     {
         // Written by a later version of the app, before a roll-back.

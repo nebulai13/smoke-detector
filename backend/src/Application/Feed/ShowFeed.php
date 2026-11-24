@@ -32,7 +32,10 @@ final readonly class ShowFeed
     /** How many entries a user sees at most. */
     public const int LIMIT = 50;
 
-    /** How many entries are read to find LIMIT the user may see: hidden milestones take no place. */
+    /**
+     * How many entries are read at a time. Entries the user may not see take no place: the next ones
+     * are read until LIMIT are found or none are left.
+     */
     private const int READ = 4 * self::LIMIT;
 
     public function __construct(
@@ -69,18 +72,23 @@ final readonly class ShowFeed
             $settings = $this->settings->findAll($friendIds);
 
             $entries = [];
-            foreach ($this->events->newestOf([$userId, ...$friendIds], self::READ) as $event) {
-                $entry = self::entryOf($event, $userId, $profiles, $settings);
-                if ($entry === null) {
-                    continue;
+            for ($skip = 0; ; $skip += self::READ) {
+                $events = $this->events->newestOf([$userId, ...$friendIds], self::READ, $skip);
+                foreach ($events as $event) {
+                    $entry = self::entryOf($event, $userId, $profiles, $settings);
+                    if ($entry === null) {
+                        continue;
+                    }
+                    $entries[] = $entry;
+                    if (count($entries) === self::LIMIT) {
+                        return $entries;
+                    }
                 }
-                $entries[] = $entry;
-                if (count($entries) === self::LIMIT) {
-                    break;
+                // A page that is not full was the last one.
+                if (count($events) < self::READ) {
+                    return $entries;
                 }
             }
-
-            return $entries;
         });
     }
 
@@ -118,9 +126,11 @@ final readonly class ShowFeed
                 return null;
             }
         }
+        // Only a duel has an opponent: another user on a damaged row of any other type is not shown.
         // Named only to the opponent and to friends of the opponent: the user and the friends are
         // the profiles there are.
-        $opponent = $event->otherUserId === null ? null : $profiles[$event->otherUserId->value] ?? null;
+        $duel = $event->type === FeedEventType::DuelWon || $event->type === FeedEventType::DuelDraw;
+        $opponent = !$duel || $event->otherUserId === null ? null : $profiles[$event->otherUserId->value] ?? null;
 
         return new FeedEntry($event->id, $event->type, $user, $mine, $level, $badge, $milestone, $opponent);
     }

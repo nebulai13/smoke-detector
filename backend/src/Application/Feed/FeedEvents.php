@@ -20,10 +20,15 @@ interface FeedEvents
      * several steps of one cron run can have the same time, and a clock can be put back.
      *
      * @param list<UserId> $userIds
+     * @param int          $skip    How many of the newest are left out, in that order: to read on
+     *                              where an earlier read ended.
      *
      * @return list<FeedEvent> At most $limit.
+     *
+     * @throws \InvalidArgumentException For a negative $limit or $skip: a mistake of the caller,
+     *                                   never handed to the database.
      */
-    public function newestOf(array $userIds, int $limit): array;
+    public function newestOf(array $userIds, int $limit, int $skip = 0): array;
 
     /**
      * @return list<FeedEvent> The entries about the user, oldest first. Being the opponent in

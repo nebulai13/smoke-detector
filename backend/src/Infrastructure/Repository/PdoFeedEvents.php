@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Infrastructure\Repository;
 
+use InvalidArgumentException;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Feed\FeedEvent;
 use SmokeDetector\Application\Feed\FeedEvents;
@@ -36,16 +37,20 @@ final readonly class PdoFeedEvents implements FeedEvents
         return $this->eventsOf($this->sql->rows(self::SELECT . ' WHERE id = ?', [$id]))[0] ?? null;
     }
 
-    public function newestOf(array $userIds, int $limit): array
+    public function newestOf(array $userIds, int $limit, int $skip = 0): array
     {
+        if ($limit < 0 || $skip < 0) {
+            // A mistake of the caller: never handed to the database.
+            throw new InvalidArgumentException('A limit and a number to skip cannot be negative.');
+        }
         if ($userIds === []) {
             return [];
         }
 
         // By the order of writing: the times of one cron run are the same.
         return $this->eventsOf($this->sql->rows(
-            self::SELECT . ' WHERE user_id IN (' . implode(', ', array_fill(0, count($userIds), '?')) . ') ORDER BY position DESC LIMIT ?',
-            [...array_map(static fn (UserId $userId): string => $userId->value, $userIds), $limit],
+            self::SELECT . ' WHERE user_id IN (' . implode(', ', array_fill(0, count($userIds), '?')) . ') ORDER BY position DESC LIMIT ? OFFSET ?',
+            [...array_map(static fn (UserId $userId): string => $userId->value, $userIds), $limit, $skip],
         ));
     }
 
