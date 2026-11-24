@@ -7,6 +7,7 @@ namespace SmokeDetector\Application\Nudge;
 use DateTimeImmutable;
 use Psr\Clock\ClockInterface;
 use SmokeDetector\Application\Account\AccountNotFound;
+use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Day\Calendars;
@@ -71,11 +72,12 @@ final readonly class SendNudge
                 throw new AccountNotFound();
             }
             // The user's own id has no link to itself, and an id that does not exist has none either.
-            if (!($this->links->between($from, $to)?->isAccepted() ?? false) || $this->users->find($to) === null) {
+            $friend = ($this->links->between($from, $to)?->isAccepted() ?? false) ? $this->users->find($to) : null;
+            if ($friend === null) {
                 throw new FriendNotFound();
             }
             // The day of the sender follows the zone of the account (HLD §4.14 "Known limits").
-            $nudge = new Nudge($from, $to, LocalDate::of($now, $account->timeZone), $now, $this->isDelivered($to, $now));
+            $nudge = new Nudge($from, $to, LocalDate::of($now, $account->timeZone), $now, $this->isDelivered($friend, $now));
             // Whether a nudge of that day exists is decided by the insert, after every read: the
             // refusal comes the same way whatever became of the first one.
             if (!$this->nudges->add($nudge)) {
@@ -85,13 +87,19 @@ final readonly class SendNudge
     }
 
     /**
-     * Whether the friend has a plan and has not checked in on the friend's own today. With a plan, the
-     * day is read whether it has a check-in or not: the same work for both answers.
+     * Whether the friend has a plan and has not checked in on the friend's own today. The check-in is
+     * read once for every friend, with a plan or without, by one query that returns one row whatever
+     * the answer (an outside audit, 2026-11-24): reading a whole day only with a plan, and turning it
+     * into an object only when it exists, made the work before the same answer differ with whether
+     * the friend has checked in, which many timed requests could tell apart. Without a plan, the day
+     * read is the friend's today in the zone of the account.
      */
-    private function isDelivered(UserId $to, DateTimeImmutable $now): bool
+    private function isDelivered(User $friend, DateTimeImmutable $now): bool
     {
-        $calendar = $this->calendars->of($to);
+        $calendar = $this->calendars->of($friend->id);
+        $today = $calendar?->today($now) ?? LocalDate::of($now, $friend->timeZone);
+        $checkedIn = $this->dayRecords->isCheckedInOn($friend->id, $today);
 
-        return $calendar !== null && !($this->dayRecords->find($to, $calendar->today($now))?->isCheckedIn() ?? false);
+        return $calendar !== null && !$checkedIn;
     }
 }
