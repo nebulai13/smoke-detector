@@ -6,6 +6,8 @@ namespace SmokeDetector\Tests\Unit\Application\Recovery;
 
 use SmokeDetector\Application\Account\User;
 use SmokeDetector\Application\Day\XpEvent;
+use SmokeDetector\Application\Plan\Plan;
+use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Xp\XpSource;
 use SmokeDetector\Tests\Support\Fake\SequentialIdGenerator;
 use SmokeDetector\Tests\Support\TestData;
@@ -136,6 +138,42 @@ final class AwardMilestonesTest extends LoggingUseCaseTestCase
         self::assertTrue($this->dayRecords->find($this->anna->id, self::date('2026-11-15'))?->isFinal());
         self::assertSame($before, $this->milestonesOf($this->anna));
         self::assertSame(['heart_rate', 'carbon_monoxide'], array_column($before, 0));
+    }
+
+    public function test_FR_GAME_09_somebody_who_quit_before_joining_reaches_them_from_the_first_day_of_the_plan(): void
+    {
+        // Anna says her last session was in 2019, joined on the 1st, logged nothing and checked in every day.
+        $this->givenOnboarded($this->anna, '2026-11-01');
+        $plan = $this->plans->find($this->anna->id) ?? self::fail('No plan.');
+        $this->plans->save(new Plan($plan->userId, $plan->goal, $plan->taperSpeed, $plan->defaultProduct, $plan->startDate, $plan->rulesVersion, LocalDate::fromString('2019-03-31')));
+        for ($day = 1; $day <= 14; $day++) {
+            $this->givenChecked($this->anna, sprintf('2026-11-%02d', $day));
+        }
+
+        $this->finalizeDays()->execute();
+
+        // For friends only confirmed time counts: from the start of the 1st in Vienna (23:00 UTC on
+        // the 31st), not from 2019. Two weeks are over with the end of the 14th.
+        self::assertSame(
+            [['heart_rate', '2026-10-31 23:20:00'], ['carbon_monoxide', '2026-11-01 11:00:00'], ['circulation', '2026-11-14 23:00:00']],
+            $this->milestonesOf($this->anna),
+        );
+    }
+
+    public function test_FR_GAME_09_a_day_without_a_check_in_begins_the_count_again_also_after_a_stated_day(): void
+    {
+        $this->givenOnboarded($this->anna, '2026-11-01');
+        $plan = $this->plans->find($this->anna->id) ?? self::fail('No plan.');
+        $this->plans->save(new Plan($plan->userId, $plan->goal, $plan->taperSpeed, $plan->defaultProduct, $plan->startDate, $plan->rulesVersion, LocalDate::fromString('2019-03-31')));
+        for ($day = 1; $day <= 14; $day++) {
+            $date = sprintf('2026-11-%02d', $day);
+            $day === 10 ? $this->givenDay($this->anna, $date) : $this->givenChecked($this->anna, $date);
+        }
+
+        $this->finalizeDays()->execute();
+
+        // From the end of the 10th: the short ones once more would be stored then, but they are stored already.
+        self::assertSame(['heart_rate', 'carbon_monoxide'], array_column($this->milestonesOf($this->anna), 0));
     }
 
     public function test_FR_GAME_09_an_account_that_is_not_used_reaches_nothing(): void
