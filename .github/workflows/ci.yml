@@ -78,7 +78,7 @@ jobs:
           DB_HOST: 127.0.0.1
           DB_PORT: "1"
       - run: vendor/bin/phpunit --testsuite=Integration
-      - run: vendor/bin/phpstan analyse --no-progress
+      - run: vendor/bin/phpstan analyse --no-progress --memory-limit=512M
 
   web:
     runs-on: ubuntu-latest
