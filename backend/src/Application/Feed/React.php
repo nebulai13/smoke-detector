@@ -9,7 +9,7 @@ use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Friends\FriendLinks;
-use SmokeDetector\Application\RateLimit\RateLimit;
+use SmokeDetector\Application\Friends\SocialLimits;
 use SmokeDetector\Application\RateLimit\RateLimiter;
 use SmokeDetector\Application\RateLimit\RateLimitExceeded;
 use SmokeDetector\Application\Settings\UserSettings;
@@ -25,8 +25,8 @@ use SmokeDetector\Application\TransactionRunner;
  */
 final readonly class React
 {
-    /** Reactions and nudges together, per user and day in UTC (FR-SOC-04). */
-    public const int DAILY_ACTIONS = 30;
+    /** Reactions and nudges together, per user and day in UTC (FR-SOC-04): SocialLimits. */
+    public const int DAILY_ACTIONS = SocialLimits::DAILY_ACTIONS;
 
     public function __construct(
         private TransactionRunner $transactions,
@@ -57,7 +57,7 @@ final readonly class React
         if ($this->users->find($userId) === null) {
             throw new AccountNotFound();
         }
-        $this->limiter->consume(self::limit(), $userId->value, $now);
+        $this->limiter->consume(SocialLimits::actionsPerUser(), $userId->value, $now);
 
         return $this->transactions->run(function () use ($userId, $eventId, $key, $now): ReactionResult {
             // Like every step that changes the progress: two reactions of one user, one after the other.
@@ -76,10 +76,5 @@ final readonly class React
 
             return new ReactionResult($key, $isNew ? $this->rewards->newReaction($userId, $now) : 0);
         });
-    }
-
-    private static function limit(): RateLimit
-    {
-        return new RateLimit('social.actions', self::DAILY_ACTIONS, 86400);
     }
 }
