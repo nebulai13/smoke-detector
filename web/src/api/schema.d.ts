@@ -625,6 +625,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/friends/nudge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Nudge a friend to check in (SRS FR-SOC-03)
+         * @description Once per friend and day. A nudge can always be sent: it is delivered only if the friend has not checked in today, and the answer is the same either way, so that nobody learns from it whether a friend has checked in. Reactions and nudges together are limited to 30 a day (SRS FR-SOC-04).
+         */
+        post: operations["nudgeFriend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/nudges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Who nudged the user today
+         * @description The friends whose nudges of the user's own today were delivered, the first one first. Empty once the user has checked in today, and before the onboarding.
+         */
+        get: operations["listNudges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/friends/block": {
         parameters: {
             query?: never;
@@ -1124,6 +1164,10 @@ export interface components {
             feedEvents: components["schemas"]["ExportedFeedEvent"][];
             /** @description The reactions the user sent, oldest first, each with the id of the user whose entry it was. */
             reactionsSent: components["schemas"]["ExportedReaction"][];
+            /** @description The nudges the user sent, oldest first. Without `delivered`. */
+            nudgesSent: components["schemas"]["ExportedNudge"][];
+            /** @description The nudges sent to the user, oldest first, also those that were not shown. */
+            nudgesReceived: components["schemas"]["ExportedNudge"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1483,6 +1527,24 @@ export interface components {
             myReaction: components["schemas"]["ReactionKey"] | null;
             /** @description Who reacted, oldest first: only on an entry of the user who asks, and only reactions of users who are friends now. Empty on every entry of somebody else. */
             reactions: components["schemas"]["FeedReaction"][];
+        };
+        Nudges: {
+            nudges: components["schemas"]["ReceivedNudge"][];
+        };
+        /** @description A nudge has no time and no text. */
+        ReceivedNudge: {
+            user: components["schemas"]["PublicUser"];
+        };
+        ExportedNudge: {
+            /**
+             * Format: uuid
+             * @description In `nudgesSent`, whom the user nudged. In `nudgesReceived`, who nudged the user.
+             */
+            userId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description In `nudgesReceived` only: whether the user had not checked in that day, so that the nudge was shown. What became of a nudge the user sent is not in the export of the sender. */
+            delivered?: boolean;
         };
         /**
          * @description `cheer` (👏), `strong` (💪), `keep_going` (🔥). There is no free text (SRS FR-SOC-02).
@@ -2115,6 +2177,15 @@ export interface components {
         };
         /** @description `friend_request_not_found`: there is no open friend request between the two in this direction. */
         FriendRequestNotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `already_nudged`: the user has nudged this friend today already. */
+        AlreadyNudged: {
             headers: {
                 [name: string]: unknown;
             };
@@ -3156,6 +3227,60 @@ export interface operations {
             404: components["responses"]["FriendNotFound"];
             415: components["responses"]["UnsupportedMediaType"];
             422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    nudgeFriend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UserReference"];
+            };
+        };
+        responses: {
+            /** @description Taken. It says nothing about whether the friend will see it. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["FriendNotFound"];
+            409: components["responses"]["AlreadyNudged"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listNudges: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The nudges of today. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Nudges"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

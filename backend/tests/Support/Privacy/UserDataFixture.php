@@ -198,6 +198,9 @@ final readonly class UserDataFixture
         // The friend reacted to the user's entry, and the user to the friend's.
         $this->insert('feed_reactions', [TestData::uuid($number * 1000 + 42), $friend->value, 'strong', '2026-10-31 07:00:00']);
         $this->insert('feed_reactions', [TestData::uuid($number * 1000 + 43), $user, 'cheer', '2026-10-31 08:00:00']);
+        // The user nudged the friend, and was delivered; the friend nudged the user, who had checked in.
+        $this->insert('nudges', [$user, $friend->value, '2026-11-16', '2026-11-16 18:00:00', 1]);
+        $this->insert('nudges', [$friend->value, $user, '2026-11-17', '2026-11-17 07:30:00', 0]);
     }
 
     /**

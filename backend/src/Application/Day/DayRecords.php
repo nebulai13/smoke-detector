@@ -26,6 +26,11 @@ interface DayRecords
     public function between(UserId $userId, LocalDate $from, LocalDate $to): array;
 
     /**
+     * Whether that day of the user has a check-in. No row is no check-in.
+     */
+    public function isCheckedInOn(UserId $userId, LocalDate $date): bool;
+
+    /**
      * The latest stored day of the user up to $day, included, that has no check-in; null without one.
      */
     public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate;

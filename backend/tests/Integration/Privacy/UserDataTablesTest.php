@@ -173,6 +173,13 @@ final class UserDataTablesTest extends IntegrationTestCase
         'feed_reactions.user_id' => 'feedEvents.*.reactions.*.userId',
         'feed_reactions.reaction' => 'reactionsSent.*.reaction',
         'feed_reactions.created_at' => 'reactionsSent.*.createdAt',
+        // Whom the user nudged, and who nudged the user; when, in both lists.
+        'nudges.from_user_id' => 'nudgesReceived.*.userId',
+        'nudges.to_user_id' => 'nudgesSent.*.userId',
+        'nudges.created_at' => 'nudgesSent.*.createdAt',
+        // Of the nudges the user received only. Whether a friend had checked in is the friend's to
+        // know: the export of the sender does not have it.
+        'nudges.delivered' => 'nudgesReceived.*.delivered',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -216,6 +223,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         'feed_events.id' => 'The random name of the entry for the apps, without meaning outside the feed.',
         'feed_reactions.event_id' => 'The random name of the entry: a reaction to an entry of the user is exported with that entry, and of a reaction the user sent the export names whose entry it was (reactionsSent.*.userId).',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
+        'nudges.day' => 'The local day of the sender: the date of createdAt in the zone of the sender\'s account. It only keeps a nudge to one per friend and day and says nothing more.',
     ];
 
     private ContainerInterface $container;
@@ -385,6 +393,15 @@ final class UserDataTablesTest extends IntegrationTestCase
                         'reactions' => [['userId' => TestData::uuid(11), 'reaction' => 'strong', 'createdAt' => '2026-10-31T07:00:00Z']],
                     ],
                 ],
+                // Whom the user nudged and when. Not whether user 11 had checked in, which decided
+                // whether it was delivered.
+                'nudgesSent' => [
+                    ['userId' => TestData::uuid(11), 'createdAt' => '2026-11-16T18:00:00Z'],
+                ],
+                // Who nudged the user, when, and whether it was delivered: also one that was not.
+                'nudgesReceived' => [
+                    ['userId' => TestData::uuid(11), 'createdAt' => '2026-11-17T07:30:00Z', 'delivered' => false],
+                ],
             ],
             $export,
         );
@@ -407,6 +424,7 @@ final class UserDataTablesTest extends IntegrationTestCase
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
                 'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [], 'badges' => [],
                 'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'], 'reactionsSent' => [], 'feedEvents' => [],
+                'nudgesSent' => [], 'nudgesReceived' => [],
             ],
             $export,
         );

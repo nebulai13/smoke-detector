@@ -43,6 +43,7 @@ use SmokeDetector\Application\Mail\Mailer;
 use SmokeDetector\Application\Mail\MailOutbox;
 use SmokeDetector\Application\Mail\MailTemplates;
 use SmokeDetector\Application\Mail\MailValuesCipher;
+use SmokeDetector\Application\Nudge\Nudges;
 use SmokeDetector\Application\Plan\BaselineHistory;
 use SmokeDetector\Application\Plan\PlanHistory;
 use SmokeDetector\Application\Plan\PlanRepository;
@@ -97,6 +98,7 @@ use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
 use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
 use SmokeDetector\Infrastructure\Repository\PdoDuels;
 use SmokeDetector\Infrastructure\Repository\PdoFeedEvents;
+use SmokeDetector\Infrastructure\Repository\PdoNudges;
 use SmokeDetector\Infrastructure\Repository\PdoReactions;
 use SmokeDetector\Infrastructure\Repository\PdoLeagueResults;
 use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
@@ -247,6 +249,8 @@ final readonly class ContainerFactory
             FeedIds::class => autowire(RandomFeedIds::class),
             // Reactions to the entries (HLD §4.13)
             Reactions::class => autowire(PdoReactions::class),
+            // Nudges (HLD §4.14)
+            Nudges::class => autowire(PdoNudges::class),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),

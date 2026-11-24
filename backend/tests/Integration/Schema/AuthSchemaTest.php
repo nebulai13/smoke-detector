@@ -168,7 +168,10 @@ final class AuthSchemaTest extends IntegrationTestCase
                 // A reaction goes with its entry and with the user who reacted.
                 ['tbl' => 'feed_reactions', 'col' => 'event_id', 'parent' => 'feed_events', 'parent_col' => 'id', 'on_delete' => 'CASCADE'], $row('feed_reactions'),
                 $row('friendships', 'user_a'), $row('friendships', 'user_b'),
-                $row('invite_codes'), $row('league_results'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
+                $row('invite_codes'), $row('league_results'), $row('mail_outbox'),
+                // A nudge goes with its sender and with its receiver.
+                $row('nudges', 'from_user_id'), $row('nudges', 'to_user_id'),
+                $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".
                 $row('plan_history'), $row('refresh_tokens'), $row('smoke_logs'), $row('timezone_history'), $row('user_badges'), $row('user_milestones'), $row('user_progress'),
                 $row('user_settings'), $row('xp_events'),
