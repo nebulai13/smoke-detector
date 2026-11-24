@@ -69,6 +69,18 @@ final readonly class PdoDayRecords implements DayRecords
         );
     }
 
+    public function isCheckedInOn(UserId $userId, LocalDate $date): bool
+    {
+        // One row whatever the answer, and nothing turned into an object: the same work for a day
+        // with a check-in, one without, and no day at all.
+        $checkedIn = $this->sql->value(
+            'SELECT EXISTS(SELECT 1 FROM day_summaries WHERE user_id = ? AND local_date = ? AND checked_in_at IS NOT NULL)',
+            [$userId->value, $date->value],
+        );
+
+        return (new Row(['checked_in' => $checkedIn]))->int('checked_in') === 1;
+    }
+
     public function lastMissedUntil(UserId $userId, LocalDate $day): ?LocalDate
     {
         $columns = $this->sql->row(

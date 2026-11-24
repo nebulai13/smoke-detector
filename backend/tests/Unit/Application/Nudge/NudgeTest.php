@@ -6,6 +6,7 @@ namespace SmokeDetector\Tests\Unit\Application\Nudge;
 
 use SmokeDetector\Application\Account\AccountNotFound;
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Day\DayRecords;
 use SmokeDetector\Application\Feed\React;
 use SmokeDetector\Application\Friends\FriendNotFound;
 use SmokeDetector\Application\Friends\PublicProfile;
@@ -15,6 +16,7 @@ use SmokeDetector\Application\Nudge\SendNudge;
 use SmokeDetector\Application\Nudge\ShowNudges;
 use SmokeDetector\Application\RateLimit\RateLimiter;
 use SmokeDetector\Application\RateLimit\RateLimitExceeded;
+use SmokeDetector\Tests\Support\Fake\RecordingDayRecords;
 use SmokeDetector\Tests\Support\RateLimitKey;
 use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\LeaguesUseCaseTestCase;
@@ -67,6 +69,30 @@ final class NudgeTest extends LeaguesUseCaseTestCase
         self::assertSame([], $this->nudgesFor($this->bob));
     }
 
+    public function test_FR_SOC_03_the_check_in_of_a_friend_is_read_the_same_way_whatever_the_answer(): void
+    {
+        // An outside audit: a stored day turned into an object, or no day at all, is different work
+        // before the same answer, which many timed requests could tell apart.
+        $logged = $this->givenPlayer('Logged', '2026-11-01');
+        $new = $this->givenNamed('New');
+        foreach ([$logged, $new] as $friend) {
+            $this->givenFriends($this->anna, $friend);
+        }
+        // Bob checked in, Carol has no day yet, Logged logged and did not check in, New has no plan.
+        $this->givenDay($this->bob, '2026-11-17', 2, '2026-11-17 08:00:00');
+        $this->givenDay($logged, '2026-11-17', 4);
+        $recorded = [];
+
+        foreach ([$this->bob, $this->carol, $logged, $new] as $friend) {
+            $days = new RecordingDayRecords($this->dayRecords);
+            $this->sendNudge($days)->execute($this->anna->id, $friend->id);
+            $recorded[] = $days->calls;
+        }
+
+        self::assertSame([['isCheckedInOn'], ['isCheckedInOn'], ['isCheckedInOn'], ['isCheckedInOn']], $recorded);
+        self::assertSame([false, true, true, false], array_map(static fn (Nudge $nudge): bool => $nudge->delivered, $this->nudges->all()));
+    }
+
     public function test_FR_SOC_03_a_friend_without_a_plan_has_nothing_to_check_in(): void
     {
         $new = $this->givenNamed('New');
@@ -115,6 +141,18 @@ final class NudgeTest extends LeaguesUseCaseTestCase
         $this->givenDay($this->bob, '2026-11-18', 0, '2026-11-17 11:00:00');
         $this->sendNudge()->execute($this->anna->id, $this->bob->id);
         self::assertTrue($this->nudges->all()[1]->delivered);
+    }
+
+    public function test_FR_SOC_03_the_today_of_a_friend_is_the_one_of_the_zone_history_not_of_the_account(): void
+    {
+        // Bob moves to Auckland from the 19th: his account names Auckland already, his days are still
+        // Vienna's. It is the 17th in Vienna and already the 18th in Auckland. He checked in on the 17th.
+        $bob = $this->givenZoneChange($this->bob, '2026-11-19', 'Pacific/Auckland');
+        $this->givenDay($bob, '2026-11-17', 0, '2026-11-17 08:00:00');
+
+        $this->sendNudge()->execute($this->anna->id, $bob->id);
+
+        self::assertFalse($this->nudges->all()[0]->delivered);
     }
 
     public function test_FR_SOC_03_only_a_friend_can_be_nudged(): void
@@ -264,7 +302,7 @@ final class NudgeTest extends LeaguesUseCaseTestCase
         self::assertSame([], $this->nudgesFor($new));
     }
 
-    private function sendNudge(): SendNudge
+    private function sendNudge(?DayRecords $days = null): SendNudge
     {
         return new SendNudge(
             $this->transactions,
@@ -274,7 +312,7 @@ final class NudgeTest extends LeaguesUseCaseTestCase
             $this->nudges,
             new RateLimiter($this->counters, RateLimitKey::hasher()),
             $this->calendars(),
-            $this->dayRecords,
+            $days ?? $this->dayRecords,
         );
     }
 
