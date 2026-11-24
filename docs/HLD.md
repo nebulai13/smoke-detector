@@ -167,6 +167,7 @@ erDiagram
 | `user_settings` | user_id (one row per user, made by the first choice), milestone_sharing (from_two_weeks / private / all). No row means the defaults |
 | `user_badges` | user_id, badge_key (the domain's `Badge`), primary key together: a user holds a badge once. awarded_at (UTC): when it was stored, which is when the day, the duel or the rank became final. The first award stays; a row is never changed |
 | `feed_events` | position (the order of writing, never sent), id (a random UUID: what a client gets says nothing about the time), user_id, type (level_up / badge_earned / duel_won / duel_draw / health_milestone), detail (the level, the badge or the milestone; NULL for a duel), other_user_id (the opponent of a duel; set to NULL when that account goes), created_at. Written from final data only (§4.12). Index (user_id, position) |
+| `nudges` | from_user_id, to_user_id, day (the local day of the sender), primary key together: one nudge per friend and day. created_at, delivered (whether the receiver had not checked in that day; never told to the sender). Goes with either account (§4.14). Index (to_user_id, created_at) |
 | `feed_reactions` | event_id (the feed entry), user_id (who reacted), primary key together: a user has one reaction to an entry. reaction (cheer / strong / keep_going), created_at (the first time; a changed reaction keeps it). Goes with its entry and with its user (§4.13) |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
@@ -185,7 +186,7 @@ erDiagram
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges`, `GET /me/health-milestones` (§4.10) |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
-| Social | `GET /feed` (§4.12), `POST /feed/reactions` (§4.13). To come: `POST /friends/nudge`. The ids are in the body (§4.7) |
+| Social | `GET /feed` (§4.12), `POST /feed/reactions` (§4.13), `POST /friends/nudge` and `GET /nudges` (§4.14). The ids are in the body (§4.7) |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
 
 ### 4.5 Auth & account design (step 3)
@@ -309,6 +310,9 @@ starts at :00, :15, :30 and :45).
 - A new table is added in one place (`Infrastructure\Privacy\UserDataTables`) with its exporter and eraser
   together. Tables owned by one user also get `ON DELETE CASCADE` as a safety net; tables shared between
   users (duels, friendships) need their own eraser.
+- A table has one member in the export, or more when a user has its rows in different roles: `nudges` gives
+  `nudgesSent` and `nudgesReceived` (§4.14), because the two are exported with different columns. Every member
+  name is used once in the whole export, and the table is erased once.
 
 **Errors:** every error is RFC 9457 `application/problem+json` with a stable `type` slug (e.g.
 `validation_failed` with a field list, `invalid_credentials`, `rate_limited`, `service_unavailable`). Each
@@ -1069,7 +1073,6 @@ may see, the newest first.
   the level thresholds changed: the reward compares with the stored level. To settle with the first new
   rule version (§4.6).
 - **Entries are kept for good.** A clean-up of old entries can come with the housekeeping job.
-- **Nudges** (FR-SOC-03) are the next slice.
 
 **Export and deletion.** `feed_events` is registered with exporter and eraser. The export member `feedEvents`
 holds the user's own entries with their time, of an opponent the id only.
@@ -1117,6 +1120,43 @@ reaction XP out of the weekly ranking, or to book it with the next final day.
 the user sent (`reactionsSent`: the id of the user whose entry it was, the key, the time) and, with every own
 feed entry, the reactions to it (who, key, time). Deleting an account deletes the reactions it sent and those
 to its entries.
+
+### 4.14 Nudges (step 6, second part)
+
+**What a nudge is (FR-SOC-03).** A reminder to a friend to check in, with no text. `POST /friends/nudge
+{userId}`:
+
+| Rule | |
+|---|---|
+| To whom | an accepted friend. Everybody else, the user themself and an id that does not exist: `friend_not_found` |
+| How often | once per friend and day of the sender (the day in the time zone of the sender's account). The second is `already_nudged`, whatever became of the first |
+| Delivered | only if the friend has a plan and has not checked in on the friend's own today |
+| The answer | `204` with no content, the same whether it is delivered or not (decided by the owner on 2026-11-23): whether a friend has checked in today is data of a day that is not final, and friends see final days only (§4.8). The SRS had the nudge for "a friend who hasn't checked in today", which would have shown everybody the check-in state of every friend |
+| Limit (FR-SOC-04) | one of the 30 actions a day that reactions count towards too (§4.13). A refused nudge counts |
+| Reward | none |
+
+**What the receiver sees.** `GET /nudges`: the friends whose nudges of the user's own today were delivered,
+the first one first, as name and avatar. No time. Empty once the user has checked in today (the nudges did
+their work), before the onboarding, and for a nudge of somebody who is no friend any more. A push message
+comes with step 7.
+
+**What is stored.** Every nudge that was taken, also the ones that were not delivered: the sender's limit of
+one per friend and day needs them, and the sender must not be able to tell the two apart by sending again.
+
+**Known limits.**
+
+- **A nudge tells its receiver that the sender thought of them now.** That is what it is for.
+- **A nudge that is not delivered is still stored about the receiver.** The receiver's data export has it,
+  with `delivered: false`. The sender's export has the nudges the sender sent without that value.
+- **Timing:** both cases do the same reads and one insert. A difference in response time that could tell them
+  apart was not measured.
+- **The day of the sender follows the zone of the account,** not the zone history (§4.6): after a change of
+  the time zone a second nudge to a friend can be possible within one day.
+- **Old nudges are kept.** A clean-up can come with the housekeeping job.
+
+**Export and deletion.** `nudges` is registered with exporter and eraser. The export members are `nudgesSent`
+(whom, when) and `nudgesReceived` (who, when, delivered). Deleting an account deletes the nudges it sent and
+received.
 
 ---
 
