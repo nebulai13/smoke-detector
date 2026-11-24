@@ -27,6 +27,7 @@ use SmokeDetector\Application\Friends\FriendRequestNotFound;
 use SmokeDetector\Application\Friends\InviteNotFound;
 use SmokeDetector\Application\Friends\OwnInvite;
 use SmokeDetector\Application\Logging\Rejection;
+use SmokeDetector\Application\Nudge\AlreadyNudged;
 use SmokeDetector\Application\Plan\PlanRequired;
 use SmokeDetector\Application\RateLimit\RateLimitExceeded;
 use SmokeDetector\Application\TemporarilyUnavailable;
@@ -157,7 +158,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
     }
 
     /**
-     * The refusals of the friends, duel, league and reaction operations (HLD §4.7, §4.8, §4.9, §4.13), or null for any other exception.
+     * The refusals of the friends, duel, league, reaction and nudge operations (HLD §4.7, §4.8, §4.9, §4.13, §4.14), or null for any other exception.
      */
     private static function friendsProblem(Throwable $exception): ?Problem
     {
@@ -176,6 +177,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
             $exception instanceof LeagueNotFound => Problem::leagueNotFound(),
             $exception instanceof FeedEntryNotFound => Problem::feedEntryNotFound(),
             $exception instanceof OwnFeedEntry => Problem::ownFeedEntry(),
+            $exception instanceof AlreadyNudged => Problem::alreadyNudged(),
             default => null,
         };
     }
