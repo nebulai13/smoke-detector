@@ -165,6 +165,8 @@ final class AuthSchemaTest extends IntegrationTestCase
                 $row('duels', 'challenger_id', 'SET NULL'), $row('duels', 'opponent_id', 'SET NULL'),
                 // A feed entry goes with its user, and forgets an opponent who goes.
                 $row('feed_events', 'other_user_id', 'SET NULL'), $row('feed_events'),
+                // A reaction goes with its entry and with the user who reacted.
+                ['tbl' => 'feed_reactions', 'col' => 'event_id', 'parent' => 'feed_events', 'parent_col' => 'id', 'on_delete' => 'CASCADE'], $row('feed_reactions'),
                 $row('friendships', 'user_a'), $row('friendships', 'user_b'),
                 $row('invite_codes'), $row('league_results'), $row('mail_outbox'), $row('one_time_tokens'), $row('plans'),
                 // The database sorts "s" before "_".
