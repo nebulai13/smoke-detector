@@ -48,6 +48,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         'plans.default_product' => 'plan.defaultProduct',
         'plans.start_date' => 'plan.startDate',
         'plans.rules_version' => 'plan.rulesVersion',
+        'plans.last_session_before' => 'plan.lastSessionBefore',
         'baseline_history.valid_from' => 'baselineHistory.*.validFrom',
         'baseline_history.value' => 'baselineHistory.*.value',
         'baseline_history.source' => 'baselineHistory.*.source',
@@ -270,7 +271,7 @@ final class UserDataTablesTest extends IntegrationTestCase
                 ],
                 'plan' => [
                     'goalMode' => 'reduce', 'target' => 5, 'taperSpeed' => 'gentle', 'defaultProduct' => 'rolled',
-                    'startDate' => '2026-11-02', 'rulesVersion' => 'v1',
+                    'startDate' => '2026-11-02', 'rulesVersion' => 'v1', 'lastSessionBefore' => '2026-10-01',
                 ],
                 'planHistory' => [
                     ['validFrom' => '2026-11-02', 'goalMode' => 'quit', 'target' => 0, 'taperSpeed' => 'fast', 'rulesVersion' => 'v1'],

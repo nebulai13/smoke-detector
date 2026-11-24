@@ -379,6 +379,55 @@ final class SavePlanTest extends AccountUseCaseTestCase
         $this->savePlan()->execute(TestData::userId(999), self::choice());
     }
 
+    public function test_FR_GAME_09_the_onboarding_takes_the_day_of_the_last_session_before_joining(): void
+    {
+        $user = $this->givenUser();
+
+        $this->savePlan()->execute($user->id, new PlanChoice(12, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-10-31')));
+
+        self::assertEquals(
+            new Plan($user->id, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-17'), 'v1', LocalDate::fromString('2026-10-31')),
+            $this->plans->find($user->id),
+        );
+    }
+
+    public function test_FR_GAME_09_the_last_session_before_joining_is_before_the_first_day_of_the_plan(): void
+    {
+        $user = $this->givenUser();
+        // Today is the 17th, the first day of the plan. A session of today is logged, not stated.
+        foreach (['2026-11-17', '2026-11-18', '1899-12-31'] as $day) {
+            $this->assertRejected($user, new PlanChoice(12, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString($day)), 'lastSessionBefore', ErrorCode::OutOfRange);
+        }
+        $this->assertNothingStored();
+
+        // The edges.
+        $this->savePlan()->execute($user->id, new PlanChoice(12, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-16')));
+        self::assertEquals(LocalDate::fromString('2026-11-16'), $this->plans->find($user->id)?->lastSessionBefore);
+        $other = $this->givenUser('old@example.org');
+        $this->savePlan()->execute($other->id, new PlanChoice(12, Goal::quit(), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('1900-01-01')));
+        self::assertEquals(LocalDate::fromString('1900-01-01'), $this->plans->find($other->id)?->lastSessionBefore);
+    }
+
+    public function test_FR_GAME_09_the_day_can_be_stated_changed_or_taken_away_later_and_stays_before_the_first_day(): void
+    {
+        $user = $this->givenUser();
+        $this->savePlan()->execute($user->id, self::choice());
+        $this->clock->advanceSeconds(10 * 86_400);
+
+        $this->savePlan()->execute($user->id, new PlanChoice(null, Goal::reduceTo(5), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-09-01')));
+        self::assertEquals(LocalDate::fromString('2026-09-01'), $this->plans->find($user->id)?->lastSessionBefore);
+
+        // Ten days after the onboarding, a day after it began is no day before joining.
+        $this->assertRejected($user, new PlanChoice(null, Goal::reduceTo(5), TaperSpeed::Normal, ProductType::Cigarette, LocalDate::fromString('2026-11-20')), 'lastSessionBefore', ErrorCode::OutOfRange);
+        self::assertEquals(LocalDate::fromString('2026-09-01'), $this->plans->find($user->id)?->lastSessionBefore);
+
+        // A plan sent without it has none: PUT replaces the plan.
+        $this->savePlan()->execute($user->id, self::choice());
+        self::assertNull($this->plans->find($user->id)?->lastSessionBefore);
+        // Nothing else of the plan changed.
+        self::assertEquals(LocalDate::fromString('2026-11-17'), $this->plans->find($user->id)?->startDate);
+    }
+
     private static function choice(): PlanChoice
     {
         return new PlanChoice(12, Goal::reduceTo(5), TaperSpeed::Normal, ProductType::Cigarette);

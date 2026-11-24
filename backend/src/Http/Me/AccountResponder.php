@@ -44,6 +44,10 @@ final readonly class AccountResponder
                 'baseline' => $account->plan->baseline->toFloat(),
                 'dailyLimit' => $account->plan->dailyLimit,
             ];
+            // Absent when the user named no day before joining.
+            if ($plan->lastSessionBefore !== null) {
+                $me['plan']['lastSessionBefore'] = $plan->lastSessionBefore->value;
+            }
             // Absent while nothing waits for a later day.
             if ($account->plan->pendingFrom !== null) {
                 $me['plan']['pendingFrom'] = $account->plan->pendingFrom->value;

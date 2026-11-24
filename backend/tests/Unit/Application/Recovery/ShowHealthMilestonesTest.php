@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace SmokeDetector\Tests\Unit\Application\Recovery;
 
 use SmokeDetector\Application\Account\User;
+use SmokeDetector\Application\Plan\Plan;
 use SmokeDetector\Application\Plan\PlanRequired;
 use SmokeDetector\Application\Plan\ProductType;
 use SmokeDetector\Application\Recovery\HealthView;
 use SmokeDetector\Application\Recovery\ShowHealthMilestones;
+use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Recovery\HealthMilestoneState;
 use SmokeDetector\Tests\Support\TestData;
 use SmokeDetector\Tests\Unit\Application\LoggingUseCaseTestCase;
@@ -139,6 +141,26 @@ final class ShowHealthMilestonesTest extends LoggingUseCaseTestCase
         self::assertFalse($this->showHealthMilestones()->of($vaper->id)->vapingOnly);
     }
 
+    public function test_FR_GAME_09_without_a_logged_session_they_count_from_the_end_of_the_day_of_the_last_session_before_joining(): void
+    {
+        // Anna quit on the 1st, before she joined on the 10th, and has logged nothing since.
+        $this->givenLastSessionBefore('2026-11-01');
+
+        $view = $this->show();
+
+        // The end of the 1st in Vienna. Fifteen and a half days ago.
+        self::assertEquals(TestData::time('2026-11-01 23:00:00'), $view->since);
+        self::assertSame(['heart_rate', 'carbon_monoxide', 'circulation'], self::reached($view));
+    }
+
+    public function test_FR_GAME_09_a_logged_session_counts_for_more_than_the_stated_day(): void
+    {
+        $this->givenLastSessionBefore('2026-11-01');
+        $this->givenLog($this->anna, 1, '2026-11-16', '2026-11-16 20:00:00');
+
+        self::assertEquals(TestData::time('2026-11-16 20:00:00'), $this->show()->since);
+    }
+
     public function test_FR_ACC_06_before_the_onboarding_there_are_no_milestones(): void
     {
         $new = $this->givenUser('new@example.org');
@@ -150,7 +172,16 @@ final class ShowHealthMilestonesTest extends LoggingUseCaseTestCase
 
     private function showHealthMilestones(): ShowHealthMilestones
     {
-        return new ShowHealthMilestones($this->clock, $this->plans, $this->smokeLogs);
+        return new ShowHealthMilestones($this->clock, $this->calendars(), $this->smokeLogs);
+    }
+
+    /**
+     * Anna's plan as it is, with the day of her last session before she joined.
+     */
+    private function givenLastSessionBefore(string $day): void
+    {
+        $plan = $this->plans->find($this->anna->id) ?? self::fail('No plan.');
+        $this->plans->save(new Plan($plan->userId, $plan->goal, $plan->taperSpeed, $plan->defaultProduct, $plan->startDate, $plan->rulesVersion, LocalDate::fromString($day)));
     }
 
     private function show(): HealthView

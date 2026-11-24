@@ -37,9 +37,16 @@ use SmokeDetector\Domain\Plan\Goal;
  * Later calls never touch the baseline: after the onboarding it changes through the weekly update
  * only, and its history is append-only (FR-PLAN-02). A later call may repeat the starting baseline
  * of the onboarding, so that an onboarding request that is sent twice is harmless, but no other value.
+ *
+ * Every call may name the day of the user's last session before joining (HLD §4.10), and replaces
+ * the one named before: a call without it takes it away. It is a day before the first day of the
+ * plan, because a session of a day of the plan is logged, not stated.
  */
 final readonly class SavePlan
 {
+    /** The earliest day of a last session before joining that is believed. */
+    private const string EARLIEST_LAST_SESSION = '1900-01-01';
+
     private Calendars $calendars;
 
     public function __construct(
@@ -58,7 +65,8 @@ final readonly class SavePlan
 
     /**
      * @throws ValidationFailed When the starting baseline is missing, out of range or not the one of
-     *                          the onboarding, or a reduce target is not below the current baseline.
+     *                          the onboarding, a reduce target is not below the current baseline, or
+     *                          the day of the last session before joining is not before the plan.
      * @throws AccountNotFound  When the account was deleted in the meantime.
      */
     public function execute(UserId $userId, PlanChoice $choice): void
@@ -91,10 +99,11 @@ final readonly class SavePlan
         // The user's day, not the server's: all day logic runs in the user's time zone (HLD §7).
         // Before the onboarding there is no zone history: the zone of the account simply counts.
         $today = LocalDate::of($now, $user->timeZone);
+        self::assertBeforeJoining($choice->lastSessionBefore, $today);
         $zone = new ZoneChange($today, $user->timeZone);
         $days = new LocalDays([$zone]);
 
-        $this->plans->save(new Plan($user->id, $choice->goal, $choice->taperSpeed, $choice->defaultProduct, $today, $rules->version));
+        $this->plans->save(new Plan($user->id, $choice->goal, $choice->taperSpeed, $choice->defaultProduct, $today, $rules->version, $choice->lastSessionBefore));
         $this->baselines->append(BaselineEntry::onboarding($user->id, $today, $stated, $rules->version));
         $this->planHistory->record(new PlanTerms($user->id, $today, $choice->goal, $choice->taperSpeed, $rules->version));
         $this->zones->record($user->id, $zone);
@@ -118,6 +127,7 @@ final readonly class SavePlan
                 'The baseline can be set only once. Leave it out, or send the value of the onboarding.',
             );
         }
+        self::assertBeforeJoining($choice->lastSessionBefore, $plan->startDate);
 
         $calendar = $this->calendars->ofPlan($plan);
         $today = $calendar->today($now);
@@ -135,7 +145,7 @@ final readonly class SavePlan
             $this->planHistory->record(new PlanTerms($plan->userId, $today->plusDays(1), $choice->goal, $choice->taperSpeed, $this->rules->current()->version));
         }
 
-        $this->plans->save($plan->changedTo($choice->goal, $choice->taperSpeed, $choice->defaultProduct));
+        $this->plans->save($plan->changedTo($choice->goal, $choice->taperSpeed, $choice->defaultProduct, $choice->lastSessionBefore));
     }
 
     private static function startingBaseline(int $sessionsPerDay): Baseline
@@ -144,6 +154,24 @@ final readonly class SavePlan
             return StartingBaseline::fromInput($sessionsPerDay);
         } catch (InvalidValue $rejected) {
             throw new ValidationFailed([$rejected->forField('startingBaseline')]);
+        }
+    }
+
+    /**
+     * HLD §4.10: the day of the last session before joining is before the first day of the plan, and
+     * not before 1900.
+     */
+    private static function assertBeforeJoining(?LocalDate $lastSessionBefore, LocalDate $firstDay): void
+    {
+        if ($lastSessionBefore === null) {
+            return;
+        }
+        if (!$lastSessionBefore->isBefore($firstDay) || $lastSessionBefore->isBefore(LocalDate::fromString(self::EARLIEST_LAST_SESSION))) {
+            throw ValidationFailed::forField(
+                'lastSessionBefore',
+                ErrorCode::OutOfRange,
+                'Must be a day before the first day of the plan, and not before 1900-01-01.',
+            );
         }
     }
 

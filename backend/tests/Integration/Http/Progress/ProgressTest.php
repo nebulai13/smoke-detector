@@ -157,6 +157,22 @@ final class ProgressTest extends HttpTestCase
         );
     }
 
+    public function test_FR_GAME_09_somebody_who_quit_before_joining_sees_the_milestones_from_that_day(): void
+    {
+        $ina = $this->givenUser('ina@example.org');
+        // Ina quit on 1 November and joins on the 17th.
+        self::assertSame(200, $this->call('PUT', '/me/plan', ['goalMode' => 'quit', 'target' => 0, 'lastSessionBefore' => '2026-11-01'] + self::PLAN, $this->authorization($ina))->status());
+
+        $view = $this->call('GET', '/me/health-milestones', headers: $this->authorization($ina))->json();
+
+        // From the end of the 1st in Berlin: 23:00 UTC.
+        self::assertSame('2026-11-01T23:00:00Z', $view['since'] ?? null);
+        self::assertSame(
+            ['heart_rate', 'carbon_monoxide', 'circulation'],
+            array_column(array_filter((array) ($view['milestones'] ?? null), static fn (mixed $milestone): bool => self::at((array) $milestone, 'reached') === true), 'key'),
+        );
+    }
+
     public function test_FR_ACC_06_before_the_onboarding_there_are_no_health_milestones(): void
     {
         $new = $this->named('New');
