@@ -937,8 +937,9 @@ request from the user's last log that is not deleted (`smoked_at`), and stores n
   never says more than the user did. Without that day `since` is null and the list is empty: the app does not
   know when somebody smoked last who never logged a session.
 - **The named day** is before the first day of the plan (a session of a day of the plan is logged) and not
-  before 1900. It can be named, changed or taken away with every `PUT /me/plan`: a plan sent without it has
-  none. It is the user's own statement and moves nothing a friend sees beyond what §4.11 says.
+  before 1900. It can be named, changed or taken away with every `PUT /me/plan`: `PUT` replaces the plan, so
+  a request without the day takes it away. A client must send the whole plan, the day too (an audit pointed
+  out the trap). It is the user's own statement and moves nothing a friend sees beyond what §4.11 says.
 - **A new session starts the count again.** A deleted log is no session.
 - **Vaping only** (`vapingOnly`): every logged session was vaping, or, without a log, the plan names vaping.
   The apps then say that the evidence differs. The texts, their sources and the disclaimer (LEG-04) are in
@@ -986,6 +987,10 @@ at some time:
 - **A day named before joining** (§4.10) counts for friends from the first day of the plan only: the days
   before it are the user's word, the days of the plan are confirmed by check-ins. Without a logged session and
   without a named day nothing is stored, because nothing says that the user does not smoke.
+  Named later, when days of the plan are final already, it lets the next final day store every milestone
+  those days reached, so friends see several appear at once in the list and the feed. That tells them that
+  the user now says they do not smoke, and not the named day: nothing a friend sees has a time. Taken away
+  again, nothing stored is taken back.
 - **Only confirmed time counts** (confirmed by the owner on 2026-11-24). A day without a check-in is not a day without a session (FR-LOG-03, as for
   the smoke-free day and the under-limit streak): the count begins again at the end of the last day without
   a check-in, if that is later than the last session. So a day without a check-in stores nothing, and an
