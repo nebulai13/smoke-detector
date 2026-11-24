@@ -2063,6 +2063,10 @@ components:
           type: string
           format: date
           description: The local day of the onboarding.
+        lastSessionBefore:
+          type: string
+          format: date
+          description: The day of the last session before joining, if the user named one.
         baseline:
           type: number
           minimum: 0
@@ -2118,6 +2122,14 @@ components:
           $ref: "#/components/schemas/TaperSpeed"
         defaultProduct:
           $ref: "#/components/schemas/ProductType"
+        lastSessionBefore:
+          type: string
+          format: date
+          description: >
+            For somebody who quit before joining: the local day of the last session, before the first day
+            of the plan and not before 1900. The health milestones of the user count from the end of that
+            day until a session is logged; for friends only the days since the first day of the plan count
+            (SRS FR-GAME-09). Left out, the plan has none: a later call that leaves it out takes it away.
     DeleteMeRequest:
       type: object
       additionalProperties: false
@@ -2342,6 +2354,10 @@ components:
         startDate:
           type: string
           format: date
+        lastSessionBefore:
+          type: string
+          format: date
+          description: The day of the last session before joining, if the user named one.
         rulesVersion:
           type: string
           description: The version of the rule table that was in force when the plan was made.
