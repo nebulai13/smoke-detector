@@ -1230,9 +1230,15 @@ a friend where there is one ("Anna sent you a cheer"), and ids the app opens. Th
 `notification_settings` (member `notificationSettings`, always present, the defaults when no row) are
 registered with exporter and eraser.
 
-**Still open (put to the owner):** whether the text of a notification is written by the server in German or
-English, or sent as keys that the apps translate; and whether "overtaken in a league" stays in v1, since
-standings change only when a day becomes final, two days late.
+**Decided by the owner on 2026-11-24:**
+
+- **The server writes the text** of a notification in the user's language (German or English, FR-I18N-01):
+  one place for the texts, the same on every platform, and a new text needs no app update. The apps get the
+  text and the ids to open.
+- **"Overtaken in a league" stays in v1** (FR-NOTIF-02). Standings change only when a day becomes final, so it
+  is sent when a friend moves from behind the user to ahead of the user over final days, about two days after
+  the day it is about. It needs the last standing per user, friend and period stored, to compare with. Built
+  with the events of step 7.
 
 ---
 
