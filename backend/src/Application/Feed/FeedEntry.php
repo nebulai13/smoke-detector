@@ -27,6 +27,18 @@ final readonly class FeedEntry
         public ?HealthMilestone $milestone,
         /** Of a duel: the other user, if the one who asks is that user or a friend of theirs. */
         public ?PublicProfile $opponent,
+        /** The reaction of the user who asks to this entry (HLD §4.13). */
+        public ?ReactionKey $myReaction,
+        /** @var list<ReactionView> Who reacted, oldest first: only on an own entry, only friends of now. */
+        public array $reactions,
     ) {
+    }
+
+    /**
+     * @param list<ReactionView> $reactions
+     */
+    public function withReactions(?ReactionKey $myReaction, array $reactions): self
+    {
+        return new self($this->id, $this->type, $this->user, $this->mine, $this->level, $this->badge, $this->milestone, $this->opponent, $myReaction, $reactions);
     }
 }
