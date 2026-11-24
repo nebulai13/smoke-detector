@@ -133,6 +133,10 @@ tags:
     description: >
       Duels with one friend (HLD §4.8) and leagues with all friends (HLD §4.9). Everybody is rated over
       their own local days, against a baseline that is frozen at the start and never shown to others.
+  - name: Social
+    description: >
+      The activity feed of the user and the user's friends (HLD §4.12). Written from final data only,
+      and shown without times.
   - name: Progress
     description: >
       What the logged-in user has reached (HLD §4.10): badges and health milestones. Friends see which
@@ -752,6 +756,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BaselineHistory"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+  /feed:
+    get:
+      operationId: showFeed
+      tags: [Social]
+      summary: What the user and the user's friends reached lately (SRS FR-SOC-01)
+      description: >
+        Level-ups, badges, duel results and health milestones, the newest first. An entry is written when
+        what it tells is final (a day 48 hours after it ended, a duel when it is decided, a league rank
+        when it is stored), and it has no time. A health milestone of a friend is in the feed as far as
+        that friend's setting allows (`MilestoneSharing`). The opponent of a duel is named only to
+        somebody who is a friend of the opponent too. A lost duel is not announced.
+      responses:
+        "200":
+          description: The newest entries the user may see, at most 50.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Feed"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "500":
@@ -2022,6 +2050,7 @@ components:
         - badges
         - healthMilestones
         - settings
+        - feedEvents
         - sessions
         - mailLinks
         - queuedMails
@@ -2136,6 +2165,11 @@ components:
             $ref: "#/components/schemas/ReachedHealthMilestone"
         settings:
           $ref: "#/components/schemas/Settings"
+        feedEvents:
+          type: array
+          description: The entries of the activity feed about the user, oldest first.
+          items:
+            $ref: "#/components/schemas/ExportedFeedEvent"
     ExportedProfile:
       type: object
       additionalProperties: false
@@ -2754,6 +2788,80 @@ components:
             cannot be read from it.
           items:
             $ref: "#/components/schemas/HealthMilestoneKey"
+    FeedEntryType:
+      type: string
+      description: >
+        `level_up` (with `level`), `badge_earned` (with `badge`; the check-in streaks of 7, 30, 100 and
+        365 days are in the feed as their badges), `duel_won` and `duel_draw` (with `opponent`, if the
+        user may see who it was), `health_milestone` (with `milestone`). A later version of the API may
+        add types: an app leaves out what it does not know.
+      enum: [level_up, badge_earned, duel_won, duel_draw, health_milestone]
+    FeedEntry:
+      type: object
+      additionalProperties: false
+      required: [id, type, user, mine, level, badge, milestone, opponent]
+      description: One thing somebody reached. It has no time on purpose (SRS FR-FRND-03).
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Random. It says nothing about when the entry was written.
+        type:
+          $ref: "#/components/schemas/FeedEntryType"
+        user:
+          $ref: "#/components/schemas/PublicUser"
+        mine:
+          type: boolean
+          description: Whether the entry is about the user who asks.
+        level:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: The level reached, for `level_up`. Two levels reached in one step are one entry.
+        badge:
+          allOf:
+            - $ref: "#/components/schemas/BadgeKey"
+          nullable: true
+        milestone:
+          allOf:
+            - $ref: "#/components/schemas/HealthMilestoneKey"
+          nullable: true
+        opponent:
+          allOf:
+            - $ref: "#/components/schemas/PublicUser"
+          nullable: true
+          description: >
+            Of a duel: the other user, if that is the user who asks or a friend of theirs. `null`
+            otherwise, and when the other account does not exist any more.
+    Feed:
+      type: object
+      additionalProperties: false
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/FeedEntry"
+    ExportedFeedEvent:
+      type: object
+      additionalProperties: false
+      required: [type, detail, opponentId, createdAt]
+      properties:
+        type:
+          $ref: "#/components/schemas/FeedEntryType"
+        detail:
+          type: string
+          nullable: true
+          description: The level, the badge or the health milestone of the entry.
+        opponentId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Of a duel. The id only; `null` when that account does not exist any more.
+        createdAt:
+          type: string
+          format: date-time
     MilestoneSharing:
       type: string
       description: >

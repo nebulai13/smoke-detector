@@ -13,6 +13,7 @@ use SmokeDetector\Application\Account\UserId;
 use SmokeDetector\Application\Account\UserRepository;
 use SmokeDetector\Application\Badge\AwardBadges;
 use SmokeDetector\Application\Competition\LeagueScores;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Application\Logging\SmokeLogs;
 use SmokeDetector\Application\Plan\BaselineEntry;
@@ -66,6 +67,7 @@ final readonly class FinalizeDays
         private LeagueScores $leagueScores,
         private AwardBadges $badges,
         private AwardMilestones $milestones,
+        private PublishToFeed $feed,
     ) {
     }
 
@@ -176,7 +178,7 @@ final readonly class FinalizeDays
         // The badges a final day justifies (HLD §4.10), in the same transaction.
         $this->badges->dayFinalized($calendar, $date, $outcome, $finalization->streaks, $now);
         // The health milestones reached by the end of the day, for friends (HLD §4.11), in the same transaction.
-        $this->milestones->dayFinalized($calendar, $date);
+        $this->milestones->dayFinalized($calendar, $date, $now);
         foreach ($finalization->xpAwards as $award) {
             $this->ledger->append(new XpEvent($this->ids->next(), $userId, $date, $award->source, $award->amount, $award->detail, $now));
         }
@@ -190,6 +192,10 @@ final readonly class FinalizeDays
             Schedule::finalizeDueAt($calendar->days, $next),
             $stored->baselineDueAt,
         ));
+        if ($finalization->levelAfter > $finalization->levelBefore) {
+            // One entry with the level reached, also when the day passed two (HLD §4.12).
+            $this->feed->levelReached($userId, $finalization->levelAfter, $now);
+        }
     }
 
     /**

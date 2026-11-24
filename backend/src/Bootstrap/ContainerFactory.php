@@ -26,6 +26,8 @@ use SmokeDetector\Application\Badge\BadgeRecords;
 use SmokeDetector\Application\Competition\Duels;
 use SmokeDetector\Application\Competition\LeagueResults;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Feed\FeedEvents;
+use SmokeDetector\Application\Feed\FeedIds;
 use SmokeDetector\Application\Friends\Blocks;
 use SmokeDetector\Application\Friends\FriendLinks;
 use SmokeDetector\Application\Friends\InviteCodeGenerator;
@@ -75,6 +77,7 @@ use SmokeDetector\Infrastructure\Database\LazyPdoDatabase;
 use SmokeDetector\Infrastructure\Database\PdoConnectionFactory;
 use SmokeDetector\Infrastructure\Database\PdoDatabaseProbe;
 use SmokeDetector\Infrastructure\Database\PdoTransactionRunner;
+use SmokeDetector\Infrastructure\Feed\RandomFeedIds;
 use SmokeDetector\Infrastructure\Friends\RandomInviteCodes;
 use SmokeDetector\Infrastructure\Log\StreamLogger;
 use SmokeDetector\Infrastructure\Health\FileCronHeartbeat;
@@ -92,6 +95,7 @@ use SmokeDetector\Infrastructure\Repository\PdoBlocks;
 use SmokeDetector\Infrastructure\Repository\PdoConsentRepository;
 use SmokeDetector\Infrastructure\Repository\PdoDayRecords;
 use SmokeDetector\Infrastructure\Repository\PdoDuels;
+use SmokeDetector\Infrastructure\Repository\PdoFeedEvents;
 use SmokeDetector\Infrastructure\Repository\PdoLeagueResults;
 use SmokeDetector\Infrastructure\Repository\PdoFriendLinks;
 use SmokeDetector\Infrastructure\Repository\PdoInviteCodes;
@@ -235,6 +239,10 @@ final readonly class ContainerFactory
             // Health milestones for friends, and the settings (HLD §4.11)
             MilestoneRecords::class => autowire(PdoMilestoneRecords::class),
             UserSettings::class => autowire(PdoUserSettings::class),
+
+            // Activity feed (HLD §4.12): random ids, unlike IdGenerator, whose ids begin with their time.
+            FeedEvents::class => autowire(PdoFeedEvents::class),
+            FeedIds::class => autowire(RandomFeedIds::class),
 
             // Data export and account deletion: the tables with user data are listed in UserDataTables.
             UserDataRegistry::class => factory(static fn (UserDataTables $tables): UserDataRegistry => $tables->registry()),

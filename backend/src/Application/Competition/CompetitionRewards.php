@@ -11,6 +11,7 @@ use SmokeDetector\Application\Day\ProgressRecord;
 use SmokeDetector\Application\Day\ProgressRecords;
 use SmokeDetector\Application\Day\XpEvent;
 use SmokeDetector\Application\Day\XpLedger;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\IdGenerator;
 use SmokeDetector\Domain\Day\UserProgress;
 use SmokeDetector\Domain\Level\LevelCalculator;
@@ -19,7 +20,8 @@ use SmokeDetector\Domain\Xp\XpAward;
 /**
  * Pays the XP of a decided duel or a ranked league result (HLD §4.8 "Score", §4.9 "Rank and
  * reward"): to the ledger with the user's own local date of now, and to the progress with the
- * level calculated again, inside the caller's transaction. A reward of nothing writes nothing.
+ * level calculated again, inside the caller's transaction. A reward of nothing writes nothing. A
+ * level reached with it is an entry of the feed (HLD §4.12).
  */
 final readonly class CompetitionRewards
 {
@@ -27,6 +29,7 @@ final readonly class CompetitionRewards
         private ProgressRecords $progress,
         private XpLedger $ledger,
         private IdGenerator $ids,
+        private PublishToFeed $feed,
     ) {
     }
 
@@ -45,14 +48,18 @@ final readonly class CompetitionRewards
         // The onboarding writes the plan and the progress in one transaction.
         \assert($stored !== null);
         $totalXp = $stored->progress->totalXp + $award->amount;
+        $level = (new LevelCalculator($calendar->rules->level))->levelFor($totalXp);
         $this->progress->save(new ProgressRecord(
             $userId,
             new UserProgress($stored->progress->streaks, $totalXp),
-            (new LevelCalculator($calendar->rules->level))->levelFor($totalXp),
+            $level,
             $stored->nextDay,
             $stored->finalizeDueAt,
             $stored->baselineDueAt,
         ));
+        if ($level > $stored->level) {
+            $this->feed->levelReached($userId, $level, $now);
+        }
 
         return $award->amount;
     }
