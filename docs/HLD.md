@@ -166,7 +166,8 @@ erDiagram
 | `user_milestones` | user_id, milestone_key (the domain's `HealthMilestone`), primary key together. reached_at (UTC): the moment the milestone was first reached. Written when a day becomes final, never changed (§4.11) |
 | `user_settings` | user_id (one row per user, made by the first choice), milestone_sharing (from_two_weeks / private / all). No row means the defaults |
 | `user_badges` | user_id, badge_key (the domain's `Badge`), primary key together: a user holds a badge once. awarded_at (UTC): when it was stored, which is when the day, the duel or the rank became final. The first award stays; a row is never changed |
-| `feed_events` / `reactions` | event type + payload (no raw counts) / reaction_key, from_user |
+| `feed_events` | position (the order of writing, never sent), id (a random UUID: what a client gets says nothing about the time), user_id, type (level_up / badge_earned / duel_won / duel_draw / health_milestone), detail (the level, the badge or the milestone; NULL for a duel), other_user_id (the opponent of a duel; set to NULL when that account goes), created_at. Written from final data only (§4.12). Index (user_id, position) |
+| `reactions` | reaction_key, from_user. With the reactions, the next slice of step 6 |
 | `devices` | user_id, platform (ios/android/web), push_token / web-push subscription, locale |
 | `notifications_outbox` | user_id, type, payload, not_before, sent_at, attempts |
 | `mail_outbox` | id (UUIDv7), user_id (`ON DELETE CASCADE`), template (confirm_email / already_registered / reset_password), locale, recipient, sealed_values (the links of the mail, encrypted with `sodium_crypto_secretbox`: random nonce per row, key derived from `jwt.secret` by HKDF-SHA256 with its own label), created_at, not_before (the next try, or the end of a run's 10-minute hold), attempts (failed tries). A row is deleted as soon as the mail server has the mail. Deliberately no index on not_before (two runs could deadlock on it) |
@@ -184,7 +185,7 @@ erDiagram
 | Progress | `GET /me/dashboard` (today, limit, streaks, XP, level, next milestone), `GET /me/badges`, `GET /me/health-milestones` (§4.10) |
 | Friends | `GET/POST /me/invite`, `GET /friends`, `POST /friends/requests` (by invite code), `POST /friends/requests/{accept,decline,withdraw}`, `POST /friends/{remove,block,unblock}`, `GET /friends/blocked`. The other user's id is in the body (§4.7) |
 | Competition | `GET/POST /duels`, `POST /duels/{show,accept,decline,cancel}` with the duel id in the body (§4.8). `GET /leagues?type&period` and `GET /leagues/xp` (§4.9) |
-| Social | `GET /feed`, `POST /feed/{id}/reactions`, `POST /friends/{id}/nudge` |
+| Social | `GET /feed` (§4.12). To come: `POST /feed/reactions` and `POST /friends/nudge`, with the ids in the body (§4.7) |
 | Devices | `PUT /devices/{id}` (push token), `DELETE /devices/{id}`, `GET/PUT /me/notification-settings` |
 
 ### 4.5 Auth & account design (step 3)
@@ -1008,6 +1009,69 @@ at some time:
 
 **Export and deletion.** `user_milestones` and `user_settings` are registered with exporter and eraser. The
 export members are `healthMilestones` (key and the moment it was first reached) and `settings`.
+
+### 4.12 Activity feed (step 6, second part)
+
+**What is written (FR-SOC-01).** An entry is written in the transaction that makes its fact final
+(`PublishToFeed`), never from an open day:
+
+| Entry | Written when |
+|---|---|
+| `level_up` | a step raises the level: a final day, the XP of a decided duel or of a league rank. One entry per step with the level reached, also when the step passed two levels |
+| `badge_earned` | a badge is stored for the first time (§4.10) |
+| `duel_won`, `duel_draw` | a duel is decided, for a side with a reduction above zero (§4.8). The entry keeps the id of the other user. A lost duel is not announced |
+| `health_milestone` | a health milestone is stored for the first time (§4.11) |
+
+Streak milestones (FR-SOC-01) are in the feed as their badges: the check-in streaks of 7, 30, 100 and 365
+days each have one, and a second entry for the same day would say the same twice.
+
+**What a user sees.** `GET /feed`: the 50 newest entries about the user and the user's friends that the user
+may see, the newest first.
+
+- **Friends only.** Somebody with an open request, a removed friend and a blocked user are not in it, from
+  the moment the friendship ends. An entry whose account is gone is left out.
+- **No time (decided by the owner on 2026-11-23: badges without dates).** An entry has no time, and its id is
+  random: the ids of users and logs begin with their time, a feed id must not. The order is by a counter
+  that is never sent.
+- **Health milestones of a friend** are shown as far as that friend's setting allows at the moment of the
+  request (§4.11). The own ones always.
+- **The opponent of a duel** is named to the opponent and to friends of the opponent (decided by the owner
+  on 2026-11-23). Everybody else reads "won a duel".
+- An entry with a value this version of the code does not know (after a roll-back) is left out. Only a duel
+  entry has an opponent, whatever a row says.
+
+**Known limits.**
+
+- **The feed tells when, roughly.** An entry appears about two days after the day it is about, and somebody
+  who reads the feed often sees it appear. That is what a feed is for; what the badges and milestones tell
+  with their day is in §4.10 and §4.11. Nobody has to be in a feed: there is no setting for it yet, except
+  the one for health milestones. To settle with the pilot.
+- **Entries the user may not see never shorten the feed:** the entries are read 200 at a time until 50 are
+  found or none are left (an audit found that friends who all begin in the same week have hundreds of hidden
+  health milestones among them).
+- **After a roll-back** a row whose type this version does not know is left out when it is read from the
+  database, so a page of 200 can come back short and end the reading early: the feed can then be shorter
+  than 50 until newer entries arrive. Accepted for a state that should not last.
+- **A lost duel is not announced by the loser's entry, but it can be read:** somebody who is a friend of both
+  sees "won a duel against" the loser in the winner's entry. That follows from naming the opponent to the
+  opponent's friends.
+- **Duel results are new to friends.** The friend list does not show them. An entry says that a user won or
+  drew a duel with a reduction of their own: no count, no limit, no baseline.
+- **A new friend sees the newest 50 entries,** also those from before the friendship, as the friend list shows
+  every badge from before it.
+- **The order tells a little:** entries of one step are written together (badges, then milestones, then the
+  level), so entries next to each other are probably from the same day, and a level next to a duel entry
+  probably came from the XP of that duel.
+- **The accounts of the friends are read one by one,** as in the friend list: about 55 queries for a user
+  with 50 friends. To settle with the pilot's numbers.
+- **A level entry after a new rule version** could be written or left out by the first reward under it, if
+  the level thresholds changed: the reward compares with the stored level. To settle with the first new
+  rule version (§4.6).
+- **Entries are kept for good.** A clean-up of old entries can come with the housekeeping job.
+- **Reactions and nudges** (FR-SOC-02 to -04) are the next slices.
+
+**Export and deletion.** `feed_events` is registered with exporter and eraser. The export member `feedEvents`
+holds the user's own entries with their time, of an opponent the id only.
 
 ---
 

@@ -10,6 +10,7 @@ use SmokeDetector\Application\Competition\Duel;
 use SmokeDetector\Application\Competition\Duels;
 use SmokeDetector\Application\Competition\DuelWinner;
 use SmokeDetector\Application\Day\Calendar;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Badge\Badge;
 use SmokeDetector\Domain\Badge\BadgeEvaluator;
@@ -29,6 +30,7 @@ final readonly class AwardBadges
     public function __construct(
         private BadgeRecords $badges,
         private Duels $duels,
+        private PublishToFeed $feed,
     ) {
     }
 
@@ -92,8 +94,9 @@ final readonly class AwardBadges
         }
         $held = $this->badges->heldBy([$userId])[$userId->value] ?? [];
         foreach ($justified as $badge) {
-            if (!in_array($badge, $held, true)) {
-                $this->badges->add(new AwardedBadge($userId, $badge, $now));
+            // A badge stored now is news for the feed (HLD §4.12); one that was there already is not.
+            if (!in_array($badge, $held, true) && $this->badges->add(new AwardedBadge($userId, $badge, $now))) {
+                $this->feed->badgeEarned($userId, $badge, $now);
             }
         }
     }

@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Application\Recovery;
 
+use DateTimeImmutable;
 use SmokeDetector\Application\Day\Calendar;
 use SmokeDetector\Application\Day\DayRecords;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\Logging\SmokeLogs;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Domain\Recovery\HealthMilestones;
@@ -31,13 +33,16 @@ final readonly class AwardMilestones
         private MilestoneRecords $milestones,
         private SmokeLogs $logs,
         private DayRecords $days,
+        private PublishToFeed $feed,
     ) {
     }
 
     /**
      * After a day of the user of the calendar has become final.
+     *
+     * @param DateTimeImmutable $now The time of the step: of the feed entry, not of the milestone.
      */
-    public function dayFinalized(Calendar $calendar, LocalDate $date): void
+    public function dayFinalized(Calendar $calendar, LocalDate $date, DateTimeImmutable $now): void
     {
         $userId = $calendar->plan->userId;
         $since = $this->logs->lastSessionUntil($userId, $date);
@@ -51,9 +56,10 @@ final readonly class AwardMilestones
             $since = max($since, $calendar->days->endOf($missed));
         }
         foreach (HealthMilestones::at($since, $calendar->days->endOf($date)) as $state) {
-            if ($state->reached) {
-                // add() keeps the first time, so what was reached before is not changed.
-                $this->milestones->add(new ReachedMilestone($userId, $state->milestone, $state->reachedAt));
+            // add() keeps the first time, so what was reached before is not changed, and is not news
+            // for the feed again (HLD §4.12).
+            if ($state->reached && $this->milestones->add(new ReachedMilestone($userId, $state->milestone, $state->reachedAt))) {
+                $this->feed->milestoneReached($userId, $state->milestone, $now);
             }
         }
     }

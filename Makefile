@@ -22,7 +22,7 @@ migrate:          ## run the database migrations on the local dev schema (smoke_
 	$(PHP) php bin/console migrate
 
 stan:             ## static analysis (PHPStan, max level)
-	$(PHP_NO_DB) vendor/bin/phpstan analyse --no-progress
+	$(PHP_NO_DB) vendor/bin/phpstan analyse --no-progress --memory-limit=512M
 
 trace:            ## requirement → test traceability report (and the tests of the tool itself)
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools/test_traceability.py

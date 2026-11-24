@@ -18,6 +18,8 @@ use SmokeDetector\Application\Day\ProgressRecord;
 use SmokeDetector\Application\Day\ProgressView;
 use SmokeDetector\Application\Day\ShowDashboard;
 use SmokeDetector\Application\Day\ShowDays;
+use SmokeDetector\Application\Feed\FeedEvent;
+use SmokeDetector\Application\Feed\PublishToFeed;
 use SmokeDetector\Application\Logging\SmokeLog;
 use SmokeDetector\Application\Logging\SyncLogs;
 use SmokeDetector\Application\Plan\ProductType;
@@ -33,7 +35,9 @@ use SmokeDetector\Domain\Plan\TaperSpeed;
 use SmokeDetector\Domain\Streak\StreakState;
 use SmokeDetector\Tests\Support\InMemory\InMemoryBadgeRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDayRecords;
+use SmokeDetector\Tests\Support\Fake\SequenceFeedIds;
 use SmokeDetector\Tests\Support\InMemory\InMemoryDuels;
+use SmokeDetector\Tests\Support\InMemory\InMemoryFeedEvents;
 use SmokeDetector\Tests\Support\InMemory\InMemoryLeagueResults;
 use SmokeDetector\Tests\Support\InMemory\InMemoryMilestoneRecords;
 use SmokeDetector\Tests\Support\InMemory\InMemorySmokeLogs;
@@ -58,6 +62,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
     protected InMemoryBadgeRecords $badgeRecords;
     protected InMemoryMilestoneRecords $milestoneRecords;
     protected InMemoryUserSettings $userSettings;
+    protected InMemoryFeedEvents $feedEvents;
+    protected SequenceFeedIds $feedIds;
     /** Here and not with the duel tests: the badges of the duels are awarded from what is stored of them. */
     protected InMemoryDuels $duels;
 
@@ -71,6 +77,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
         $this->badgeRecords = new InMemoryBadgeRecords($this->transactions);
         $this->milestoneRecords = new InMemoryMilestoneRecords($this->transactions);
         $this->userSettings = new InMemoryUserSettings($this->transactions);
+        $this->feedEvents = new InMemoryFeedEvents($this->transactions);
+        $this->feedIds = new SequenceFeedIds();
         $this->duels = new InMemoryDuels($this->progressRecords, $this->transactions);
     }
 
@@ -110,7 +118,8 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
             $this->logger,
             new LeagueScores($this->leagueResults, $this->dayRecords),
             $this->awardBadges(),
-            new AwardMilestones($this->milestoneRecords, $this->smokeLogs, $this->dayRecords),
+            new AwardMilestones($this->milestoneRecords, $this->smokeLogs, $this->dayRecords, $this->publishToFeed()),
+            $this->publishToFeed(),
         );
     }
 
@@ -130,7 +139,26 @@ abstract class LoggingUseCaseTestCase extends AccountUseCaseTestCase
      */
     protected function awardBadges(): AwardBadges
     {
-        return new AwardBadges($this->badgeRecords, $this->duels);
+        return new AwardBadges($this->badgeRecords, $this->duels, $this->publishToFeed());
+    }
+
+    /**
+     * What writes the entries of the activity feed, from final data only (HLD §4.12).
+     */
+    protected function publishToFeed(): PublishToFeed
+    {
+        return new PublishToFeed($this->feedEvents, $this->feedIds);
+    }
+
+    /**
+     * @return list<array{string, string|null, string|null}> Type, detail and the id of the other user of every feed entry about the user, oldest first.
+     */
+    protected function feedOf(User $user): array
+    {
+        return array_map(
+            static fn (FeedEvent $event): array => [$event->type->value, $event->detail, $event->otherUserId?->value],
+            $this->feedEvents->ofUser($user->id),
+        );
     }
 
     /**

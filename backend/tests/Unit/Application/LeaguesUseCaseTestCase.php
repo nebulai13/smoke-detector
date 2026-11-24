@@ -43,6 +43,7 @@ abstract class LeaguesUseCaseTestCase extends DuelsUseCaseTestCase
             $this->ids,
             $this->logger,
             $this->awardBadges(),
+            $this->publishToFeed(),
         );
     }
 

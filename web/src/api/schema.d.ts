@@ -312,6 +312,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/feed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the user and the user's friends reached lately (SRS FR-SOC-01)
+         * @description Level-ups, badges, duel results and health milestones, the newest first. An entry is written when what it tells is final (a day 48 hours after it ended, a duel when it is decided, a league rank when it is stored), and it has no time. A health milestone of a friend is in the feed as far as that friend's setting allows (`MilestoneSharing`). The opponent of a duel is named only to somebody who is a friend of the opponent too. A lost duel is not announced.
+         */
+        get: operations["showFeed"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/me/settings": {
         parameters: {
             query?: never;
@@ -1080,6 +1100,8 @@ export interface components {
             /** @description The health milestones the user has reached at some time, as stored for what friends may see, in the order of `HealthMilestoneKey`. */
             healthMilestones: components["schemas"]["ReachedHealthMilestone"][];
             settings: components["schemas"]["Settings"];
+            /** @description The entries of the activity feed about the user, oldest first. */
+            feedEvents: components["schemas"]["ExportedFeedEvent"][];
         };
         ExportedProfile: {
             /** Format: uuid */
@@ -1412,6 +1434,44 @@ export interface components {
             badges: components["schemas"]["BadgeKey"][];
             /** @description The health milestones the friend has reached at some time and lets friends see (the friend's own setting, `MilestoneSharing`), in the order of `HealthMilestoneKey`. Worked out from final days, kept for good and shown without a time: a session of today, or a relapse, cannot be read from it. */
             healthMilestones: components["schemas"]["HealthMilestoneKey"][];
+        };
+        /**
+         * @description `level_up` (with `level`), `badge_earned` (with `badge`; the check-in streaks of 7, 30, 100 and 365 days are in the feed as their badges), `duel_won` and `duel_draw` (with `opponent`, if the user may see who it was), `health_milestone` (with `milestone`). A later version of the API may add types: an app leaves out what it does not know.
+         * @enum {string}
+         */
+        FeedEntryType: "level_up" | "badge_earned" | "duel_won" | "duel_draw" | "health_milestone";
+        /** @description One thing somebody reached. It has no time on purpose (SRS FR-FRND-03). */
+        FeedEntry: {
+            /**
+             * Format: uuid
+             * @description Random. It says nothing about when the entry was written.
+             */
+            id: string;
+            type: components["schemas"]["FeedEntryType"];
+            user: components["schemas"]["PublicUser"];
+            /** @description Whether the entry is about the user who asks. */
+            mine: boolean;
+            /** @description The level reached, for `level_up`. Two levels reached in one step are one entry. */
+            level: number | null;
+            badge: components["schemas"]["BadgeKey"] | null;
+            milestone: components["schemas"]["HealthMilestoneKey"] | null;
+            /** @description Of a duel: the other user, if that is the user who asks or a friend of theirs. `null` otherwise, and when the other account does not exist any more. */
+            opponent: components["schemas"]["PublicUser"] | null;
+        };
+        Feed: {
+            entries: components["schemas"]["FeedEntry"][];
+        };
+        ExportedFeedEvent: {
+            type: components["schemas"]["FeedEntryType"];
+            /** @description The level, the badge or the health milestone of the entry. */
+            detail: string | null;
+            /**
+             * Format: uuid
+             * @description Of a duel. The id only; `null` when that account does not exist any more.
+             */
+            opponentId: string | null;
+            /** Format: date-time */
+            createdAt: string;
         };
         /**
          * @description What friends see of the user's health milestones. `from_two_weeks` (the default): the milestones from two weeks on. `private`: none. `all`: also the two short ones (20 minutes, 12 hours).
@@ -2549,6 +2609,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BaselineHistory"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    showFeed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newest entries the user may see, at most 50. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Feed"];
                 };
             };
             401: components["responses"]["Unauthorized"];
