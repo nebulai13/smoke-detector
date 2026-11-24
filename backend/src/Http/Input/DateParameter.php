@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace SmokeDetector\Http\Input;
 
-use InvalidArgumentException;
 use SmokeDetector\Application\Time\LocalDate;
 use SmokeDetector\Application\Validation\ErrorCode;
 use SmokeDetector\Application\Validation\FieldError;
+use SmokeDetector\Application\Validation\InvalidValue;
 
 /**
  * A local date in the path or the query of a request: an existing day as YYYY-MM-DD.
@@ -29,9 +29,9 @@ final readonly class DateParameter
         }
 
         try {
-            return LocalDate::fromString($value);
-        } catch (InvalidArgumentException) {
-            return new FieldError($field, ErrorCode::InvalidFormat, 'Must be an existing day as YYYY-MM-DD.');
+            return DateField::fromInput($value);
+        } catch (InvalidValue $rejected) {
+            return $rejected->forField($field);
         }
     }
 }
