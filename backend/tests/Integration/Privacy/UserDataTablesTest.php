@@ -169,6 +169,10 @@ final class UserDataTablesTest extends IntegrationTestCase
         // entry is not exported: that entry is the other user's.
         'feed_events.other_user_id' => 'feedEvents.*.opponentId',
         'feed_events.created_at' => 'feedEvents.*.createdAt',
+        // Who reacted to an entry of the user. Of a reaction the user sent: the key and the time.
+        'feed_reactions.user_id' => 'feedEvents.*.reactions.*.userId',
+        'feed_reactions.reaction' => 'reactionsSent.*.reaction',
+        'feed_reactions.created_at' => 'reactionsSent.*.createdAt',
     ];
 
     /** Stored columns that are deliberately not in the export, and why. */
@@ -210,6 +214,7 @@ final class UserDataTablesTest extends IntegrationTestCase
         'feed_events.user_id' => 'The user\'s own id, which is profile.id.',
         'feed_events.position' => 'The order in which the entries were written: the export lists them in it, and it says nothing beyond feedEvents.*.createdAt.',
         'feed_events.id' => 'The random name of the entry for the apps, without meaning outside the feed.',
+        'feed_reactions.event_id' => 'The random name of the entry: a reaction to an entry of the user is exported with that entry, and of a reaction the user sent the export names whose entry it was (reactionsSent.*.userId).',
         'blocks.blocker_id' => 'The user\'s own id, in the blocks the export lists. A block by somebody else against the user is not exported: nobody learns who has blocked them.',
     ];
 
@@ -366,12 +371,19 @@ final class UserDataTablesTest extends IntegrationTestCase
                     ['key' => 'circulation', 'reachedAt' => '2026-11-15T08:00:00Z'],
                 ],
                 'settings' => ['milestoneSharing' => 'all'],
+                // The reaction the user sent, with whose entry it was. Not that user 11's entry has it.
+                'reactionsSent' => [
+                    ['userId' => TestData::uuid(11), 'reaction' => 'cheer', 'createdAt' => '2026-10-31T08:00:00Z'],
+                ],
                 // The entries about the user, in the order they were written, with their time. Of the
-                // opponent: the id. Not that user 11 has an entry naming the user.
+                // opponent: the id. Not that user 11 has an entry naming the user. Of a reaction: who.
                 'feedEvents' => [
-                    ['type' => 'level_up', 'detail' => '2', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z'],
-                    ['type' => 'badge_earned', 'detail' => 'check_in_streak_7', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z'],
-                    ['type' => 'duel_won', 'detail' => null, 'opponentId' => TestData::uuid(11), 'createdAt' => '2026-10-30T23:00:40Z'],
+                    ['type' => 'level_up', 'detail' => '2', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z', 'reactions' => []],
+                    ['type' => 'badge_earned', 'detail' => 'check_in_streak_7', 'opponentId' => null, 'createdAt' => '2026-11-12T23:00:20Z', 'reactions' => []],
+                    [
+                        'type' => 'duel_won', 'detail' => null, 'opponentId' => TestData::uuid(11), 'createdAt' => '2026-10-30T23:00:40Z',
+                        'reactions' => [['userId' => TestData::uuid(11), 'reaction' => 'strong', 'createdAt' => '2026-10-31T07:00:00Z']],
+                    ],
                 ],
             ],
             $export,
@@ -394,7 +406,7 @@ final class UserDataTablesTest extends IntegrationTestCase
             [
                 'consents' => [], 'planHistory' => [], 'baselineHistory' => [], 'timeZoneHistory' => [], 'smokeLogs' => [], 'days' => [], 'xpEvents' => [],
                 'sessions' => [], 'mailLinks' => [], 'queuedMails' => [], 'friends' => [], 'blockedUsers' => [], 'duels' => [], 'leagueResults' => [], 'badges' => [],
-                'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'], 'feedEvents' => [],
+                'healthMilestones' => [], 'settings' => ['milestoneSharing' => 'from_two_weeks'], 'reactionsSent' => [], 'feedEvents' => [],
             ],
             $export,
         );

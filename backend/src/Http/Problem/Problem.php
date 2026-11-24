@@ -293,6 +293,23 @@ final readonly class Problem
     }
 
     /**
+     * There is no such entry in the feed of the user. The same for an entry that does not exist and
+     * for one the user may not see (HLD §4.13).
+     */
+    public static function feedEntryNotFound(): self
+    {
+        return new self('feed_entry_not_found', 'Feed entry not found', 404, 'There is no such entry in the feed of the user.');
+    }
+
+    /**
+     * Nobody reacts to an own entry (HLD §4.13).
+     */
+    public static function ownFeedEntry(): self
+    {
+        return new self('own_feed_entry', 'Own feed entry', 409, 'Nobody reacts to an own entry.');
+    }
+
+    /**
      * The period of the league has not begun for the user (HLD §4.9).
      */
     public static function leagueNotFound(): self

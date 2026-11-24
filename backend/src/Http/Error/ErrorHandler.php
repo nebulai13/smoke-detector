@@ -16,6 +16,8 @@ use SmokeDetector\Application\Competition\DuelExists;
 use SmokeDetector\Application\Competition\DuelLimitReached;
 use SmokeDetector\Application\Competition\DuelNotFound;
 use SmokeDetector\Application\Competition\DuelNotOpen;
+use SmokeDetector\Application\Feed\FeedEntryNotFound;
+use SmokeDetector\Application\Feed\OwnFeedEntry;
 use SmokeDetector\Application\Competition\LeagueNotFound;
 use SmokeDetector\Application\Friends\AlreadyFriends;
 use SmokeDetector\Application\Friends\BlockNotFound;
@@ -155,7 +157,7 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
     }
 
     /**
-     * The refusals of the friends, duel and league operations (HLD §4.7, §4.8, §4.9), or null for any other exception.
+     * The refusals of the friends, duel, league and reaction operations (HLD §4.7, §4.8, §4.9, §4.13), or null for any other exception.
      */
     private static function friendsProblem(Throwable $exception): ?Problem
     {
@@ -172,6 +174,8 @@ final readonly class ErrorHandler implements ErrorHandlerInterface
             $exception instanceof DuelExists => Problem::duelExists(),
             $exception instanceof DuelLimitReached => Problem::duelLimitReached(),
             $exception instanceof LeagueNotFound => Problem::leagueNotFound(),
+            $exception instanceof FeedEntryNotFound => Problem::feedEntryNotFound(),
+            $exception instanceof OwnFeedEntry => Problem::ownFeedEntry(),
             default => null,
         };
     }
