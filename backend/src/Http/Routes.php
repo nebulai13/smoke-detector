@@ -52,6 +52,8 @@ use SmokeDetector\Http\Action\Me\SaveSettingsAction;
 use SmokeDetector\Http\Action\Me\ShowMeAction;
 use SmokeDetector\Http\Action\Me\ShowSettingsAction;
 use SmokeDetector\Http\Action\Me\UpdateMeAction;
+use SmokeDetector\Http\Action\Nudge\ListNudgesAction;
+use SmokeDetector\Http\Action\Nudge\NudgeFriendAction;
 use SmokeDetector\Http\Middleware\AuthenticationMiddleware;
 
 /**
@@ -167,5 +169,9 @@ final readonly class Routes
         // id of the entry is in the body, never in the path.
         $routes->get('/feed', ShowFeedAction::class);
         $routes->post('/feed/reactions', ReactAction::class);
+
+        // Nudges (HLD §4.14): the friend's id is in the body, never in the path.
+        $routes->post('/friends/nudge', NudgeFriendAction::class);
+        $routes->get('/nudges', ListNudgesAction::class);
     }
 }

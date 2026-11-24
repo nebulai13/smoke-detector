@@ -159,6 +159,8 @@ final class DeleteAccountTest extends HttpTestCase
             'POST /friends/requests/decline' => ['userId' => TestData::uuid(2)],
             'POST /friends/requests/withdraw' => ['userId' => TestData::uuid(2)],
             'POST /friends/remove' => ['userId' => TestData::uuid(2)],
+            'POST /friends/nudge' => ['userId' => TestData::uuid(2)],
+            'GET /nudges' => null,
             'POST /friends/block' => ['userId' => TestData::uuid(2)],
             'POST /friends/unblock' => ['userId' => TestData::uuid(2)],
             'GET /friends/blocked' => null,

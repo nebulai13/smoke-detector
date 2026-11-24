@@ -310,6 +310,14 @@ final readonly class Problem
     }
 
     /**
+     * One nudge per friend and day (HLD §4.14), whatever became of the first.
+     */
+    public static function alreadyNudged(): self
+    {
+        return new self('already_nudged', 'Already nudged', 409, 'The user has nudged this friend today already.');
+    }
+
+    /**
      * The period of the league has not begun for the user (HLD §4.9).
      */
     public static function leagueNotFound(): self
