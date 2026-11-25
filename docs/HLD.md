@@ -1064,8 +1064,10 @@ may see, the newest first.
 
 - **The feed tells when, roughly.** An entry appears about two days after the day it is about, and somebody
   who reads the feed often sees it appear. That is what a feed is for; what the badges and milestones tell
-  with their day is in §4.10 and §4.11. Nobody has to be in a feed: there is no setting for it yet, except
-  the one for health milestones. To settle with the pilot.
+  with their day is in §4.10 and §4.11. **A switch to stay out of friends' feeds** comes with the next
+  settings (decided by the owner on 2026-11-25): "show my achievements in my friends' feed", on by default;
+  off, no entry about the user is shown to anybody else. The friend list still shows the state (level,
+  badges, milestones as their setting allows).
 - **Entries the user may not see never shorten the feed:** the entries are read 200 at a time until 50 are
   found or none are left (an audit found that friends who all begin in the same week have hundreds of hidden
   health milestones among them).
